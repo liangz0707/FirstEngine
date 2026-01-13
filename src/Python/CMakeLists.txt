@@ -12,17 +12,33 @@ set(PYBIND11_NOPYTHON ON CACHE BOOL "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/pybind11 pybind11)
 
 # Find Python 3 (required for pybind11)
-# Try to find Python3, with fallback to custom path
-find_package(Python3 COMPONENTS Interpreter Development QUIET)
+# Set default Python path to D:\Python3.9 if not specified
+set(PYTHON_ROOT_DIR "D:/Python3.9" CACHE PATH "Python root directory")
 
-# If not found, try to use custom Python path (D:\Python3.9)
-if(NOT Python3_FOUND)
-    set(PYTHON_ROOT_DIR "D:/Python3.9" CACHE PATH "Python root directory")
-    if(EXISTS "${PYTHON_ROOT_DIR}")
-        message(STATUS "Using custom Python path: ${PYTHON_ROOT_DIR}")
-        set(Python3_ROOT_DIR "${PYTHON_ROOT_DIR}")
+# If custom path exists, use it directly
+if(EXISTS "${PYTHON_ROOT_DIR}")
+    message(STATUS "Using configured Python path: ${PYTHON_ROOT_DIR}")
+    set(Python3_ROOT_DIR "${PYTHON_ROOT_DIR}")
+    # Try find_package first with the custom root
+    find_package(Python3 COMPONENTS Interpreter Development QUIET)
+    
+    # If still not found, set manually
+    if(NOT Python3_FOUND)
+        message(STATUS "Setting Python3 paths manually from ${PYTHON_ROOT_DIR}")
         set(Python3_INCLUDE_DIRS "${PYTHON_ROOT_DIR}/include")
-        set(Python3_LIBRARIES "${PYTHON_ROOT_DIR}/libs/python39.lib")
+        # Try to find the correct library name
+        if(EXISTS "${PYTHON_ROOT_DIR}/libs/python39.lib")
+            set(Python3_LIBRARIES "${PYTHON_ROOT_DIR}/libs/python39.lib")
+        elseif(EXISTS "${PYTHON_ROOT_DIR}/libs/python3.lib")
+            set(Python3_LIBRARIES "${PYTHON_ROOT_DIR}/libs/python3.lib")
+        else()
+            # Try to find any python*.lib
+            file(GLOB PYTHON_LIBS "${PYTHON_ROOT_DIR}/libs/python*.lib")
+            if(PYTHON_LIBS)
+                list(GET PYTHON_LIBS 0 Python3_LIBRARIES)
+                message(STATUS "Found Python library: ${Python3_LIBRARIES}")
+            endif()
+        endif()
         set(Python3_EXECUTABLE "${PYTHON_ROOT_DIR}/python.exe")
         
         # Set Python3_FOUND manually
@@ -33,15 +49,36 @@ if(NOT Python3_FOUND)
         # Create imported target if it doesn't exist
         if(NOT TARGET Python3::Python)
             add_library(Python3::Python SHARED IMPORTED)
-            set_target_properties(Python3::Python PROPERTIES
-                IMPORTED_LOCATION "${PYTHON_ROOT_DIR}/python39.dll"
-                INTERFACE_INCLUDE_DIRECTORIES "${Python3_INCLUDE_DIRS}"
-            )
+            # Find the DLL
+            if(EXISTS "${PYTHON_ROOT_DIR}/python39.dll")
+                set_target_properties(Python3::Python PROPERTIES
+                    IMPORTED_LOCATION "${PYTHON_ROOT_DIR}/python39.dll"
+                    INTERFACE_INCLUDE_DIRECTORIES "${Python3_INCLUDE_DIRS}"
+                )
+            elseif(EXISTS "${PYTHON_ROOT_DIR}/python3.dll")
+                set_target_properties(Python3::Python PROPERTIES
+                    IMPORTED_LOCATION "${PYTHON_ROOT_DIR}/python3.dll"
+                    INTERFACE_INCLUDE_DIRECTORIES "${Python3_INCLUDE_DIRS}"
+                )
+            else
+                file(GLOB PYTHON_DLLS "${PYTHON_ROOT_DIR}/python*.dll")
+                if(PYTHON_DLLS)
+                    list(GET PYTHON_DLLS 0 PYTHON_DLL)
+                    set_target_properties(Python3::Python PROPERTIES
+                        IMPORTED_LOCATION "${PYTHON_DLL}"
+                        INTERFACE_INCLUDE_DIRECTORIES "${Python3_INCLUDE_DIRS}"
+                    )
+                endif()
+            endif()
         endif()
-    else()
+    endif()
+else()
+    # Try standard find_package
+    find_package(Python3 COMPONENTS Interpreter Development QUIET)
+    if(NOT Python3_FOUND)
         message(WARNING "Python3 not found. FirstEngine_Python module will be created but may not compile.")
         message(STATUS "Please install Python 3.x to enable Python scripting support.")
-        message(STATUS "Or set PYTHON_ROOT_DIR to your Python installation directory.")
+        message(STATUS "Or set PYTHON_ROOT_DIR to your Python installation directory (e.g., D:/Python3.9).")
         message(STATUS "The project will still appear in the solution, but compilation may fail.")
     endif()
 endif()
