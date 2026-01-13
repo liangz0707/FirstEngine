@@ -12,12 +12,38 @@ set(PYBIND11_NOPYTHON ON CACHE BOOL "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/pybind11 pybind11)
 
 # Find Python 3 (required for pybind11)
+# Try to find Python3, with fallback to custom path
 find_package(Python3 COMPONENTS Interpreter Development QUIET)
+
+# If not found, try to use custom Python path (D:\Python3.9)
 if(NOT Python3_FOUND)
-    message(WARNING "Python3 not found. FirstEngine_Python module will be created but may not compile.")
-    message(STATUS "Please install Python 3.x to enable Python scripting support.")
-    message(STATUS "The project will still appear in the solution, but compilation may fail.")
-    # Continue anyway - the project will be in the solution but may not compile
+    set(PYTHON_ROOT_DIR "D:/Python3.9" CACHE PATH "Python root directory")
+    if(EXISTS "${PYTHON_ROOT_DIR}")
+        message(STATUS "Using custom Python path: ${PYTHON_ROOT_DIR}")
+        set(Python3_ROOT_DIR "${PYTHON_ROOT_DIR}")
+        set(Python3_INCLUDE_DIRS "${PYTHON_ROOT_DIR}/include")
+        set(Python3_LIBRARIES "${PYTHON_ROOT_DIR}/libs/python39.lib")
+        set(Python3_EXECUTABLE "${PYTHON_ROOT_DIR}/python.exe")
+        
+        # Set Python3_FOUND manually
+        set(Python3_FOUND TRUE)
+        set(Python3_Interpreter_FOUND TRUE)
+        set(Python3_Development_FOUND TRUE)
+        
+        # Create imported target if it doesn't exist
+        if(NOT TARGET Python3::Python)
+            add_library(Python3::Python SHARED IMPORTED)
+            set_target_properties(Python3::Python PROPERTIES
+                IMPORTED_LOCATION "${PYTHON_ROOT_DIR}/python39.dll"
+                INTERFACE_INCLUDE_DIRECTORIES "${Python3_INCLUDE_DIRS}"
+            )
+        endif()
+    else()
+        message(WARNING "Python3 not found. FirstEngine_Python module will be created but may not compile.")
+        message(STATUS "Please install Python 3.x to enable Python scripting support.")
+        message(STATUS "Or set PYTHON_ROOT_DIR to your Python installation directory.")
+        message(STATUS "The project will still appear in the solution, but compilation may fail.")
+    endif()
 endif()
 
 # Source files
