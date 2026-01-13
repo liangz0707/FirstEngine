@@ -60,7 +60,7 @@ if(EXISTS "${PYTHON_ROOT_DIR}")
                     IMPORTED_LOCATION "${PYTHON_ROOT_DIR}/python3.dll"
                     INTERFACE_INCLUDE_DIRECTORIES "${Python3_INCLUDE_DIRS}"
                 )
-            else
+            else()
                 file(GLOB PYTHON_DLLS "${PYTHON_ROOT_DIR}/python*.dll")
                 if(PYTHON_DLLS)
                     list(GET PYTHON_DLLS 0 PYTHON_DLL)
