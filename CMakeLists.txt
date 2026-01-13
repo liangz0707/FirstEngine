@@ -22,11 +22,19 @@ if(NOT glfw3_FOUND)
         set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
         set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
         add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/glfw glfw)
+        # Organize GLFW in Visual Studio solution folder
+        if(TARGET glfw)
+            set_target_properties(glfw PROPERTIES FOLDER "ThirdPart/GLFW")
+        endif()
     endif()
 endif()
 
 # Use local GLM from third_party (header-only library)
 add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/glm glm)
+# Organize GLM in Visual Studio solution folder
+if(TARGET glm)
+    set_target_properties(glm PROPERTIES FOLDER "ThirdPart/GLM")
+endif()
 
 # Find Vulkan SDK - try local external directory first
 set(VULKAN_LOCAL_PATH "${CMAKE_SOURCE_DIR}/external/vulkan")
@@ -49,10 +57,13 @@ else()
 endif()
 
 # Add subdirectories for each module
+# Core modules (FirstEngine自己的模块)
 add_subdirectory(src/Shader)
 add_subdirectory(src/Resources)
 add_subdirectory(src/Device)
 add_subdirectory(src/Core)
 add_subdirectory(src/Python)
 add_subdirectory(src/Application)
-add_subdirectory(src/ShaderManager)
+
+# Tools (工具项目)
+add_subdirectory(src/Tools/ShaderManager)

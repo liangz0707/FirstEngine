@@ -47,3 +47,8 @@ if(WIN32)
         $<TARGET_FILE_DIR:${PROJECT_NAME}>
     )
 endif()
+
+# Organize in Visual Studio solution
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    FOLDER "FirstEngine"  # Organize in Visual Studio solution
+)

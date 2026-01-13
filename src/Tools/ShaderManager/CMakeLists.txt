@@ -48,3 +48,8 @@ if(WIN32)
         $<TARGET_FILE_DIR:ShaderManager>
     )
 endif()
+
+# Organize in Visual Studio solution
+set_target_properties(ShaderManager PROPERTIES
+    FOLDER "Tools"  # Organize in Visual Studio solution
+)

@@ -51,6 +51,7 @@ endif()
 set_target_properties(FirstEngine_Core PROPERTIES
     OUTPUT_NAME "FirstEngine_Core"
     VERSION ${PROJECT_VERSION}
+    FOLDER "FirstEngine"  # Organize in Visual Studio solution
 )
 
 # Copy DLL to bin directory on Windows

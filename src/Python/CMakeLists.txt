@@ -142,7 +142,22 @@ endif()
 set_target_properties(FirstEngine_Python PROPERTIES
     OUTPUT_NAME "FirstEngine_Python"
     VERSION ${PROJECT_VERSION}
+    FOLDER "FirstEngine"  # Organize in Visual Studio solution
 )
+
+# Organize pybind11 in Visual Studio solution
+if(TARGET pybind11::embed)
+    get_target_property(PYBIND11_EMBED_TARGET pybind11::embed ALIASED_TARGET)
+    if(PYBIND11_EMBED_TARGET)
+        set_target_properties(${PYBIND11_EMBED_TARGET} PROPERTIES FOLDER "ThirdPart/pybind11")
+    endif()
+endif()
+if(TARGET pybind11::module)
+    get_target_property(PYBIND11_MODULE_TARGET pybind11::module ALIASED_TARGET)
+    if(PYBIND11_MODULE_TARGET)
+        set_target_properties(${PYBIND11_MODULE_TARGET} PROPERTIES FOLDER "ThirdPart/pybind11")
+    endif()
+endif()
 
 # Copy DLL to bin directory on Windows
 if(WIN32)

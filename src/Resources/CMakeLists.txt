@@ -69,7 +69,19 @@ endif()
 set_target_properties(FirstEngine_Resources PROPERTIES
     OUTPUT_NAME "FirstEngine_Resources"
     VERSION ${PROJECT_VERSION}
+    FOLDER "FirstEngine"  # Organize in Visual Studio solution
 )
+
+# Organize assimp projects in Visual Studio solution
+if(TARGET assimp)
+    set_target_properties(assimp PROPERTIES FOLDER "ThirdPart/Assimp")
+endif()
+if(TARGET zlibstatic)
+    set_target_properties(zlibstatic PROPERTIES FOLDER "ThirdPart/Assimp")
+endif()
+if(TARGET UpdateAssimpLibsDebugSymbolsAndDLLs)
+    set_target_properties(UpdateAssimpLibsDebugSymbolsAndDLLs PROPERTIES FOLDER "ThirdPart/Assimp")
+endif()
 
 # Copy DLL to bin directory on Windows
 if(WIN32)
