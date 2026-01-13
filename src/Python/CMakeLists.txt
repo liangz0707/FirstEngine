@@ -14,9 +14,10 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/pybind11 pybind11)
 # Find Python 3 (required for pybind11)
 find_package(Python3 COMPONENTS Interpreter Development QUIET)
 if(NOT Python3_FOUND)
-    message(WARNING "Python3 not found. FirstEngine_Python module will be disabled.")
+    message(WARNING "Python3 not found. FirstEngine_Python module will be created but may not compile.")
     message(STATUS "Please install Python 3.x to enable Python scripting support.")
-    return()
+    message(STATUS "The project will still appear in the solution, but compilation may fail.")
+    # Continue anyway - the project will be in the solution but may not compile
 endif()
 
 # Source files
@@ -39,13 +40,25 @@ target_include_directories(FirstEngine_Python
 )
 
 # Link dependencies
-target_link_libraries(FirstEngine_Python
-    PUBLIC
-        pybind11::embed
-        Python3::Python
-    PRIVATE
-        pybind11::module
-)
+if(Python3_FOUND)
+    target_link_libraries(FirstEngine_Python
+        PUBLIC
+            pybind11::embed
+            Python3::Python
+        PRIVATE
+            pybind11::module
+    )
+else()
+    # If Python3 not found, still create the target but it won't link
+    # This ensures the project appears in the solution
+    message(STATUS "FirstEngine_Python target created but Python3 not found - linking will fail")
+    target_link_libraries(FirstEngine_Python
+        PUBLIC
+            pybind11::embed
+        PRIVATE
+            pybind11::module
+    )
+endif()
 
 # Compiler-specific options
 if(MSVC)
