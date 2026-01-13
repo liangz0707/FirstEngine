@@ -17,31 +17,16 @@ if(NOT glfw3_FOUND)
     # Try alternative method
     find_package(glfw QUIET)
     if(NOT glfw_FOUND)
-        # Use FetchContent as fallback
-        include(FetchContent)
-        FetchContent_Declare(
-            glfw
-            GIT_REPOSITORY https://github.com/glfw/glfw.git
-            GIT_TAG 3.3.8
-        )
+        # Use local GLFW from third_party
         set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
         set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
         set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        FetchContent_MakeAvailable(glfw)
+        add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/glfw glfw)
     endif()
 endif()
 
-find_package(glm QUIET)
-if(NOT glm_FOUND)
-    # GLM is header-only, so we can use FetchContent
-    include(FetchContent)
-    FetchContent_Declare(
-        glm
-        GIT_REPOSITORY https://github.com/g-truc/glm.git
-        GIT_TAG 0.9.9.8
-    )
-    FetchContent_MakeAvailable(glm)
-endif()
+# Use local GLM from third_party (header-only library)
+add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/glm glm)
 
 find_package(Vulkan REQUIRED)
 

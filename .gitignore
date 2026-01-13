@@ -2,6 +2,12 @@
 build/
 out/
 
+# Third-party dependencies (managed as git submodules)
+# Note: third_party/ is tracked, but we ignore build artifacts within them
+third_party/*/build/
+third_party/*/CMakeFiles/
+third_party/*/CMakeCache.txt
+
 # Note: bin/ and lib/ are subdirectories in build/, so they're automatically ignored
 
 # CMake
