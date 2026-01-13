@@ -20,6 +20,18 @@ This directory contains third-party libraries integrated as Git submodules.
   - Repository: https://github.com/g-truc/glm
   - Version: 0.9.9.8
 
+- **pybind11**: C++ and Python interoperability
+  - Repository: https://github.com/pybind/pybind11
+  - Used for: Python scripting support in FirstEngine_Python module
+
+- **stb**: Single-file public domain libraries for C/C++
+  - Repository: https://github.com/nothings/stb
+  - Used for: Image loading (JPEG, PNG, BMP, TGA, HDR) in FirstEngine_Resources module
+
+- **assimp**: Open Asset Import Library
+  - Repository: https://github.com/assimp/assimp
+  - Used for: Model loading (FBX, OBJ, DAE, 3DS, etc.) and bone information in FirstEngine_Resources module
+
 ## Setup
 
 When cloning this repository for the first time, initialize submodules:
@@ -33,11 +45,11 @@ git submodule update --init --recursive
 To update a submodule to the latest version:
 
 ```bash
-cd third_party/spirv-cross
+cd third_party/<submodule-name>
 git checkout <new-version-tag>
 cd ../..
-git add third_party/spirv-cross
-git commit -m "Update SPIRV-Cross to <version>"
+git add third_party/<submodule-name>
+git commit -m "Update <submodule-name> to <version>"
 ```
 
 ## Modifying Dependencies

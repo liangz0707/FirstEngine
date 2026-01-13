@@ -7,9 +7,21 @@ if(WIN32)
     add_definitions(-DFirstEngine_Resources_EXPORTS)
 endif()
 
+# Use local stb from third_party (header-only library)
+# stb is header-only, we just need to include it
+
+# Use local assimp from third_party
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
+add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/assimp assimp)
+
 # Source files
 set(RESOURCES_SOURCES
     TextureLoader.cpp
+    ImageLoader.cpp
+    ModelLoader.cpp
 )
 
 # Create shared library
@@ -26,10 +38,19 @@ target_include_directories(FirstEngine_Resources
         ${CMAKE_SOURCE_DIR}/src
 )
 
-# Link Vulkan (for texture loading)
+# Include directories for stb (header-only)
+target_include_directories(FirstEngine_Resources
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/third_party
+)
+
+# Link dependencies
 target_link_libraries(FirstEngine_Resources
     PUBLIC
         ${Vulkan_LIBRARIES}
+        assimp::assimp
+    PRIVATE
+        glm::glm
 )
 
 target_include_directories(FirstEngine_Resources PUBLIC
