@@ -7,9 +7,34 @@ if(WIN32)
     add_definitions(-DFirstEngine_Shader_EXPORTS)
 endif()
 
+# Fetch SPIRV-Cross dependency (SPIR-V → GLSL/HLSL/MSL)
+include(FetchContent)
+FetchContent_Declare(
+    spirv_cross
+    GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Cross.git
+    GIT_TAG sdk-1.3.261.1
+)
+set(SPIRV_CROSS_SKIP_INSTALL ON CACHE BOOL "" FORCE)
+set(SPIRV_CROSS_SKIP_EXAMPLES ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(spirv_cross)
+
+# Fetch glslang dependency (GLSL/HLSL → SPIR-V)
+FetchContent_Declare(
+    glslang
+    GIT_REPOSITORY https://github.com/KhronosGroup/glslang.git
+    GIT_TAG 13.0.0
+)
+set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "" FORCE)
+set(ENABLE_GLSLANG_WEBMINIFIER OFF CACHE BOOL "" FORCE)
+set(ENABLE_OPT OFF CACHE BOOL "" FORCE)
+set(ALLOW_EXTERNAL_SPIRV_TOOLS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(glslang)
+
 # Source files
 set(SHADER_SOURCES
     ShaderLoader.cpp
+    ShaderCompiler.cpp
+    ShaderSourceCompiler.cpp
 )
 
 # Create shared library
@@ -31,6 +56,15 @@ target_include_directories(FirstEngine_Shader
 target_link_libraries(FirstEngine_Shader
     PUBLIC
         ${Vulkan_LIBRARIES}
+        spirv-cross-core
+        spirv-cross-glsl
+        spirv-cross-hlsl
+        spirv-cross-msl
+        spirv-cross-reflect
+        glslang
+        SPIRV
+    PRIVATE
+        spirv-cross-util
 )
 
 target_include_directories(FirstEngine_Shader PUBLIC
