@@ -101,19 +101,19 @@ def python_process_dict(data):
     try {
         // 注意：在实际使用中，firstengine模块需要先编译并安装
         // 这里演示如何从Python调用C++函数
-        engine.ExecuteString(R"(
-# 如果firstengine模块已编译，可以这样使用：
-# import firstengine
-# result = firstengine.add(10, 20)
-# print(f"C++ add(10, 20) = {result}")
-# 
-# v1 = firstengine.Vector3(1, 2, 3)
-# v2 = firstengine.Vector3(4, 5, 6)
-# v3 = firstengine.add_vectors(v1, v2)
-# print(f"Vector3 addition: {v3}")
-
-print("  (需要先编译firstengine模块才能从Python调用C++函数)")
-)");
+        engine.ExecuteString(
+            "# 如果firstengine模块已编译，可以这样使用：\n"
+            "# import firstengine\n"
+            "# result = firstengine.add(10, 20)\n"
+            "# print(f'C++ add(10, 20) = {result}')\n"
+            "# \n"
+            "# v1 = firstengine.Vector3(1, 2, 3)\n"
+            "# v2 = firstengine.Vector3(4, 5, 6)\n"
+            "# v3 = firstengine.add_vectors(v1, v2)\n"
+            "# print(f'Vector3 addition: {v3}')\n"
+            "\n"
+            "print('  (需要先编译firstengine模块才能从Python调用C++函数)')\n"
+        );
     } catch (const std::exception& e) {
         std::cerr << "  Error: " << e.what() << std::endl;
     }
