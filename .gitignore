@@ -52,3 +52,7 @@ cmake_install.cmake
 # OS
 .DS_Store
 Thumbs.db
+
+# External dependencies (copied locally, not in git)
+external/vulkan/
+external/python/
