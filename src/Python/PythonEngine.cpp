@@ -1,5 +1,6 @@
 #include "FirstEngine/Python/PythonEngine.h"
 #include <pybind11/embed.h>
+#include <pybind11/eval.h>
 #include <pybind11/pybind11.h>
 #include <stdexcept>
 #include <iostream>
@@ -47,7 +48,8 @@ namespace FirstEngine {
                 }
 
                 try {
-                    py::exec_file(filepath);
+                    // Use eval_file to execute Python file
+                    py::eval_file(filepath, py::globals());
                     return true;
                 } catch (const std::exception& e) {
                     m_LastError = e.what();
