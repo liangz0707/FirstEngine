@@ -93,11 +93,62 @@ endif()
 # Source files
 set(PYTHON_SOURCES
     PythonEngine.cpp
+    Bindings.cpp
 )
+
+# Python扩展模块（用于从Python调用C++）
+if(Python3_FOUND)
+    # 使用标准方式创建Python扩展模块
+    add_library(firstengine_python_module MODULE
+        PythonModule.cpp
+    )
+    
+    # 设置Python扩展模块属性
+    set_target_properties(firstengine_python_module PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "firstengine"
+        CXX_VISIBILITY_PRESET "hidden"
+    )
+    
+    # 设置扩展名
+    if(MSVC)
+        set_target_properties(firstengine_python_module PROPERTIES
+            SUFFIX ".pyd"
+        )
+    else()
+        set_target_properties(firstengine_python_module PROPERTIES
+            SUFFIX ".so"
+        )
+    endif()
+    
+    target_link_libraries(firstengine_python_module PRIVATE
+        FirstEngine_Python
+        pybind11::module
+        pybind11::lto
+        pybind11::windows_extras
+    )
+    
+    # 设置输出目录
+    set_target_properties(firstengine_python_module PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/$<CONFIG>
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/$<CONFIG>
+    )
+    
+    # 在Visual Studio中组织
+    set_target_properties(firstengine_python_module PROPERTIES
+        FOLDER "FirstEngine"
+    )
+endif()
 
 # Create shared library
 add_library(FirstEngine_Python SHARED
     ${PYTHON_SOURCES}
+)
+
+# Link Bindings
+target_link_libraries(FirstEngine_Python
+    PRIVATE
+        pybind11::module
 )
 
 # Include directories
@@ -166,4 +217,43 @@ if(WIN32)
         $<TARGET_FILE:FirstEngine_Python>
         ${CMAKE_BINARY_DIR}/bin/$<CONFIG>/
     )
+    
+    # 复制Python扩展模块
+    if(TARGET firstengine_python_module)
+        add_custom_command(TARGET firstengine_python_module POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:firstengine_python_module>
+            ${CMAKE_BINARY_DIR}/bin/$<CONFIG>/
+        )
+    endif()
+endif()
+
+# Demo程序
+if(Python3_FOUND)
+    add_executable(PythonDemo
+        demo.cpp
+    )
+    
+    target_link_libraries(PythonDemo PRIVATE
+        FirstEngine_Python
+        pybind11::embed
+        Python3::Python
+    )
+    
+    target_include_directories(PythonDemo PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    
+    set_target_properties(PythonDemo PROPERTIES
+        FOLDER "Tools"
+    )
+    
+    # 复制DLL
+    if(WIN32)
+        add_custom_command(TARGET PythonDemo POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:FirstEngine_Python>
+            $<TARGET_FILE_DIR:PythonDemo>
+        )
+    endif()
 endif()

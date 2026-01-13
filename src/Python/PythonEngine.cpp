@@ -2,6 +2,7 @@
 #include <pybind11/embed.h>
 #include <pybind11/eval.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <stdexcept>
 #include <iostream>
 
@@ -65,6 +66,44 @@ namespace FirstEngine {
 
                 try {
                     py::exec(code);
+                    return true;
+                } catch (const std::exception& e) {
+                    m_LastError = e.what();
+                    return false;
+                }
+            }
+            
+            // 调用Python函数（返回Python对象）
+            bool CallFunction(const std::string& moduleName, const std::string& functionName, 
+                            py::object& result) {
+                if (!m_Initialized) {
+                    m_LastError = "Python interpreter not initialized";
+                    return false;
+                }
+                
+                try {
+                    py::module_ module = py::module_::import(moduleName.c_str());
+                    py::object func = module.attr(functionName.c_str());
+                    result = func();
+                    return true;
+                } catch (const std::exception& e) {
+                    m_LastError = e.what();
+                    return false;
+                }
+            }
+            
+            template<typename... Args>
+            bool CallFunction(const std::string& moduleName, const std::string& functionName, 
+                            py::object& result, Args... args) {
+                if (!m_Initialized) {
+                    m_LastError = "Python interpreter not initialized";
+                    return false;
+                }
+                
+                try {
+                    py::module_ module = py::module_::import(moduleName.c_str());
+                    py::object func = module.attr(functionName.c_str());
+                    result = func(args...);
                     return true;
                 } catch (const std::exception& e) {
                     m_LastError = e.what();
