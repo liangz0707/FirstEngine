@@ -28,7 +28,25 @@ endif()
 # Use local GLM from third_party (header-only library)
 add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/glm glm)
 
-find_package(Vulkan REQUIRED)
+# Find Vulkan SDK - try local external directory first
+set(VULKAN_LOCAL_PATH "${CMAKE_SOURCE_DIR}/external/vulkan")
+if(EXISTS "${VULKAN_LOCAL_PATH}")
+    message(STATUS "Using local Vulkan SDK: ${VULKAN_LOCAL_PATH}")
+    set(VULKAN_SDK "${VULKAN_LOCAL_PATH}" CACHE PATH "Vulkan SDK path")
+    set(VULKAN_INCLUDE_DIR "${VULKAN_LOCAL_PATH}/Include")
+    set(VULKAN_LIBRARY_DIR "${VULKAN_LOCAL_PATH}/Lib")
+    
+    # Set Vulkan variables
+    set(Vulkan_INCLUDE_DIRS "${VULKAN_INCLUDE_DIR}")
+    set(Vulkan_LIBRARIES "${VULKAN_LIBRARY_DIR}/vulkan-1.lib")
+    set(Vulkan_FOUND TRUE)
+    
+    # Add include directory
+    include_directories(${Vulkan_INCLUDE_DIRS})
+else()
+    # Use standard find_package
+    find_package(Vulkan REQUIRED)
+endif()
 
 # Add subdirectories for each module
 add_subdirectory(src/Shader)
