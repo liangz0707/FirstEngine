@@ -1,12 +1,14 @@
-#include "FirstEngine/Renderer/Pipeline.h"
-#include "FirstEngine/Renderer/VulkanRenderer.h"
-#include "FirstEngine/Renderer/Swapchain.h"
+#include "FirstEngine/Device/Pipeline.h"
+#include "FirstEngine/Device/VulkanRenderer.h"
+#include "FirstEngine/Device/Swapchain.h"
+#include "FirstEngine/Device/ShaderModule.h"
 #include "FirstEngine/Shader/ShaderLoader.h"
 #include <fstream>
 #include <stdexcept>
+#include <cstring>
 
 namespace FirstEngine {
-    namespace Renderer {
+    namespace Device {
         Pipeline::Pipeline(VulkanRenderer* renderer)
             : m_Renderer(renderer), m_RenderPass(VK_NULL_HANDLE),
               m_PipelineLayout(VK_NULL_HANDLE), m_GraphicsPipeline(VK_NULL_HANDLE) {
@@ -92,8 +94,15 @@ namespace FirstEngine {
                 throw std::runtime_error("Shader code is empty! Please load shader files using ShaderLoader.");
             }
 
-            VkShaderModule vertShaderModule = CreateShaderModule(vertShaderCode);
-            VkShaderModule fragShaderModule = CreateShaderModule(fragShaderCode);
+            // Convert char vector to uint32_t vector for SPIR-V
+            std::vector<uint32_t> vertSpirv(vertShaderCode.size() / 4);
+            std::memcpy(vertSpirv.data(), vertShaderCode.data(), vertShaderCode.size());
+            
+            std::vector<uint32_t> fragSpirv(fragShaderCode.size() / 4);
+            std::memcpy(fragSpirv.data(), fragShaderCode.data(), fragShaderCode.size());
+            
+            VkShaderModule vertShaderModule = ShaderModule::Create(m_Renderer->GetDevice(), vertSpirv);
+            VkShaderModule fragShaderModule = ShaderModule::Create(m_Renderer->GetDevice(), fragSpirv);
 
             VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
             vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -196,8 +205,8 @@ namespace FirstEngine {
                 throw std::runtime_error("Failed to create graphics pipeline!");
             }
 
-            vkDestroyShaderModule(m_Renderer->GetDevice(), fragShaderModule, nullptr);
-            vkDestroyShaderModule(m_Renderer->GetDevice(), vertShaderModule, nullptr);
+            ShaderModule::Destroy(m_Renderer->GetDevice(), fragShaderModule);
+            ShaderModule::Destroy(m_Renderer->GetDevice(), vertShaderModule);
         }
 
         void Pipeline::CreateFramebuffers() {
@@ -222,20 +231,6 @@ namespace FirstEngine {
                     throw std::runtime_error("Failed to create framebuffer!");
                 }
             }
-        }
-
-        VkShaderModule Pipeline::CreateShaderModule(const std::vector<char>& code) {
-            VkShaderModuleCreateInfo createInfo{};
-            createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-            createInfo.codeSize = code.size();
-            createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-            VkShaderModule shaderModule;
-            if (vkCreateShaderModule(m_Renderer->GetDevice(), &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create shader module!");
-            }
-
-            return shaderModule;
         }
     }
 }

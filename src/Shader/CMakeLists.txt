@@ -41,10 +41,9 @@ target_include_directories(FirstEngine_Shader
         ${CMAKE_SOURCE_DIR}/src
 )
 
-# Link Vulkan (for shader module creation)
+# Link dependencies (no Vulkan dependency - graphics API agnostic)
 target_link_libraries(FirstEngine_Shader
     PUBLIC
-        ${Vulkan_LIBRARIES}
         spirv-cross-core
         spirv-cross-glsl
         spirv-cross-hlsl
@@ -56,9 +55,7 @@ target_link_libraries(FirstEngine_Shader
         spirv-cross-util
 )
 
-target_include_directories(FirstEngine_Shader PUBLIC
-    ${Vulkan_INCLUDE_DIRS}
-)
+# No Vulkan includes needed - graphics API agnostic
 
 # Compiler-specific options
 if(MSVC)

@@ -1,10 +1,10 @@
-#include "FirstEngine/Renderer/Swapchain.h"
-#include "FirstEngine/Renderer/VulkanRenderer.h"
+#include "FirstEngine/Device/Swapchain.h"
+#include "FirstEngine/Device/VulkanRenderer.h"
 #include <algorithm>
 #include <stdexcept>
 
 namespace FirstEngine {
-    namespace Renderer {
+    namespace Device {
         Swapchain::Swapchain(VulkanRenderer* renderer)
             : m_Renderer(renderer), m_Swapchain(VK_NULL_HANDLE) {
             

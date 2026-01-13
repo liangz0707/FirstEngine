@@ -33,6 +33,6 @@ find_package(Vulkan REQUIRED)
 # Add subdirectories for each module
 add_subdirectory(src/Shader)
 add_subdirectory(src/Resources)
-add_subdirectory(src/Renderer)
+add_subdirectory(src/Device)
 add_subdirectory(src/Core)
 add_subdirectory(src/Application)

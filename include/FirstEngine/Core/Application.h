@@ -1,7 +1,7 @@
 #pragma once
 
 #include "FirstEngine/Core/Window.h"
-#include "FirstEngine/Renderer/VulkanRenderer.h"
+#include "FirstEngine/Device/VulkanRenderer.h"
 #include <memory>
 
 namespace FirstEngine {
@@ -19,7 +19,7 @@ namespace FirstEngine {
             virtual void OnResize(int width, int height) {}
 
             std::unique_ptr<Window> m_Window;
-            std::unique_ptr<Renderer::VulkanRenderer> m_Renderer;
+            std::unique_ptr<Device::VulkanRenderer> m_Renderer;
 
         private:
             void MainLoop();

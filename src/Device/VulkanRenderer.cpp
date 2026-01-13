@@ -1,6 +1,6 @@
-#include "FirstEngine/Renderer/VulkanRenderer.h"
-#include "FirstEngine/Renderer/Swapchain.h"
-#include "FirstEngine/Renderer/Pipeline.h"
+#include "FirstEngine/Device/VulkanRenderer.h"
+#include "FirstEngine/Device/Swapchain.h"
+#include "FirstEngine/Device/Pipeline.h"
 #include <iostream>
 #include <stdexcept>
 #include <set>
@@ -10,7 +10,7 @@
 #endif
 
 namespace FirstEngine {
-    namespace Renderer {
+    namespace Device {
         VulkanRenderer::VulkanRenderer(Core::Window* window)
             : m_Window(window), m_Instance(VK_NULL_HANDLE), m_DebugMessenger(VK_NULL_HANDLE),
               m_PhysicalDevice(VK_NULL_HANDLE), m_Device(VK_NULL_HANDLE),

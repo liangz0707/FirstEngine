@@ -1,15 +1,15 @@
 #pragma once
 
-#include "FirstEngine/Renderer/Export.h"
+#include "FirstEngine/Device/Export.h"
 #include <vulkan/vulkan.h>
 #include <vector>
 #include "FirstEngine/Core/Window.h"
 
 namespace FirstEngine {
-    namespace Renderer {
+    namespace Device {
         class VulkanRenderer;
 
-        class FE_RENDERER_API Swapchain {
+        class FE_DEVICE_API Swapchain {
         public:
             Swapchain(VulkanRenderer* renderer);
             ~Swapchain();

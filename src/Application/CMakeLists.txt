@@ -24,7 +24,7 @@ target_include_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         FirstEngine_Core
-        FirstEngine_Renderer
+        FirstEngine_Device
         FirstEngine_Shader
         FirstEngine_Resources
 )
@@ -41,7 +41,7 @@ if(WIN32)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:FirstEngine_Core>
-        $<TARGET_FILE:FirstEngine_Renderer>
+        $<TARGET_FILE:FirstEngine_Device>
         $<TARGET_FILE:FirstEngine_Shader>
         $<TARGET_FILE:FirstEngine_Resources>
         $<TARGET_FILE_DIR:${PROJECT_NAME}>

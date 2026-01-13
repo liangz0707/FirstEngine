@@ -1,15 +1,15 @@
 #pragma once
 
-#include "FirstEngine/Renderer/Export.h"
+#include "FirstEngine/Device/Export.h"
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <string>
 
 namespace FirstEngine {
-    namespace Renderer {
+    namespace Device {
         class VulkanRenderer;
 
-        class FE_RENDERER_API Pipeline {
+        class FE_DEVICE_API Pipeline {
         public:
             Pipeline(VulkanRenderer* renderer);
             ~Pipeline();
@@ -22,8 +22,6 @@ namespace FirstEngine {
             void CreateRenderPass();
             void CreateGraphicsPipeline();
             void CreateFramebuffers();
-
-            VkShaderModule CreateShaderModule(const std::vector<char>& code);
 
             VulkanRenderer* m_Renderer;
             VkRenderPass m_RenderPass;

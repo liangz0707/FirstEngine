@@ -1,6 +1,6 @@
 #pragma once
 
-#include "FirstEngine/Renderer/Export.h"
+#include "FirstEngine/Device/Export.h"
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <string>
@@ -8,11 +8,11 @@
 #include "FirstEngine/Core/Window.h"
 
 namespace FirstEngine {
-    namespace Renderer {
+    namespace Device {
         class Swapchain;
         class Pipeline;
 
-        class FE_RENDERER_API VulkanRenderer {
+        class FE_DEVICE_API VulkanRenderer {
         public:
             VulkanRenderer(Core::Window* window);
             ~VulkanRenderer();

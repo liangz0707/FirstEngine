@@ -8,7 +8,7 @@ namespace FirstEngine {
             : m_LastFrameTime(0.0) {
             
             m_Window = std::make_unique<Window>(width, height, title);
-            m_Renderer = std::make_unique<Renderer::VulkanRenderer>(m_Window.get());
+            m_Renderer = std::make_unique<Device::VulkanRenderer>(m_Window.get());
 
             m_Window->SetResizeCallback([this](int w, int h) {
                 m_Renderer->OnWindowResize(w, h);
