@@ -12,8 +12,15 @@ set(PYBIND11_NOPYTHON ON CACHE BOOL "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/pybind11 pybind11)
 
 # Find Python 3 (required for pybind11)
-# Set default Python path to D:\Python3.9 if not specified
-set(PYTHON_ROOT_DIR "D:/Python3.9" CACHE PATH "Python root directory")
+# Try local external directory first, then fallback to D:\Python3.9
+set(PYTHON_LOCAL_PATH "${CMAKE_SOURCE_DIR}/external/python")
+if(EXISTS "${PYTHON_LOCAL_PATH}")
+    message(STATUS "Using local Python: ${PYTHON_LOCAL_PATH}")
+    set(PYTHON_ROOT_DIR "${PYTHON_LOCAL_PATH}" CACHE PATH "Python root directory")
+else()
+    # Set default Python path to D:\Python3.9 if not specified
+    set(PYTHON_ROOT_DIR "D:/Python3.9" CACHE PATH "Python root directory")
+endif()
 
 # If custom path exists, use it directly
 if(EXISTS "${PYTHON_ROOT_DIR}")
