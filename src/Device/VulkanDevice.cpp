@@ -1,0 +1,593 @@
+#include "FirstEngine/Device/VulkanDevice.h"
+#include "FirstEngine/Device/VulkanRHIWrappers.h"
+#include "FirstEngine/Core/Window.h"
+#include "FirstEngine/Device/DeviceContext.h"
+#include "FirstEngine/Device/RenderPass.h"
+#include "FirstEngine/Device/Framebuffer.h"
+#include "FirstEngine/Device/Pipeline.h"
+#include "FirstEngine/Device/MemoryManager.h"
+#include "FirstEngine/Device/Swapchain.h"
+#include "FirstEngine/Device/ShaderModule.h"
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+#include <iostream>
+#include <stdexcept>
+
+#ifdef _WIN32
+// Undefine Windows API macros that conflict with our method names
+// Must be after all includes that might include Windows.h
+#ifdef CreateSemaphore
+#undef CreateSemaphore
+#endif
+#ifdef CreateMutex
+#undef CreateMutex
+#endif
+#ifdef CreateEvent
+#undef CreateEvent
+#endif
+#endif
+
+namespace FirstEngine {
+    namespace Device {
+
+        VulkanDevice::VulkanDevice() {
+        }
+
+        VulkanDevice::~VulkanDevice() {
+            Shutdown();
+        }
+
+        bool VulkanDevice::Initialize(void* windowHandle) {
+            // windowHandle should be GLFWwindow*
+            GLFWwindow* glfwWindow = static_cast<GLFWwindow*>(windowHandle);
+            if (!glfwWindow) {
+                return false;
+            }
+
+            // Create Window wrapper from existing GLFWwindow
+            // This avoids re-initializing GLFW since the window was already created by Application
+            try {
+                m_Window = std::make_unique<Core::Window>(glfwWindow);
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to create Window wrapper: " << e.what() << std::endl;
+                return false;
+            }
+
+            // 创建 VulkanRenderer
+            m_Renderer = std::make_unique<VulkanRenderer>(m_Window.get());
+
+            // 填充设备信息
+            m_DeviceInfo.deviceName = "Vulkan Device";
+            m_DeviceInfo.apiVersion = VK_API_VERSION_1_0;
+            m_DeviceInfo.driverVersion = 0;
+            m_DeviceInfo.deviceMemory = 0; // 可以从物理设备获取
+            m_DeviceInfo.hostMemory = 0;
+
+            return true;
+        }
+
+        void VulkanDevice::Shutdown() {
+            m_Renderer.reset();
+            m_Window.reset();
+        }
+
+        std::unique_ptr<RHI::ICommandBuffer> VulkanDevice::CreateCommandBuffer() {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return nullptr;
+            }
+            try {
+                return std::make_unique<VulkanCommandBuffer>(const_cast<DeviceContext*>(context));
+            } catch (...) {
+                return nullptr;
+            }
+        }
+
+        std::unique_ptr<RHI::IRenderPass> VulkanDevice::CreateRenderPass(const RHI::RenderPassDescription& desc) {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return nullptr;
+            }
+
+            // 转换附件描述
+            std::vector<VkAttachmentDescription> attachments;
+            for (const auto& colorAttach : desc.colorAttachments) {
+                VkAttachmentDescription attachment{};
+                attachment.format = ConvertFormat(colorAttach.format);
+                attachment.samples = static_cast<VkSampleCountFlagBits>(colorAttach.samples);
+                attachment.loadOp = colorAttach.loadOpClear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+                attachment.storeOp = colorAttach.storeOpStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                attachment.stencilLoadOp = colorAttach.stencilLoadOpClear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+                attachment.stencilStoreOp = colorAttach.stencilStoreOpStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                attachment.initialLayout = ConvertImageLayout(colorAttach.initialLayout);
+                attachment.finalLayout = ConvertImageLayout(colorAttach.finalLayout);
+                attachments.push_back(attachment);
+            }
+
+            if (desc.hasDepthAttachment) {
+                VkAttachmentDescription depthAttachment{};
+                depthAttachment.format = ConvertFormat(desc.depthAttachment.format);
+                depthAttachment.samples = static_cast<VkSampleCountFlagBits>(desc.depthAttachment.samples);
+                depthAttachment.loadOp = desc.depthAttachment.loadOpClear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+                depthAttachment.storeOp = desc.depthAttachment.storeOpStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                depthAttachment.stencilLoadOp = desc.depthAttachment.stencilLoadOpClear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+                depthAttachment.stencilStoreOp = desc.depthAttachment.stencilStoreOpStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                depthAttachment.initialLayout = ConvertImageLayout(desc.depthAttachment.initialLayout);
+                depthAttachment.finalLayout = ConvertImageLayout(desc.depthAttachment.finalLayout);
+                attachments.push_back(depthAttachment);
+            }
+
+            // 创建子通道
+            std::vector<VkAttachmentReference> colorRefs;
+            for (uint32_t i = 0; i < desc.colorAttachments.size(); ++i) {
+                VkAttachmentReference ref{};
+                ref.attachment = i;
+                ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                colorRefs.push_back(ref);
+            }
+
+            VkAttachmentReference depthRef{};
+            if (desc.hasDepthAttachment) {
+                depthRef.attachment = static_cast<uint32_t>(desc.colorAttachments.size());
+                depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            }
+
+            VkSubpassDescription subpass{};
+            subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            subpass.colorAttachmentCount = static_cast<uint32_t>(colorRefs.size());
+            subpass.pColorAttachments = colorRefs.data();
+            if (desc.hasDepthAttachment) {
+                subpass.pDepthStencilAttachment = &depthRef;
+            }
+
+            // 创建渲染通道
+            VkRenderPassCreateInfo renderPassInfo{};
+            renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+            renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+            renderPassInfo.pAttachments = attachments.data();
+            renderPassInfo.subpassCount = 1;
+            renderPassInfo.pSubpasses = &subpass;
+
+            VkRenderPass renderPass;
+            if (vkCreateRenderPass(context->GetDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+                return nullptr;
+            }
+
+            return std::make_unique<VulkanRenderPass>(context, renderPass);
+        }
+
+        std::unique_ptr<RHI::IFramebuffer> VulkanDevice::CreateFramebuffer(
+            RHI::IRenderPass* renderPass,
+            const std::vector<RHI::IImageView*>& attachments,
+            uint32_t width, uint32_t height) {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context || !renderPass) {
+                return nullptr;
+            }
+
+            auto* vkRenderPass = static_cast<VulkanRenderPass*>(renderPass);
+            std::vector<VkImageView> vkAttachments;
+            for (auto* attachment : attachments) {
+                auto* vkImageView = static_cast<VulkanImageView*>(attachment);
+                vkAttachments.push_back(vkImageView->GetVkImageView());
+            }
+
+            VkFramebufferCreateInfo framebufferInfo{};
+            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            framebufferInfo.renderPass = vkRenderPass->GetVkRenderPass();
+            framebufferInfo.attachmentCount = static_cast<uint32_t>(vkAttachments.size());
+            framebufferInfo.pAttachments = vkAttachments.data();
+            framebufferInfo.width = width;
+            framebufferInfo.height = height;
+            framebufferInfo.layers = 1;
+
+            VkFramebuffer framebuffer;
+            if (vkCreateFramebuffer(context->GetDevice(), &framebufferInfo, nullptr, &framebuffer) != VK_SUCCESS) {
+                return nullptr;
+            }
+
+            return std::make_unique<VulkanFramebuffer>(context, framebuffer, width, height);
+        }
+
+        std::unique_ptr<RHI::IPipeline> VulkanDevice::CreateGraphicsPipeline(
+            const RHI::GraphicsPipelineDescription& desc) {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context || !desc.renderPass || desc.shaderModules.empty()) {
+                return nullptr;
+            }
+
+            auto* vkRenderPass = static_cast<VulkanRenderPass*>(desc.renderPass);
+
+            // 创建着色器阶段
+            std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+            for (auto* shaderModule : desc.shaderModules) {
+                auto* vkShader = static_cast<VulkanShaderModule*>(shaderModule);
+                VkPipelineShaderStageCreateInfo stageInfo{};
+                stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+                stageInfo.stage = ConvertShaderStage(vkShader->GetStage());
+                stageInfo.module = vkShader->GetVkShaderModule();
+                stageInfo.pName = "main";
+                shaderStages.push_back(stageInfo);
+            }
+
+            // 顶点输入
+            std::vector<VkVertexInputBindingDescription> bindings;
+            for (const auto& binding : desc.vertexBindings) {
+                VkVertexInputBindingDescription vkBinding{};
+                vkBinding.binding = binding.binding;
+                vkBinding.stride = binding.stride;
+                vkBinding.inputRate = binding.instanced ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX;
+                bindings.push_back(vkBinding);
+            }
+
+            std::vector<VkVertexInputAttributeDescription> attributes;
+            for (const auto& attr : desc.vertexAttributes) {
+                VkVertexInputAttributeDescription vkAttr{};
+                vkAttr.location = attr.location;
+                vkAttr.binding = attr.binding;
+                vkAttr.format = ConvertFormat(attr.format);
+                vkAttr.offset = attr.offset;
+                attributes.push_back(vkAttr);
+            }
+
+            VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+            vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+            vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindings.size());
+            vertexInputInfo.pVertexBindingDescriptions = bindings.data();
+            vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
+            vertexInputInfo.pVertexAttributeDescriptions = attributes.data();
+
+            // 输入装配
+            VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+            inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+            inputAssembly.topology = ConvertPrimitiveTopology(desc.primitiveTopology);
+            inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+            // 视口和裁剪
+            VkViewport viewport{};
+            viewport.x = desc.viewport.x;
+            viewport.y = desc.viewport.y;
+            viewport.width = desc.viewport.width;
+            viewport.height = desc.viewport.height;
+            viewport.minDepth = desc.viewport.minDepth;
+            viewport.maxDepth = desc.viewport.maxDepth;
+
+            VkRect2D scissor{};
+            scissor.offset = {desc.scissor.x, desc.scissor.y};
+            scissor.extent = {desc.scissor.width, desc.scissor.height};
+
+            VkPipelineViewportStateCreateInfo viewportState{};
+            viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+            viewportState.viewportCount = 1;
+            viewportState.pViewports = &viewport;
+            viewportState.scissorCount = 1;
+            viewportState.pScissors = &scissor;
+
+            
+            VkPipelineRasterizationStateCreateInfo rasterizer{};
+            rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+            rasterizer.depthClampEnable = desc.rasterizationState.depthClampEnable ? VK_TRUE : VK_FALSE;
+            rasterizer.rasterizerDiscardEnable = desc.rasterizationState.rasterizerDiscardEnable ? VK_TRUE : VK_FALSE;
+            rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+            rasterizer.lineWidth = desc.rasterizationState.lineWidth;
+            rasterizer.cullMode = ConvertCullMode(desc.rasterizationState.cullMode);
+            rasterizer.frontFace = desc.rasterizationState.frontFaceCounterClockwise ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
+            rasterizer.depthBiasEnable = desc.rasterizationState.depthBiasEnable ? VK_TRUE : VK_FALSE;
+            rasterizer.depthBiasConstantFactor = desc.rasterizationState.depthBiasConstantFactor;
+            rasterizer.depthBiasClamp = desc.rasterizationState.depthBiasClamp;
+            rasterizer.depthBiasSlopeFactor = desc.rasterizationState.depthBiasSlopeFactor;
+
+            // 多重采样
+            VkPipelineMultisampleStateCreateInfo multisampling{};
+            multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+            multisampling.sampleShadingEnable = VK_FALSE;
+            multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+            // 深度模板
+            VkPipelineDepthStencilStateCreateInfo depthStencil{};
+            depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+            depthStencil.depthTestEnable = desc.depthStencilState.depthTestEnable ? VK_TRUE : VK_FALSE;
+            depthStencil.depthWriteEnable = desc.depthStencilState.depthWriteEnable ? VK_TRUE : VK_FALSE;
+            depthStencil.depthCompareOp = ConvertCompareOp(desc.depthStencilState.depthCompareOp);
+            depthStencil.depthBoundsTestEnable = desc.depthStencilState.depthBoundsTestEnable ? VK_TRUE : VK_FALSE;
+            depthStencil.stencilTestEnable = desc.depthStencilState.stencilTestEnable ? VK_TRUE : VK_FALSE;
+
+            // 颜色混合
+            std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;
+            for (const auto& attachment : desc.colorBlendAttachments) {
+                VkPipelineColorBlendAttachmentState blendAttachment{};
+                blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                                 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+                blendAttachment.blendEnable = attachment.blendEnable ? VK_TRUE : VK_FALSE;
+                blendAttachment.srcColorBlendFactor = static_cast<VkBlendFactor>(attachment.srcColorBlendFactor);
+                blendAttachment.dstColorBlendFactor = static_cast<VkBlendFactor>(attachment.dstColorBlendFactor);
+                blendAttachment.colorBlendOp = static_cast<VkBlendOp>(attachment.colorBlendOp);
+                blendAttachment.srcAlphaBlendFactor = static_cast<VkBlendFactor>(attachment.srcAlphaBlendFactor);
+                blendAttachment.dstAlphaBlendFactor = static_cast<VkBlendFactor>(attachment.dstAlphaBlendFactor);
+                blendAttachment.alphaBlendOp = static_cast<VkBlendOp>(attachment.alphaBlendOp);
+                colorBlendAttachments.push_back(blendAttachment);
+            }
+
+            VkPipelineColorBlendStateCreateInfo colorBlending{};
+            colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+            colorBlending.logicOpEnable = VK_FALSE;
+            colorBlending.attachmentCount = static_cast<uint32_t>(colorBlendAttachments.size());
+            colorBlending.pAttachments = colorBlendAttachments.data();
+
+            // 动态状态
+            VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+            VkPipelineDynamicStateCreateInfo dynamicState{};
+            dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+            dynamicState.dynamicStateCount = 2;
+            dynamicState.pDynamicStates = dynamicStates;
+
+            // 管道布局
+            std::vector<VkPushConstantRange> pushConstantRanges;
+            for (const auto& range : desc.pushConstantRanges) {
+                VkPushConstantRange vkRange{};
+                vkRange.offset = range.offset;
+                vkRange.size = range.size;
+                vkRange.stageFlags = ConvertShaderStage(range.stageFlags);
+                pushConstantRanges.push_back(vkRange);
+            }
+
+            VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(desc.descriptorSetLayouts.size());
+            pipelineLayoutInfo.pSetLayouts = reinterpret_cast<const VkDescriptorSetLayout*>(desc.descriptorSetLayouts.data());
+            pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(pushConstantRanges.size());
+            pipelineLayoutInfo.pPushConstantRanges = pushConstantRanges.data();
+
+            VkPipelineLayout pipelineLayout;
+            if (vkCreatePipelineLayout(context->GetDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+                return nullptr;
+            }
+
+            // 创建图形管道
+            VkGraphicsPipelineCreateInfo pipelineInfo{};
+            pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+            pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+            pipelineInfo.pStages = shaderStages.data();
+            pipelineInfo.pVertexInputState = &vertexInputInfo;
+            pipelineInfo.pInputAssemblyState = &inputAssembly;
+            pipelineInfo.pViewportState = &viewportState;
+            pipelineInfo.pRasterizationState = &rasterizer;
+            pipelineInfo.pMultisampleState = &multisampling;
+            pipelineInfo.pDepthStencilState = &depthStencil;
+            pipelineInfo.pColorBlendState = &colorBlending;
+            pipelineInfo.pDynamicState = &dynamicState;
+            pipelineInfo.layout = pipelineLayout;
+            pipelineInfo.renderPass = vkRenderPass->GetVkRenderPass();
+            pipelineInfo.subpass = 0;
+
+            VkPipeline pipeline;
+            if (vkCreateGraphicsPipelines(context->GetDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
+                vkDestroyPipelineLayout(context->GetDevice(), pipelineLayout, nullptr);
+                return nullptr;
+            }
+
+            return std::make_unique<VulkanPipeline>(context, pipeline, pipelineLayout);
+        }
+
+        std::unique_ptr<RHI::IPipeline> VulkanDevice::CreateComputePipeline(
+            const RHI::ComputePipelineDescription& desc) {
+            // TODO: 实现 ComputePipeline 创建
+            return nullptr;
+        }
+
+        std::unique_ptr<RHI::IBuffer> VulkanDevice::CreateBuffer(
+            uint64_t size, RHI::BufferUsageFlags usage, RHI::MemoryPropertyFlags properties) {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return nullptr;
+            }
+
+            MemoryManager memoryManager(context);
+            auto buffer = memoryManager.CreateBuffer(
+                size,
+                ConvertBufferUsage(usage),
+                ConvertMemoryProperties(properties)
+            );
+
+            if (!buffer) {
+                return nullptr;
+            }
+
+            return std::make_unique<VulkanBuffer>(context, buffer.release());
+        }
+
+        std::unique_ptr<RHI::IImage> VulkanDevice::CreateImage(const RHI::ImageDescription& desc) {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return nullptr;
+            }
+
+            MemoryManager memoryManager(context);
+            auto image = memoryManager.CreateImage(
+                desc.width,
+                desc.height,
+                desc.mipLevels,
+                VK_SAMPLE_COUNT_1_BIT,
+                ConvertFormat(desc.format),
+                VK_IMAGE_TILING_OPTIMAL,
+                ConvertImageUsage(desc.usage),
+                ConvertMemoryProperties(desc.memoryProperties)
+            );
+
+            if (!image) {
+                return nullptr;
+            }
+
+           
+            VkImageAspectFlags aspectFlags = (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(RHI::ImageUsageFlags::DepthStencilAttachment))
+                ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+            if (!image->CreateImageView(VK_IMAGE_VIEW_TYPE_2D, ConvertFormat(desc.format), aspectFlags)) {
+                return nullptr;
+            }
+
+            return std::make_unique<VulkanImage>(context, image.release());
+        }
+
+        std::unique_ptr<RHI::ISwapchain> VulkanDevice::CreateSwapchain(
+            void* windowHandle, const RHI::SwapchainDescription& desc) {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context || !m_Renderer) {
+                return nullptr;
+            }
+
+            // VulkanRenderer 已经创建了交换链，我们直接使用它
+            auto* swapchain = m_Renderer->GetSwapchain();
+            if (!swapchain) {
+                return nullptr;
+            }
+
+            // 注意：这里我们需要创建一个新的包装，因为 VulkanSwapchain 期望的是 Device::Swapchain*
+            // 但 swapchain 已经是 Device::Swapchain* 了，所以可以直接使用
+            // 但是我们需要确保它不会被删除，所以使用一个特殊的包装
+            return std::make_unique<VulkanSwapchain>(context, swapchain);
+        }
+
+        std::unique_ptr<RHI::IShaderModule> VulkanDevice::CreateShaderModule(
+            const std::vector<uint32_t>& spirvCode, RHI::ShaderStage stage) {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return nullptr;
+            }
+
+            auto shaderModule = std::make_unique<ShaderModule>(context);
+            if (!shaderModule->Create(spirvCode)) {
+                return nullptr;
+            }
+
+            return std::make_unique<VulkanShaderModule>(context, shaderModule.release(), stage);
+        }
+
+#ifdef _WIN32
+#pragma push_macro("CreateSemaphore")
+#undef CreateSemaphore
+#endif
+
+        RHI::SemaphoreHandle VulkanDevice::CreateSemaphore() {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return nullptr;
+            }
+
+            VkSemaphoreCreateInfo createInfo{};
+            createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+            VkSemaphore semaphore;
+            if (vkCreateSemaphore(context->GetDevice(), &createInfo, nullptr, &semaphore) != VK_SUCCESS) {
+                return nullptr;
+            }
+
+            return reinterpret_cast<RHI::SemaphoreHandle>(semaphore);
+        }
+
+#ifdef _WIN32
+#pragma pop_macro("CreateSemaphore")
+#endif
+
+        void VulkanDevice::DestroySemaphore(RHI::SemaphoreHandle semaphore) {
+            if (!semaphore) return;
+
+            auto* context = m_Renderer->GetDeviceContext();
+            if (context) {
+                vkDestroySemaphore(context->GetDevice(), static_cast<VkSemaphore>(semaphore), nullptr);
+            }
+        }
+
+        RHI::FenceHandle VulkanDevice::CreateFence(bool signaled) {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return nullptr;
+            }
+
+            VkFenceCreateInfo createInfo{};
+            createInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            if (signaled) {
+                createInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+            }
+
+            VkFence fence;
+            if (vkCreateFence(context->GetDevice(), &createInfo, nullptr, &fence) != VK_SUCCESS) {
+                return nullptr;
+            }
+
+            return reinterpret_cast<RHI::FenceHandle>(fence);
+        }
+
+        void VulkanDevice::DestroyFence(RHI::FenceHandle fence) {
+            if (!fence) return;
+
+            auto* context = m_Renderer->GetDeviceContext();
+            if (context) {
+                vkDestroyFence(context->GetDevice(), static_cast<VkFence>(fence), nullptr);
+            }
+        }
+
+        void VulkanDevice::SubmitCommandBuffer(
+            RHI::ICommandBuffer* commandBuffer,
+            const std::vector<RHI::SemaphoreHandle>& waitSemaphores,
+            const std::vector<RHI::SemaphoreHandle>& signalSemaphores,
+            RHI::FenceHandle fence) {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context || !commandBuffer) {
+                return;
+            }
+
+            auto* vkCommandBuffer = static_cast<VulkanCommandBuffer*>(commandBuffer);
+
+            std::vector<VkSemaphore> vkWaitSemaphores;
+            for (auto handle : waitSemaphores) {
+                vkWaitSemaphores.push_back(static_cast<VkSemaphore>(handle));
+            }
+
+            std::vector<VkSemaphore> vkSignalSemaphores;
+            for (auto handle : signalSemaphores) {
+                vkSignalSemaphores.push_back(static_cast<VkSemaphore>(handle));
+            }
+
+            std::vector<VkPipelineStageFlags> waitStages(waitSemaphores.size(), VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+            VkCommandBuffer vkCmdBuffer = vkCommandBuffer->GetVkCommandBuffer();
+
+            VkSubmitInfo submitInfo{};
+            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submitInfo.waitSemaphoreCount = static_cast<uint32_t>(vkWaitSemaphores.size());
+            submitInfo.pWaitSemaphores = vkWaitSemaphores.data();
+            submitInfo.pWaitDstStageMask = waitStages.data();
+            submitInfo.commandBufferCount = 1;
+            submitInfo.pCommandBuffers = &vkCmdBuffer;
+            submitInfo.signalSemaphoreCount = static_cast<uint32_t>(vkSignalSemaphores.size());
+            submitInfo.pSignalSemaphores = vkSignalSemaphores.data();
+
+            vkQueueSubmit(context->GetGraphicsQueue(), 1, &submitInfo, static_cast<VkFence>(fence));
+        }
+
+        void VulkanDevice::WaitIdle() {
+            if (m_Renderer) {
+                m_Renderer->WaitIdle();
+            }
+        }
+
+        RHI::QueueHandle VulkanDevice::GetGraphicsQueue() const {
+            if (m_Renderer && m_Renderer->GetDeviceContext()) {
+                return reinterpret_cast<RHI::QueueHandle>(m_Renderer->GetDeviceContext()->GetGraphicsQueue());
+            }
+            return nullptr;
+        }
+
+        RHI::QueueHandle VulkanDevice::GetPresentQueue() const {
+            if (m_Renderer && m_Renderer->GetDeviceContext()) {
+                return reinterpret_cast<RHI::QueueHandle>(m_Renderer->GetDeviceContext()->GetPresentQueue());
+            }
+            return nullptr;
+        }
+
+        const RHI::DeviceInfo& VulkanDevice::GetDeviceInfo() const {
+            return m_DeviceInfo;
+        }
+
+    } // namespace Device
+} // namespace FirstEngine

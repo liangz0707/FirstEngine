@@ -4,9 +4,16 @@
 #include <iostream>
 #include <stdexcept>
 #include <set>
+#include <string>
+#include <cstring>
+#include <vector>
+#include <cstdlib>  // for getenv
 
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN  // Exclude rarely-used stuff from Windows headers
+#define VK_USE_PLATFORM_WIN32_KHR  // Enable Win32 platform extensions
 #include <Windows.h>
+#undef CreateSemaphore  // Undefine Windows API macro to avoid conflict with our method
 #endif
 
 namespace FirstEngine {
@@ -26,7 +33,6 @@ namespace FirstEngine {
             CreateLogicalDevice();
             CreateCommandPool();
             
-            // 创建设备上下文
             m_DeviceContext = std::make_unique<DeviceContext>(
                 m_Instance, m_Device, m_PhysicalDevice,
                 m_GraphicsQueue, m_PresentQueue, m_CommandPool,
@@ -101,6 +107,12 @@ namespace FirstEngine {
             createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
             createInfo.ppEnabledExtensionNames = extensions.data();
 
+            // Log enabled extensions
+            std::cout << "Creating Vulkan instance with " << extensions.size() << " extensions:" << std::endl;
+            for (const auto& ext : extensions) {
+                std::cout << "  - " << ext << std::endl;
+            }
+
             VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
             if (m_EnableValidationLayers) {
                 createInfo.enabledLayerCount = static_cast<uint32_t>(m_ValidationLayers.size());
@@ -121,15 +133,196 @@ namespace FirstEngine {
                 createInfo.pNext = nullptr;
             }
 
-            if (vkCreateInstance(&createInfo, nullptr, &m_Instance) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create Vulkan instance!");
+            VkResult instanceResult = vkCreateInstance(&createInfo, nullptr, &m_Instance);
+            if (instanceResult != VK_SUCCESS) {
+                std::string errorMsg = "Failed to create Vulkan instance! Error code: ";
+                errorMsg += std::to_string(instanceResult);
+                
+                switch (instanceResult) {
+                    case VK_ERROR_OUT_OF_HOST_MEMORY:
+                        errorMsg += " (VK_ERROR_OUT_OF_HOST_MEMORY)";
+                        break;
+                    case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+                        errorMsg += " (VK_ERROR_OUT_OF_DEVICE_MEMORY)";
+                        break;
+                    case VK_ERROR_INITIALIZATION_FAILED:
+                        errorMsg += " (VK_ERROR_INITIALIZATION_FAILED)";
+                        break;
+                    case VK_ERROR_LAYER_NOT_PRESENT:
+                        errorMsg += " (VK_ERROR_LAYER_NOT_PRESENT)";
+                        break;
+                    case VK_ERROR_EXTENSION_NOT_PRESENT:
+                        errorMsg += " (VK_ERROR_EXTENSION_NOT_PRESENT - One or more requested extensions are not available)";
+                        break;
+                    case VK_ERROR_INCOMPATIBLE_DRIVER:
+                        errorMsg += " (VK_ERROR_INCOMPATIBLE_DRIVER - Driver is incompatible)";
+                        break;
+                    default:
+                        errorMsg += " (Unknown error)";
+                        break;
+                }
+                
+                std::cerr << errorMsg << std::endl;
+                throw std::runtime_error(errorMsg);
+            }
+            
+            std::cout << "Vulkan instance created successfully!" << std::endl;
+            
+            // Verify enabled extensions
+            uint32_t enabledExtensionCount = 0;
+            vkEnumerateInstanceExtensionProperties(nullptr, &enabledExtensionCount, nullptr);
+            std::vector<VkExtensionProperties> enabledExtensions(enabledExtensionCount);
+            vkEnumerateInstanceExtensionProperties(nullptr, &enabledExtensionCount, enabledExtensions.data());
+            
+            std::cout << "Instance has " << enabledExtensionCount << " available extensions" << std::endl;
+            for (const auto& ext : extensions) {
+                bool found = false;
+                for (const auto& enabled : enabledExtensions) {
+                    if (strcmp(ext, enabled.extensionName) == 0) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    std::cerr << "Warning: Extension " << ext << " was requested but not found in available extensions!" << std::endl;
+                }
             }
         }
 
         void VulkanRenderer::CreateSurface() {
-            if (glfwCreateWindowSurface(m_Instance, m_Window->GetHandle(), nullptr, &m_Surface) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create window surface!");
+            // Check prerequisites
+            if (!m_Window) {
+                throw std::runtime_error("Failed to create window surface: Window is null!");
             }
+
+            GLFWwindow* glfwWindow = m_Window->GetHandle();
+            if (!glfwWindow) {
+                throw std::runtime_error("Failed to create window surface: GLFW window handle is null!");
+            }
+
+            if (m_Instance == VK_NULL_HANDLE) {
+                throw std::runtime_error("Failed to create window surface: Vulkan instance is null!");
+            }
+
+            // Check if GLFW supports Vulkan (this should have been checked earlier in GetRequiredExtensions)
+            // But we check again here for safety and better error context
+            if (!glfwVulkanSupported()) {
+                std::cerr << std::endl;
+                std::cerr << "===========================================================" << std::endl;
+                std::cerr << "ERROR: Cannot create surface - Vulkan not supported!" << std::endl;
+                std::cerr << "===========================================================" << std::endl;
+                std::cerr << std::endl;
+                std::cerr << "This error should not occur if GetRequiredExtensions() was called correctly." << std::endl;
+                std::cerr << "Please ensure:" << std::endl;
+                std::cerr << "  1. Vulkan Runtime Libraries are installed" << std::endl;
+                std::cerr << "  2. Graphics drivers support Vulkan and are up-to-date" << std::endl;
+                std::cerr << "  3. GLFW was initialized before checking Vulkan support" << std::endl;
+                std::cerr << std::endl;
+                
+                // Try to get GLFW error for more details
+                const char* errorDescription = nullptr;
+                int errorCode = glfwGetError(&errorDescription);
+                if (errorCode != GLFW_NO_ERROR && errorDescription) {
+                    std::cerr << "GLFW Error Code: " << errorCode << std::endl;
+                    std::cerr << "GLFW Error Description: " << errorDescription << std::endl;
+                }
+                std::cerr << std::endl;
+                std::cerr << "===========================================================" << std::endl;
+                std::cerr << std::endl;
+                
+                throw std::runtime_error("GLFW does not support Vulkan on this system. Cannot create surface.");
+            }
+            
+            std::cout << "GLFW Vulkan support: OK" << std::endl;
+
+            // Check if required extensions are enabled in the instance
+            uint32_t enabledExtensionCount = 0;
+            vkEnumerateInstanceExtensionProperties(nullptr, &enabledExtensionCount, nullptr);
+            std::vector<VkExtensionProperties> enabledExtensions(enabledExtensionCount);
+            vkEnumerateInstanceExtensionProperties(nullptr, &enabledExtensionCount, enabledExtensions.data());
+
+            bool hasSurfaceExtension = false;
+            bool hasPlatformSurfaceExtension = false;
+            for (const auto& ext : enabledExtensions) {
+                if (strcmp(ext.extensionName, VK_KHR_SURFACE_EXTENSION_NAME) == 0) {
+                    hasSurfaceExtension = true;
+                }
+#ifdef _WIN32
+                if (strcmp(ext.extensionName, "VK_KHR_win32_surface") == 0) {
+                    hasPlatformSurfaceExtension = true;
+                }
+#endif
+            }
+
+            std::cout << "Checking instance extensions:" << std::endl;
+            std::cout << "  VK_KHR_surface: " << (hasSurfaceExtension ? "Enabled" : "NOT ENABLED!") << std::endl;
+#ifdef _WIN32
+            std::cout << "  VK_KHR_win32_surface: " << (hasPlatformSurfaceExtension ? "Enabled" : "NOT ENABLED!") << std::endl;
+#endif
+            
+            if (!hasSurfaceExtension) {
+                std::cerr << "Error: VK_KHR_surface extension is not enabled in the Vulkan instance!" << std::endl;
+                std::cerr << "This extension must be enabled when creating the instance." << std::endl;
+                throw std::runtime_error("VK_KHR_surface extension not enabled in instance!");
+            }
+            
+#ifdef _WIN32
+            if (!hasPlatformSurfaceExtension) {
+                std::cerr << "Error: VK_KHR_win32_surface extension is not enabled in the Vulkan instance!" << std::endl;
+                std::cerr << "This extension must be enabled when creating the instance." << std::endl;
+                throw std::runtime_error("VK_KHR_win32_surface extension not enabled in instance!");
+            }
+#endif
+
+            // Try to create the surface
+            std::cout << "Attempting to create window surface..." << std::endl;
+            VkResult result = glfwCreateWindowSurface(m_Instance, glfwWindow, nullptr, &m_Surface);
+            
+            if (result != VK_SUCCESS) {
+                std::string errorMsg = "Failed to create window surface! Error code: ";
+                errorMsg += std::to_string(result);
+                
+                // Add specific error descriptions
+                switch (result) {
+                    case VK_ERROR_OUT_OF_HOST_MEMORY:
+                        errorMsg += " (VK_ERROR_OUT_OF_HOST_MEMORY - Out of host memory)";
+                        break;
+                    case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+                        errorMsg += " (VK_ERROR_OUT_OF_DEVICE_MEMORY - Out of device memory)";
+                        break;
+                    case VK_ERROR_NATIVE_WINDOW_IN_USE_KHR:
+                        errorMsg += " (VK_ERROR_NATIVE_WINDOW_IN_USE_KHR - Native window already in use)";
+                        break;
+                    case VK_ERROR_INITIALIZATION_FAILED:
+                        errorMsg += " (VK_ERROR_INITIALIZATION_FAILED - Initialization failed)";
+                        break;
+                    case VK_ERROR_EXTENSION_NOT_PRESENT:
+                        errorMsg += " (VK_ERROR_EXTENSION_NOT_PRESENT - Required extension not present)";
+                        break;
+                    case VK_ERROR_SURFACE_LOST_KHR:
+                        errorMsg += " (VK_ERROR_SURFACE_LOST_KHR - Surface lost)";
+                        break;
+                    default:
+                        errorMsg += " (Unknown error)";
+                        break;
+                }
+                
+                std::cerr << errorMsg << std::endl;
+                std::cerr << "Diagnostic information:" << std::endl;
+                std::cerr << "  Window handle: " << glfwWindow << std::endl;
+                std::cerr << "  Vulkan instance: " << m_Instance << std::endl;
+                std::cerr << "  GLFW Vulkan supported: " << (glfwVulkanSupported() ? "Yes" : "No") << std::endl;
+                
+                // List enabled extensions
+                std::cerr << "  Enabled instance extensions:" << std::endl;
+                for (const auto& ext : enabledExtensions) {
+                    std::cerr << "    - " << ext.extensionName << std::endl;
+                }
+                
+                throw std::runtime_error(errorMsg);
+            }
+            
+            std::cout << "Window surface created successfully!" << std::endl;
         }
 
         void VulkanRenderer::SetupDebugMessenger() {
@@ -333,16 +526,210 @@ namespace FirstEngine {
         }
 
         std::vector<const char*> VulkanRenderer::GetRequiredExtensions() {
+            // Ensure GLFW is initialized before querying Vulkan support
+            // This avoids "The GLFW library is not initialized" errors
+            if (!glfwInit()) {
+                const char* errorDescription = nullptr;
+                int errorCode = glfwGetError(&errorDescription);
+                std::cerr << std::endl;
+                std::cerr << "===========================================================" << std::endl;
+                std::cerr << "ERROR: Failed to initialize GLFW before querying Vulkan support!" << std::endl;
+                std::cerr << "===========================================================" << std::endl;
+                if (errorDescription) {
+                    std::cerr << "GLFW Error Code: " << errorCode << std::endl;
+                    std::cerr << "GLFW Error Description: " << errorDescription << std::endl;
+                }
+                else {
+                    std::cerr << "No additional GLFW error information available." << std::endl;
+                }
+                std::cerr << std::endl;
+                return {};
+            }
+
+            // Check if GLFW supports Vulkan (requires GLFW to be initialized)
+            if (!glfwVulkanSupported()) {
+                std::cerr << std::endl;
+                std::cerr << "===========================================================" << std::endl;
+                std::cerr << "ERROR: GLFW reports Vulkan is not supported on this system!" << std::endl;
+                std::cerr << "===========================================================" << std::endl;
+                std::cerr << std::endl;
+                std::cerr << "This usually means one of the following:" << std::endl;
+                std::cerr << "  1. Vulkan loader (vulkan-1.dll) is not installed or not found" << std::endl;
+                std::cerr << "  2. Graphics driver does not support Vulkan or is outdated" << std::endl;
+                std::cerr << "  3. Vulkan Runtime Libraries are missing" << std::endl;
+                std::cerr << std::endl;
+                std::cerr << "Solutions:" << std::endl;
+                std::cerr << "  - Update your graphics drivers to the latest version" << std::endl;
+                std::cerr << "  - Install Vulkan Runtime Libraries from:" << std::endl;
+                std::cerr << "    https://vulkan.lunarg.com/sdk/home#windows" << std::endl;
+                std::cerr << "  - Verify that vulkan-1.dll exists in your system PATH" << std::endl;
+                std::cerr << std::endl;
+                
+                // Try to get GLFW error for more details
+                const char* errorDescription = nullptr;
+                int errorCode = glfwGetError(&errorDescription);
+                if (errorCode != GLFW_NO_ERROR && errorDescription) {
+                    std::cerr << "GLFW Error Code: " << errorCode << std::endl;
+                    std::cerr << "GLFW Error Description: " << errorDescription << std::endl;
+                    std::cerr << std::endl;
+                }
+                
+#ifdef _WIN32
+                // Check if vulkan-1.dll can be found and show its location
+                HMODULE vulkanModule = LoadLibraryA("vulkan-1.dll");
+                if (vulkanModule) {
+                    char dllPath[MAX_PATH];
+                    if (GetModuleFileNameA(vulkanModule, dllPath, MAX_PATH)) {
+                        std::cerr << "Note: vulkan-1.dll was found and loaded from:" << std::endl;
+                        std::cerr << "  " << dllPath << std::endl;
+                        
+                        // Check if the DLL exports vkGetInstanceProcAddr (required function)
+                        typedef void* (__stdcall *PFN_vkGetInstanceProcAddr)(void*, const char*);
+                        PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = 
+                            (PFN_vkGetInstanceProcAddr)GetProcAddress(vulkanModule, "vkGetInstanceProcAddr");
+                        
+                        if (vkGetInstanceProcAddr) {
+                            std::cerr << "  DLL exports vkGetInstanceProcAddr: Yes" << std::endl;
+                            
+                            // Try to call vkEnumerateInstanceExtensionProperties to verify DLL works
+                            typedef void* (__stdcall *PFN_vkGetInstanceProcAddr)(void*, const char*);
+                            PFN_vkGetInstanceProcAddr vkGetInstanceProcAddrFunc = 
+                                (PFN_vkGetInstanceProcAddr)vkGetInstanceProcAddr(nullptr, "vkEnumerateInstanceExtensionProperties");
+                            
+                            if (vkGetInstanceProcAddrFunc) {
+                                std::cerr << "  DLL can query Vulkan functions: Yes" << std::endl;
+                                std::cerr << "  But GLFW cannot use it. Possible reasons:" << std::endl;
+                                std::cerr << "    - GLFW checks at a different time or context" << std::endl;
+                                std::cerr << "    - DLL architecture mismatch (32-bit vs 64-bit)" << std::endl;
+                                std::cerr << "    - DLL version incompatibility" << std::endl;
+                                std::cerr << "    - Missing dependencies (other DLLs required by vulkan-1.dll)" << std::endl;
+                            } else {
+                                std::cerr << "  DLL can query Vulkan functions: No (DLL may be corrupted or incomplete)" << std::endl;
+                            }
+                        } else {
+                            std::cerr << "  DLL exports vkGetInstanceProcAddr: No (DLL is invalid or corrupted!)" << std::endl;
+                            std::cerr << "  This DLL cannot be used as a Vulkan loader." << std::endl;
+                        }
+                        
+                        // Check DLL architecture
+                        HANDLE hFile = CreateFileA(dllPath, GENERIC_READ, FILE_SHARE_READ, nullptr, 
+                                                   OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+                        if (hFile != INVALID_HANDLE_VALUE) {
+                            DWORD fileSize = GetFileSize(hFile, nullptr);
+                            std::cerr << "  DLL file size: " << fileSize << " bytes" << std::endl;
+                            CloseHandle(hFile);
+                        }
+                    } else {
+                        std::cerr << "Note: vulkan-1.dll was found, but cannot get its path." << std::endl;
+                    }
+                    FreeLibrary(vulkanModule);
+                } else {
+                    DWORD error = GetLastError();
+                    std::cerr << "Note: vulkan-1.dll was NOT found by LoadLibraryA()." << std::endl;
+                    std::cerr << "  Error code: " << error << std::endl;
+                    
+                    // Translate error code
+                    switch (error) {
+                        case ERROR_MOD_NOT_FOUND:
+                            std::cerr << "  Error: Module not found" << std::endl;
+                            break;
+                        case ERROR_BAD_EXE_FORMAT:
+                            std::cerr << "  Error: Bad executable format (architecture mismatch?)" << std::endl;
+                            break;
+                        case ERROR_DLL_INIT_FAILED:
+                            std::cerr << "  Error: DLL initialization failed (missing dependencies?)" << std::endl;
+                            break;
+                        default:
+                            std::cerr << "  Error: Unknown error" << std::endl;
+                            break;
+                    }
+                    
+                    // Check common locations
+                    std::cerr << "  Searching common locations:" << std::endl;
+                    const char* commonPaths[] = {
+                        "C:\\VulkanSDK\\1.3.275.0\\Bin\\vulkan-1.dll",
+                        "C:\\VulkanSDK\\1.3.250.0\\Bin\\vulkan-1.dll",
+                        "C:\\VulkanSDK\\1.3.224.1\\Bin\\vulkan-1.dll",
+                        "C:\\Windows\\System32\\vulkan-1.dll",
+                        nullptr
+                    };
+                    
+                    bool foundAny = false;
+                    for (int i = 0; commonPaths[i] != nullptr; i++) {
+                        if (GetFileAttributesA(commonPaths[i]) != INVALID_FILE_ATTRIBUTES) {
+                            std::cerr << "    Found: " << commonPaths[i] << std::endl;
+                            
+                            // Try to load this specific DLL
+                            HMODULE testModule = LoadLibraryA(commonPaths[i]);
+                            if (testModule) {
+                                std::cerr << "      Can load: Yes" << std::endl;
+                                FreeLibrary(testModule);
+                            } else {
+                                std::cerr << "      Can load: No (Error: " << GetLastError() << ")" << std::endl;
+                            }
+                            foundAny = true;
+                        }
+                    }
+                    
+                    // Check environment variable
+                    const char* vulkanSdk = getenv("VULKAN_SDK");
+                    if (vulkanSdk) {
+                        std::string sdkPath = std::string(vulkanSdk) + "\\Bin\\vulkan-1.dll";
+                        if (GetFileAttributesA(sdkPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+                            std::cerr << "    Found in VULKAN_SDK: " << sdkPath << std::endl;
+                            foundAny = true;
+                        }
+                    }
+                    
+                    if (!foundAny) {
+                        std::cerr << "    No vulkan-1.dll found in common locations." << std::endl;
+                        std::cerr << "    This is the most likely cause of the problem." << std::endl;
+                    }
+                }
+                std::cerr << std::endl;
+#endif
+                
+                std::cerr << "===========================================================" << std::endl;
+                std::cerr << std::endl;
+                
+                throw std::runtime_error("GLFW does not support Vulkan on this system. Please install Vulkan Runtime Libraries and update your graphics drivers.");
+            }
+
             uint32_t glfwExtensionCount = 0;
-            const char** glfwExtensions;
-            glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+            const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+            
+            if (!glfwExtensions || glfwExtensionCount == 0) {
+                std::cerr << "Error: Failed to get required GLFW extensions!" << std::endl;
+                throw std::runtime_error("Failed to get required GLFW Vulkan extensions!");
+            }
 
             std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
-            if (m_EnableValidationLayers) {
-                extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+            // Log the extensions from GLFW
+            std::cout << "GLFW required extensions (" << glfwExtensionCount << "):" << std::endl;
+            for (uint32_t i = 0; i < glfwExtensionCount; i++) {
+                std::cout << "  - " << glfwExtensions[i] << std::endl;
             }
 
+            // Add debug utils extension if validation layers are enabled
+            if (m_EnableValidationLayers) {
+                // Check if already present
+                bool hasDebugUtils = false;
+                for (uint32_t i = 0; i < glfwExtensionCount; i++) {
+                    if (strcmp(glfwExtensions[i], VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
+                        hasDebugUtils = true;
+                        break;
+                    }
+                }
+                if (!hasDebugUtils) {
+                    extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+                    std::cout << "  - " << VK_EXT_DEBUG_UTILS_EXTENSION_NAME << " (added for validation layers)" << std::endl;
+                }
+            }
+
+            // Note: GLFW already includes VK_KHR_surface and platform-specific surface extension
+            // So we don't need to add them manually. The manual additions were causing duplicates.
+            
             return extensions;
         }
 

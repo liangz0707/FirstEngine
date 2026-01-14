@@ -11,7 +11,6 @@
 namespace FirstEngine {
     namespace Shader {
         
-        // Helper function to load SPIR-V from file
         static std::vector<uint32_t> LoadSPIRVFromFile(const std::string& filepath) {
             std::ifstream file(filepath, std::ios::ate | std::ios::binary);
             

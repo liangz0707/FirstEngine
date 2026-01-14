@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FirstEngine/Core/Export.h"
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <string>
 #include <functional>
@@ -15,6 +16,7 @@ namespace FirstEngine {
             using CursorPosCallback = std::function<void(double, double)>;
 
             Window(int width, int height, const std::string& title);
+            Window(GLFWwindow* existingWindow); // Constructor from existing GLFW window
             ~Window();
 
             bool ShouldClose() const;
@@ -24,6 +26,7 @@ namespace FirstEngine {
             GLFWwindow* GetHandle() const { return m_Window; }
             int GetWidth() const { return m_Width; }
             int GetHeight() const { return m_Height; }
+            void GetFramebufferSize(int* width, int* height) const;
 
             void SetResizeCallback(ResizeCallback callback);
             void SetKeyCallback(KeyCallback callback);
@@ -37,6 +40,7 @@ namespace FirstEngine {
             int m_Width;
             int m_Height;
             std::string m_Title;
+            bool m_OwnsGLFW; // Whether this Window owns GLFW initialization
 
             static void FramebufferResizeCallback(GLFWwindow* window, int width, int height);
             static void KeyCallbackWrapper(GLFWwindow* window, int key, int scancode, int action, int mods);

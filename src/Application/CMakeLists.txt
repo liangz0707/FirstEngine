@@ -56,6 +56,16 @@ if(WIN32)
         $<TARGET_FILE:FirstEngine_Renderer>
         $<TARGET_FILE_DIR:FirstEngine>
     )
+    
+    # Copy vulkan-1.dll if found
+    if(VULKAN_DLL_FOUND AND EXISTS "${VULKAN_DLL_PATH}")
+        add_custom_command(TARGET FirstEngine POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VULKAN_DLL_PATH}"
+            $<TARGET_FILE_DIR:FirstEngine>
+            COMMENT "Copying vulkan-1.dll to output directory"
+        )
+    endif()
 endif()
 
 # Organize in Visual Studio solution

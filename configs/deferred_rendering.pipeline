@@ -1,0 +1,48 @@
+pipeline {
+  name "DeferredRendering"
+  width 1280
+  height 720
+  resource {
+    name "GBufferAlbedo"
+    type "attachment"
+    width 1280
+    height 720
+    format "R8G8B8A8_UNORM"
+  }
+  resource {
+    name "GBufferNormal"
+    type "attachment"
+    width 1280
+    height 720
+    format "R8G8B8A8_UNORM"
+  }
+  resource {
+    name "GBufferDepth"
+    type "attachment"
+    width 1280
+    height 720
+    format "D32_SFLOAT"
+  }
+  resource {
+    name "FinalOutput"
+    type "attachment"
+    width 1280
+    height 720
+    format "B8G8R8A8_UNORM"
+  }
+  pass {
+    name "GeometryPass"
+    type "geometry"
+    write "GBufferAlbedo"
+    write "GBufferNormal"
+    write "GBufferDepth"
+  }
+  pass {
+    name "LightingPass"
+    type "lighting"
+    read "GBufferAlbedo"
+    read "GBufferNormal"
+    read "GBufferDepth"
+    write "FinalOutput"
+  }
+}

@@ -34,8 +34,8 @@ namespace FirstEngine {
         }
 
         bool ShaderModule::CreateFromFile(const std::string& filepath) {
-            // 使用ShaderLoader加载SPIR-V文件
-            auto spirvCode = FirstEngine::Shader::ShaderLoader::LoadSPIRVFromFile(filepath);
+            
+            auto spirvCode = FirstEngine::Shader::ShaderLoader::LoadSPIRV(filepath);
             if (spirvCode.empty()) {
                 return false;
             }

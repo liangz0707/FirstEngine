@@ -70,12 +70,33 @@ if (-not (Test-Path $vulkanTarget)) {
             }
         }
         
-        # Copy important files
+        # Copy important files (try multiple locations)
         $importantFiles = @("vulkan-1.dll", "vulkan-1.lib")
         foreach ($file in $importantFiles) {
+            # Try root directory first
             $src = Join-Path $vulkanSource $file
             if (Test-Path $src) {
                 Copy-Item -Path $src -Destination $vulkanTarget -Force
+                Write-Host "    Copied $file from root" -ForegroundColor Gray
+            } else {
+                # Try Bin directory
+                $src = Join-Path (Join-Path $vulkanSource "Bin") $file
+                if (Test-Path $src) {
+                    Copy-Item -Path $src -Destination $vulkanTarget -Force
+                    Write-Host "    Copied $file from Bin directory" -ForegroundColor Gray
+                } else {
+                    Write-Host "    Warning: $file not found in $vulkanSource" -ForegroundColor Yellow
+                }
+            }
+        }
+        
+        # Also copy vulkan-1.dll to Bin subdirectory if it exists
+        $vulkanBinTarget = Join-Path $vulkanTarget "Bin"
+        if (Test-Path $vulkanBinTarget) {
+            $dllSrc = Join-Path $vulkanTarget "vulkan-1.dll"
+            if (Test-Path $dllSrc) {
+                Copy-Item -Path $dllSrc -Destination $vulkanBinTarget -Force
+                Write-Host "    Copied vulkan-1.dll to Bin subdirectory" -ForegroundColor Gray
             }
         }
         

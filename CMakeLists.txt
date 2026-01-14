@@ -48,18 +48,104 @@ if(EXISTS "${VULKAN_LOCAL_PATH}")
     set(VULKAN_SDK "${VULKAN_LOCAL_PATH}" CACHE PATH "Vulkan SDK path")
     set(VULKAN_INCLUDE_DIR "${VULKAN_LOCAL_PATH}/Include")
     set(VULKAN_LIBRARY_DIR "${VULKAN_LOCAL_PATH}/Lib")
+    set(VULKAN_BIN_DIR "${VULKAN_LOCAL_PATH}/Bin")
     
     # Set Vulkan variables
     set(Vulkan_INCLUDE_DIRS "${VULKAN_INCLUDE_DIR}")
     set(Vulkan_LIBRARIES "${VULKAN_LIBRARY_DIR}/vulkan-1.lib")
     set(Vulkan_FOUND TRUE)
     
+    # Check for vulkan-1.dll (new SDK versions don't include it, check system directory)
+    set(VULKAN_DLL_PATH "${VULKAN_LOCAL_PATH}/vulkan-1.dll")
+    if(EXISTS "${VULKAN_DLL_PATH}")
+        message(STATUS "Found vulkan-1.dll at: ${VULKAN_DLL_PATH}")
+        set(VULKAN_DLL_FOUND TRUE)
+    elseif(EXISTS "${VULKAN_BIN_DIR}/vulkan-1.dll")
+        set(VULKAN_DLL_PATH "${VULKAN_BIN_DIR}/vulkan-1.dll")
+        message(STATUS "Found vulkan-1.dll at: ${VULKAN_DLL_PATH}")
+        set(VULKAN_DLL_FOUND TRUE)
+    elseif(WIN32 AND EXISTS "C:/Windows/System32/vulkan-1.dll")
+        # New SDK versions don't include vulkan-1.dll, use system DLL
+        set(VULKAN_DLL_PATH "C:/Windows/System32/vulkan-1.dll")
+        message(STATUS "Found vulkan-1.dll in system directory: ${VULKAN_DLL_PATH}")
+        message(STATUS "Note: New Vulkan SDK versions don't include vulkan-1.dll")
+        message(STATUS "Using system DLL from Windows/System32")
+        set(VULKAN_DLL_FOUND TRUE)
+    else()
+        message(WARNING "vulkan-1.dll not found in ${VULKAN_LOCAL_PATH}, ${VULKAN_BIN_DIR}, or system directory")
+        message(WARNING "Runtime may fail if vulkan-1.dll is not in PATH or output directory")
+        message(WARNING "Please install Vulkan Runtime or copy vulkan-1.dll to external/vulkan/")
+        set(VULKAN_DLL_FOUND FALSE)
+    endif()
+    
     # Add include directory
     include_directories(${Vulkan_INCLUDE_DIRS})
 else()
     # Use standard find_package
     find_package(Vulkan REQUIRED)
+    
+    # Try to find vulkan-1.dll from standard Vulkan SDK installation
+    if(WIN32)
+        # find_package(Vulkan) sets Vulkan_SDK, not VULKAN_SDK
+        if(DEFINED Vulkan_SDK)
+            set(VULKAN_SDK "${Vulkan_SDK}")
+        elseif(DEFINED ENV{VULKAN_SDK})
+            set(VULKAN_SDK "$ENV{VULKAN_SDK}")
+        endif()
+        
+        if(VULKAN_SDK)
+            set(VULKAN_DLL_PATH "${VULKAN_SDK}/Bin/vulkan-1.dll")
+            if(EXISTS "${VULKAN_DLL_PATH}")
+                message(STATUS "Found vulkan-1.dll at: ${VULKAN_DLL_PATH}")
+                set(VULKAN_DLL_FOUND TRUE)
+            else()
+                # Try root directory
+                set(VULKAN_DLL_PATH "${VULKAN_SDK}/vulkan-1.dll")
+                if(EXISTS "${VULKAN_DLL_PATH}")
+                    message(STATUS "Found vulkan-1.dll at: ${VULKAN_DLL_PATH}")
+                    set(VULKAN_DLL_FOUND TRUE)
+                else()
+                    # New SDK versions don't include vulkan-1.dll, try system directory
+                    if(EXISTS "C:/Windows/System32/vulkan-1.dll")
+                        set(VULKAN_DLL_PATH "C:/Windows/System32/vulkan-1.dll")
+                        message(STATUS "Found vulkan-1.dll in system directory: ${VULKAN_DLL_PATH}")
+                        message(STATUS "Note: New Vulkan SDK versions don't include vulkan-1.dll")
+                        set(VULKAN_DLL_FOUND TRUE)
+                    else()
+                        message(WARNING "vulkan-1.dll not found in Vulkan SDK directory or system directory")
+                        set(VULKAN_DLL_FOUND FALSE)
+                    endif()
+                endif()
+            endif()
+        else()
+            # Try system directory if VULKAN_SDK not set
+            if(EXISTS "C:/Windows/System32/vulkan-1.dll")
+                set(VULKAN_DLL_PATH "C:/Windows/System32/vulkan-1.dll")
+                message(STATUS "Found vulkan-1.dll in system directory: ${VULKAN_DLL_PATH}")
+                set(VULKAN_DLL_FOUND TRUE)
+            else()
+                message(WARNING "VULKAN_SDK not set and system DLL not found")
+                message(WARNING "Cannot locate vulkan-1.dll")
+                set(VULKAN_DLL_FOUND FALSE)
+            endif()
+        endif()
+    else()
+        set(VULKAN_DLL_FOUND FALSE)
+    endif()
 endif()
+
+# Function to copy vulkan-1.dll to output directory
+function(copy_vulkan_dll target)
+    if(WIN32 AND VULKAN_DLL_FOUND AND EXISTS "${VULKAN_DLL_PATH}")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VULKAN_DLL_PATH}"
+            $<TARGET_FILE_DIR:${target}>
+            COMMENT "Copying vulkan-1.dll to output directory"
+        )
+        message(STATUS "Configured ${target} to copy vulkan-1.dll to output directory")
+    endif()
+endfunction()
 
 # Add subdirectories for each module
 # Core modules (FirstEngine自己的模块)
