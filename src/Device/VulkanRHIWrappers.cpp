@@ -4,6 +4,7 @@
 #include "FirstEngine/Device/ShaderModule.h"  // Still needed for VulkanShaderModule wrapper
 #include <algorithm>
 #include <stdexcept>
+#include <iostream>
 
 namespace FirstEngine {
     namespace Device {
@@ -534,8 +535,32 @@ namespace FirstEngine {
         }
 
         bool VulkanSwapchain::Recreate() {
-            CleanupSwapchain();
-            return Create();
+            // Save old swapchain before cleanup (needed for proper recreation)
+            // CreateSwapchain() will handle destroying the old swapchain after creating the new one
+            VkSwapchainKHR oldSwapchain = m_Swapchain;
+            
+            // Cleanup image views and wrappers, but keep old swapchain handle
+            // The old swapchain will be passed to CreateSwapchain() and destroyed there
+            m_ImageWrappers.clear();
+            for (auto imageView : m_ImageViews) {
+                vkDestroyImageView(m_Context->GetDevice(), imageView, nullptr);
+            }
+            m_ImageViews.clear();
+            
+            // Create new swapchain (it will use oldSwapchain internally and destroy it)
+            // Note: We don't set m_Swapchain to VK_NULL_HANDLE because CreateSwapchain() needs it
+            try {
+                CreateSwapchain();
+                CreateImageViews();
+                return m_Swapchain != VK_NULL_HANDLE;
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to recreate swapchain: " << e.what() << std::endl;
+                // If recreation failed, try to restore old swapchain if it's still valid
+                if (oldSwapchain != VK_NULL_HANDLE && m_Swapchain == VK_NULL_HANDLE) {
+                    m_Swapchain = oldSwapchain;
+                }
+                return false;
+            }
         }
 
         bool VulkanSwapchain::AcquireNextImage(RHI::SemaphoreHandle semaphore, RHI::FenceHandle fence, uint32_t& imageIndex) {
@@ -612,15 +637,31 @@ namespace FirstEngine {
 
         void VulkanSwapchain::CreateSwapchain() {
             VkSurfaceCapabilitiesKHR capabilities;
-            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_Context->GetPhysicalDevice(), m_Surface, &capabilities);
+            VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_Context->GetPhysicalDevice(), m_Surface, &capabilities);
+            if (result != VK_SUCCESS) {
+                std::cerr << "Failed to get surface capabilities: " << result << std::endl;
+                throw std::runtime_error("Failed to get surface capabilities!");
+            }
+
+            // Check if surface is valid and not lost
+            if (capabilities.maxImageExtent.width == 0 || capabilities.maxImageExtent.height == 0) {
+                std::cerr << "Surface capabilities indicate invalid extent (window may be minimized)" << std::endl;
+                throw std::runtime_error("Surface extent is invalid - window may be minimized!");
+            }
 
             uint32_t formatCount;
             vkGetPhysicalDeviceSurfaceFormatsKHR(m_Context->GetPhysicalDevice(), m_Surface, &formatCount, nullptr);
+            if (formatCount == 0) {
+                throw std::runtime_error("No surface formats available!");
+            }
             std::vector<VkSurfaceFormatKHR> formats(formatCount);
             vkGetPhysicalDeviceSurfaceFormatsKHR(m_Context->GetPhysicalDevice(), m_Surface, &formatCount, formats.data());
 
             uint32_t presentModeCount;
             vkGetPhysicalDeviceSurfacePresentModesKHR(m_Context->GetPhysicalDevice(), m_Surface, &presentModeCount, nullptr);
+            if (presentModeCount == 0) {
+                throw std::runtime_error("No present modes available!");
+            }
             std::vector<VkPresentModeKHR> presentModes(presentModeCount);
             vkGetPhysicalDeviceSurfacePresentModesKHR(m_Context->GetPhysicalDevice(), m_Surface, &presentModeCount, presentModes.data());
 
@@ -628,10 +669,19 @@ namespace FirstEngine {
             VkPresentModeKHR presentMode = ChooseSwapPresentMode(presentModes);
             VkExtent2D extent = ChooseSwapExtent(capabilities);
 
+            // Validate extent
+            if (extent.width == 0 || extent.height == 0) {
+                std::cerr << "Invalid swapchain extent: " << extent.width << "x" << extent.height << std::endl;
+                throw std::runtime_error("Invalid swapchain extent - window size may be invalid!");
+            }
+
             uint32_t imageCount = capabilities.minImageCount + 1;
             if (capabilities.maxImageCount > 0 && imageCount > capabilities.maxImageCount) {
                 imageCount = capabilities.maxImageCount;
             }
+
+            // Save old swapchain for proper recreation
+            VkSwapchainKHR oldSwapchain = m_Swapchain;
 
             VkSwapchainCreateInfoKHR createInfo{};
             createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -658,10 +708,51 @@ namespace FirstEngine {
             createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
             createInfo.presentMode = presentMode;
             createInfo.clipped = VK_TRUE;
-            createInfo.oldSwapchain = VK_NULL_HANDLE;
+            createInfo.oldSwapchain = oldSwapchain; // Pass old swapchain for proper recreation
 
-            if (vkCreateSwapchainKHR(m_Context->GetDevice(), &createInfo, nullptr, &m_Swapchain) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create swap chain!");
+            VkResult createResult = vkCreateSwapchainKHR(m_Context->GetDevice(), &createInfo, nullptr, &m_Swapchain);
+            if (createResult != VK_SUCCESS) {
+                std::string errorMsg = "Failed to create swap chain! Error code: ";
+                errorMsg += std::to_string(createResult);
+                
+                // Add specific error descriptions
+                switch (createResult) {
+                    case VK_ERROR_OUT_OF_HOST_MEMORY:
+                        errorMsg += " (VK_ERROR_OUT_OF_HOST_MEMORY)";
+                        break;
+                    case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+                        errorMsg += " (VK_ERROR_OUT_OF_DEVICE_MEMORY)";
+                        break;
+                    case VK_ERROR_DEVICE_LOST:
+                        errorMsg += " (VK_ERROR_DEVICE_LOST)";
+                        break;
+                    case VK_ERROR_SURFACE_LOST_KHR:
+                        errorMsg += " (VK_ERROR_SURFACE_LOST_KHR - Surface lost)";
+                        break;
+                    case VK_ERROR_NATIVE_WINDOW_IN_USE_KHR:
+                        errorMsg += " (VK_ERROR_NATIVE_WINDOW_IN_USE_KHR)";
+                        break;
+                    case VK_ERROR_INITIALIZATION_FAILED:
+                        errorMsg += " (VK_ERROR_INITIALIZATION_FAILED)";
+                        break;
+                    default:
+                        errorMsg += " (Unknown error)";
+                        break;
+                }
+                
+                std::cerr << errorMsg << std::endl;
+                std::cerr << "Swapchain creation details:" << std::endl;
+                std::cerr << "  Extent: " << extent.width << "x" << extent.height << std::endl;
+                std::cerr << "  Format: " << surfaceFormat.format << std::endl;
+                std::cerr << "  Image count: " << imageCount << std::endl;
+                std::cerr << "  Old swapchain: " << oldSwapchain << std::endl;
+                
+                throw std::runtime_error(errorMsg);
+            }
+
+            // Destroy old swapchain after creating new one (Vulkan spec requirement)
+            if (oldSwapchain != VK_NULL_HANDLE) {
+                vkDestroySwapchainKHR(m_Context->GetDevice(), oldSwapchain, nullptr);
             }
 
             vkGetSwapchainImagesKHR(m_Context->GetDevice(), m_Swapchain, &imageCount, nullptr);

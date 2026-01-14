@@ -171,15 +171,14 @@ namespace FirstEngine {
             // Create swapchain
             bool Create();
 
-            // Recreate swapchain (when window size changes)
-            bool Recreate();
-
+            // ISwapchain interface implementation
             bool AcquireNextImage(RHI::SemaphoreHandle semaphore, RHI::FenceHandle fence, uint32_t& imageIndex) override;
             bool Present(uint32_t imageIndex, const std::vector<RHI::SemaphoreHandle>& waitSemaphores) override;
             uint32_t GetImageCount() const override;
             RHI::Format GetImageFormat() const override;
             void GetExtent(uint32_t& width, uint32_t& height) const override;
             RHI::IImage* GetImage(uint32_t index) override;
+            bool Recreate() override; // Recreate swapchain with new dimensions (for window resize)
 
             VkSwapchainKHR GetVkSwapchain() const { return m_Swapchain; }
 

@@ -16,6 +16,7 @@ namespace FirstEngine {
             virtual Format GetImageFormat() const = 0;
             virtual void GetExtent(uint32_t& width, uint32_t& height) const = 0;
             virtual IImage* GetImage(uint32_t index) = 0;
+            virtual bool Recreate() = 0; // Recreate swapchain with new dimensions (for window resize)
         };
 
     } // namespace RHI

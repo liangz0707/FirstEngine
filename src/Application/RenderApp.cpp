@@ -263,16 +263,43 @@ protected:
     }
 
     void OnResize(int width, int height) override {
+        // Ignore resize events with invalid dimensions (window may be minimized)
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+
         if (m_FrameGraph && m_Device) {
             // Wait for GPU to finish before recreating swapchain
             m_Device->WaitIdle();
 
-            // Recreate swapchain with new dimensions
-            if (m_Swapchain && GetWindow()) {
-                FirstEngine::RHI::SwapchainDescription swapchainDesc;
-                swapchainDesc.width = width;
-                swapchainDesc.height = height;
-                m_Swapchain = m_Device->CreateSwapchain(GetWindow()->GetHandle(), swapchainDesc);
+            // Recreate swapchain with new dimensions using Recreate() method
+            // This properly handles old swapchain destruction
+            if (m_Swapchain) {
+                try {
+                    if (!m_Swapchain->Recreate()) {
+                        std::cerr << "Failed to recreate swapchain on resize!" << std::endl;
+                        return;
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Error recreating swapchain: " << e.what() << std::endl;
+                    return;
+                }
+            } else if (GetWindow()) {
+                // If swapchain doesn't exist yet, create it
+                try {
+                    FirstEngine::RHI::SwapchainDescription swapchainDesc;
+                    swapchainDesc.width = width;
+                    swapchainDesc.height = height;
+                    m_Swapchain = m_Device->CreateSwapchain(GetWindow()->GetHandle(), swapchainDesc);
+                    
+                    if (!m_Swapchain) {
+                        std::cerr << "Failed to create swapchain on resize!" << std::endl;
+                        return;
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Error creating swapchain: " << e.what() << std::endl;
+                    return;
+                }
             }
 
             // Rebuild FrameGraph with new dimensions
