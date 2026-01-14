@@ -12,7 +12,6 @@ set(DEVICE_SOURCES
     VulkanRenderer.cpp
     VulkanDevice.cpp
     VulkanRHIWrappers.cpp
-    Swapchain.cpp
     Pipeline.cpp
     ShaderModule.cpp
     DeviceContext.cpp
@@ -32,7 +31,6 @@ set(DEVICE_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/RenderPass.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/RenderTarget.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/ShaderModule.h
-    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/Swapchain.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/VulkanDevice.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/VulkanRenderer.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/VulkanRHIWrappers.h

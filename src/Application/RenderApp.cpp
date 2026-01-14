@@ -35,10 +35,34 @@ public:
         : Application(width, height, title, headless),
           m_Device(nullptr),
           m_FrameGraph(nullptr),
+          m_CommandBuffer(nullptr),
           m_LastTime(std::chrono::high_resolution_clock::now()) {
     }
 
     ~RenderApp() override {
+        // Wait for GPU to finish before destroying resources
+        if (m_Device) {
+            m_Device->WaitIdle();
+        }
+
+        // Release command buffer (GPU has finished, safe to destroy)
+        m_CommandBuffer.reset();
+
+        // Destroy synchronization objects
+        if (m_Device) {
+            if (m_InFlightFence) {
+                m_Device->DestroyFence(m_InFlightFence);
+            }
+            if (m_RenderFinishedSemaphore) {
+                m_Device->DestroySemaphore(m_RenderFinishedSemaphore);
+            }
+            if (m_ImageAvailableSemaphore) {
+                m_Device->DestroySemaphore(m_ImageAvailableSemaphore);
+            }
+        }
+
+        m_Swapchain.reset();
+
         if (m_FrameGraph) {
             delete m_FrameGraph;
         }
@@ -98,6 +122,28 @@ public:
             return false;
         }
 
+        // Create swapchain
+        if (GetWindow()) {
+            FirstEngine::RHI::SwapchainDescription swapchainDesc;
+            swapchainDesc.width = GetWindow()->GetWidth();
+            swapchainDesc.height = GetWindow()->GetHeight();
+            m_Swapchain = m_Device->CreateSwapchain(GetWindow()->GetHandle(), swapchainDesc);
+            if (!m_Swapchain) {
+                std::cerr << "Failed to create swapchain!" << std::endl;
+                return false;
+            }
+        }
+
+        // Create synchronization objects
+        m_ImageAvailableSemaphore = m_Device->CreateSemaphore();
+        m_RenderFinishedSemaphore = m_Device->CreateSemaphore();
+        m_InFlightFence = m_Device->CreateFence(true); // Start signaled
+
+        if (!m_ImageAvailableSemaphore || !m_RenderFinishedSemaphore || !m_InFlightFence) {
+            std::cerr << "Failed to create synchronization objects!" << std::endl;
+            return false;
+        }
+
         std::cout << "RenderApp initialized successfully!" << std::endl;
         return true;
     }
@@ -108,56 +154,99 @@ protected:
     }
 
     void OnRender() override {
-        if (!m_Device || !m_FrameGraph) {
+        if (!m_Device || !m_FrameGraph || !m_Swapchain) {
             return;
         }
+
+        // Wait for previous frame to complete before starting new frame
+        // This ensures command buffer and semaphores from previous frame are no longer in use
+        m_Device->WaitForFence(m_InFlightFence, UINT64_MAX);
+        m_Device->ResetFence(m_InFlightFence);
+
+        // Now that fence is signaled, it's safe to release the previous frame's command buffer
+        // The command buffer from previous frame is no longer in use by GPU
+        m_CommandBuffer.reset();
 
         // Begin RenderDoc frame capture
         BeginRenderDocFrame();
 
-        // Create command buffer
-        std::unique_ptr<FirstEngine::RHI::ICommandBuffer> commandBuffer = m_Device->CreateCommandBuffer();
-        if (!commandBuffer) {
+        // Acquire next swapchain image
+        // m_ImageAvailableSemaphore will be signaled when image is available
+        // After waiting for fence, the semaphore from previous frame should be unsignaled
+        uint32_t imageIndex;
+        if (!m_Swapchain->AcquireNextImage(m_ImageAvailableSemaphore, nullptr, imageIndex)) {
+            // Image acquisition failed or swapchain needs recreation
+            return;
+        }
+
+        // Create command buffer for this frame
+        m_CommandBuffer = m_Device->CreateCommandBuffer();
+        if (!m_CommandBuffer) {
             return;
         }
 
         // Begin recording
-        commandBuffer->Begin();
+        m_CommandBuffer->Begin();
 
-        // Execute FrameGraph
-        m_FrameGraph->Execute(commandBuffer.get());
+        // Transition swapchain image from undefined to color attachment layout
+        auto* swapchainImage = m_Swapchain->GetImage(imageIndex);
+        if (swapchainImage) {
+            m_CommandBuffer->TransitionImageLayout(
+                swapchainImage,
+                FirstEngine::RHI::Format::Undefined, // Old layout (undefined for first use)
+                FirstEngine::RHI::Format::B8G8R8A8_UNORM, // New layout (color attachment)
+                1 // mipLevels
+            );
+        }
+
+        // Execute FrameGraph (this will render to the swapchain image)
+        m_FrameGraph->Execute(m_CommandBuffer.get());
+
+        // Transition swapchain image from color attachment to present layout
+        // This must be done before ending the command buffer
+        if (swapchainImage) {
+            m_CommandBuffer->TransitionImageLayout(
+                swapchainImage,
+                FirstEngine::RHI::Format::B8G8R8A8_UNORM, // Old layout (color attachment)
+                FirstEngine::RHI::Format::B8G8R8A8_SRGB, // New layout (present src - using SRGB format as indicator)
+                1 // mipLevels
+            );
+        }
 
         // End recording
-        commandBuffer->End();
+        m_CommandBuffer->End();
 
         // Submit command buffer
-        auto semaphore = m_Device->CreateSemaphore();
-        std::vector<FirstEngine::RHI::SemaphoreHandle> signalSemaphores = {semaphore};
-        m_Device->SubmitCommandBuffer(commandBuffer.get(), {}, signalSemaphores, nullptr);
+        // Wait for image acquisition, signal render finished
+        std::vector<FirstEngine::RHI::SemaphoreHandle> waitSemaphores = {m_ImageAvailableSemaphore};
+        std::vector<FirstEngine::RHI::SemaphoreHandle> signalSemaphores = {m_RenderFinishedSemaphore};
+        m_Device->SubmitCommandBuffer(m_CommandBuffer.get(), waitSemaphores, signalSemaphores, m_InFlightFence);
 
-        // Present (if swapchain exists and we have a window)
-        if (GetWindow()) {
-            FirstEngine::RHI::SwapchainDescription swapchainDesc;
-            swapchainDesc.width = GetWindow()->GetWidth();
-            swapchainDesc.height = GetWindow()->GetHeight();
-            auto swapchain = m_Device->CreateSwapchain(GetWindow()->GetHandle(), swapchainDesc);
-            if (swapchain) {
-                uint32_t imageIndex;
-                if (swapchain->AcquireNextImage(semaphore, nullptr, imageIndex)) {
-                    std::vector<FirstEngine::RHI::SemaphoreHandle> presentWaitSemaphores = {semaphore};
-                    swapchain->Present(imageIndex, presentWaitSemaphores);
-                }
-            }
-        }
+        // Present - wait for render finished
+        std::vector<FirstEngine::RHI::SemaphoreHandle> presentWaitSemaphores = {m_RenderFinishedSemaphore};
+        m_Swapchain->Present(imageIndex, presentWaitSemaphores);
 
         // End RenderDoc frame capture
         EndRenderDocFrame();
 
-        m_Device->DestroySemaphore(semaphore);
+        // Note: Command buffer is stored as member variable and will be released
+        // at the start of next frame after waiting for fence, ensuring GPU has finished using it
+        // Semaphores are reused, not destroyed here
     }
 
     void OnResize(int width, int height) override {
         if (m_FrameGraph && m_Device) {
+            // Wait for GPU to finish before recreating swapchain
+            m_Device->WaitIdle();
+
+            // Recreate swapchain with new dimensions
+            if (m_Swapchain && GetWindow()) {
+                FirstEngine::RHI::SwapchainDescription swapchainDesc;
+                swapchainDesc.width = width;
+                swapchainDesc.height = height;
+                m_Swapchain = m_Device->CreateSwapchain(GetWindow()->GetHandle(), swapchainDesc);
+            }
+
             // Rebuild FrameGraph with new dimensions
             FirstEngine::Renderer::PipelineConfig config = 
                 FirstEngine::Renderer::PipelineBuilder::CreateDeferredRenderingConfig(width, height);
@@ -217,6 +306,11 @@ private:
 
     FirstEngine::Device::VulkanDevice* m_Device;
     FirstEngine::Renderer::FrameGraph* m_FrameGraph;
+    std::unique_ptr<FirstEngine::RHI::ISwapchain> m_Swapchain;
+    FirstEngine::RHI::SemaphoreHandle m_ImageAvailableSemaphore;
+    FirstEngine::RHI::SemaphoreHandle m_RenderFinishedSemaphore;
+    FirstEngine::RHI::FenceHandle m_InFlightFence;
+    std::unique_ptr<FirstEngine::RHI::ICommandBuffer> m_CommandBuffer; // Store command buffer to defer destruction
     std::chrono::high_resolution_clock::time_point m_LastTime;
 
 #ifdef _WIN32

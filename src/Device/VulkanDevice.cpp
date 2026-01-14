@@ -2,12 +2,8 @@
 #include "FirstEngine/Device/VulkanRHIWrappers.h"
 #include "FirstEngine/Core/Window.h"
 #include "FirstEngine/Device/DeviceContext.h"
-#include "FirstEngine/Device/RenderPass.h"
-#include "FirstEngine/Device/Framebuffer.h"
-#include "FirstEngine/Device/Pipeline.h"
 #include "FirstEngine/Device/MemoryManager.h"
-#include "FirstEngine/Device/Swapchain.h"
-#include "FirstEngine/Device/ShaderModule.h"
+#include "FirstEngine/Device/ShaderModule.h"  // Still needed for VulkanShaderModule wrapper
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <iostream>
@@ -402,15 +398,33 @@ namespace FirstEngine {
                 return nullptr;
             }
 
+            VkFormat vkFormat = ConvertFormat(desc.format);
+            
+            // For depth formats, ensure usage flags don't include COLOR_ATTACHMENT_BIT
+            // and do include DEPTH_STENCIL_ATTACHMENT_BIT
+            RHI::ImageUsageFlags correctedUsage = desc.usage;
+            bool isDepthFormat = (desc.format == RHI::Format::D32_SFLOAT || desc.format == RHI::Format::D24_UNORM_S8_UINT);
+            
+            if (isDepthFormat) {
+                // Remove COLOR_ATTACHMENT_BIT if present (depth formats can't be color attachments)
+                correctedUsage = static_cast<RHI::ImageUsageFlags>(
+                    static_cast<uint32_t>(correctedUsage) & ~static_cast<uint32_t>(RHI::ImageUsageFlags::ColorAttachment)
+                );
+                // Ensure DEPTH_STENCIL_ATTACHMENT_BIT is set
+                correctedUsage = static_cast<RHI::ImageUsageFlags>(
+                    static_cast<uint32_t>(correctedUsage) | static_cast<uint32_t>(RHI::ImageUsageFlags::DepthStencilAttachment)
+                );
+            }
+
             MemoryManager memoryManager(context);
             auto image = memoryManager.CreateImage(
                 desc.width,
                 desc.height,
                 desc.mipLevels,
                 VK_SAMPLE_COUNT_1_BIT,
-                ConvertFormat(desc.format),
+                vkFormat,
                 VK_IMAGE_TILING_OPTIMAL,
-                ConvertImageUsage(desc.usage),
+                ConvertImageUsage(correctedUsage),
                 ConvertMemoryProperties(desc.memoryProperties)
             );
 
@@ -418,10 +432,26 @@ namespace FirstEngine {
                 return nullptr;
             }
 
-           
-            VkImageAspectFlags aspectFlags = (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(RHI::ImageUsageFlags::DepthStencilAttachment))
-                ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-            if (!image->CreateImageView(VK_IMAGE_VIEW_TYPE_2D, ConvertFormat(desc.format), aspectFlags)) {
+            // Determine aspect flags based on format, not just usage
+            // Depth formats must use VK_IMAGE_ASPECT_DEPTH_BIT
+            VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+            
+            // Check if format is a depth or depth-stencil format
+            if (isDepthFormat) {
+                if (desc.format == RHI::Format::D24_UNORM_S8_UINT) {
+                    // Depth-stencil format needs both aspects
+                    aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+                } else {
+                    // Depth-only format (D32_SFLOAT)
+                    aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+                }
+            } else if (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(RHI::ImageUsageFlags::DepthStencilAttachment)) {
+                // Fallback: if usage indicates depth but format doesn't match known depth formats,
+                // still use depth aspect (might be a custom depth format)
+                aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+            }
+            
+            if (!image->CreateImageView(VK_IMAGE_VIEW_TYPE_2D, vkFormat, aspectFlags)) {
                 return nullptr;
             }
 
@@ -435,16 +465,20 @@ namespace FirstEngine {
                 return nullptr;
             }
 
-            // VulkanRenderer 已经创建了交换链，我们直接使用它
-            auto* swapchain = m_Renderer->GetSwapchain();
-            if (!swapchain) {
+            // Get window and surface from renderer
+            Core::Window* window = m_Renderer->GetWindow();
+            VkSurfaceKHR surface = m_Renderer->GetSurface();
+            if (!window || surface == VK_NULL_HANDLE) {
                 return nullptr;
             }
 
-            // 注意：这里我们需要创建一个新的包装，因为 VulkanSwapchain 期望的是 Device::Swapchain*
-            // 但 swapchain 已经是 Device::Swapchain* 了，所以可以直接使用
-            // 但是我们需要确保它不会被删除，所以使用一个特殊的包装
-            return std::make_unique<VulkanSwapchain>(context, swapchain);
+            // Create VulkanSwapchain directly (no longer wrapping Device::Swapchain)
+            auto swapchain = std::make_unique<VulkanSwapchain>(context, window, surface);
+            if (!swapchain->Create()) {
+                return nullptr;
+            }
+
+            return swapchain;
         }
 
         std::unique_ptr<RHI::IShaderModule> VulkanDevice::CreateShaderModule(
@@ -562,12 +596,33 @@ namespace FirstEngine {
             submitInfo.signalSemaphoreCount = static_cast<uint32_t>(vkSignalSemaphores.size());
             submitInfo.pSignalSemaphores = vkSignalSemaphores.data();
 
-            vkQueueSubmit(context->GetGraphicsQueue(), 1, &submitInfo, static_cast<VkFence>(fence));
+            VkResult result = vkQueueSubmit(context->GetGraphicsQueue(), 1, &submitInfo, static_cast<VkFence>(fence));
+            if (result != VK_SUCCESS) {
+                std::cerr << "Warning: vkQueueSubmit failed with result: " << result << std::endl;
+            }
         }
 
         void VulkanDevice::WaitIdle() {
             if (m_Renderer) {
                 m_Renderer->WaitIdle();
+            }
+        }
+
+        void VulkanDevice::WaitForFence(RHI::FenceHandle fence, uint64_t timeout) {
+            if (!fence) return;
+
+            auto* context = m_Renderer->GetDeviceContext();
+            if (context) {
+                vkWaitForFences(context->GetDevice(), 1, reinterpret_cast<VkFence*>(&fence), VK_TRUE, timeout);
+            }
+        }
+
+        void VulkanDevice::ResetFence(RHI::FenceHandle fence) {
+            if (!fence) return;
+
+            auto* context = m_Renderer->GetDeviceContext();
+            if (context) {
+                vkResetFences(context->GetDevice(), 1, reinterpret_cast<VkFence*>(&fence));
             }
         }
 

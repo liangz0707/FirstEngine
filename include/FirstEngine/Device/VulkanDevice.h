@@ -68,6 +68,9 @@ namespace FirstEngine {
 
             void WaitIdle() override;
 
+            void WaitForFence(RHI::FenceHandle fence, uint64_t timeout = UINT64_MAX) override;
+            void ResetFence(RHI::FenceHandle fence) override;
+
             RHI::QueueHandle GetGraphicsQueue() const override;
             RHI::QueueHandle GetPresentQueue() const override;
 

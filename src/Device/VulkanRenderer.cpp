@@ -1,5 +1,4 @@
 #include "FirstEngine/Device/VulkanRenderer.h"
-#include "FirstEngine/Device/Swapchain.h"
 #include "FirstEngine/Device/DeviceContext.h"
 #include <iostream>
 #include <stdexcept>
@@ -39,9 +38,7 @@ namespace FirstEngine {
                 m_GraphicsQueueFamily, m_PresentQueueFamily
             );
             
-            // 创建交换链
-            m_Swapchain = std::make_unique<Swapchain>(m_DeviceContext.get(), m_Window, m_Surface);
-            m_Swapchain->Create();
+            // Swapchain will be created via VulkanDevice::CreateSwapchain() when needed
             
             CreateSyncObjects();
         }
@@ -59,7 +56,6 @@ namespace FirstEngine {
                 vkDestroySemaphore(m_Device, m_ImageAvailableSemaphore, nullptr);
             }
 
-            m_Swapchain.reset();
             m_DeviceContext.reset();
 
             if (m_CommandPool != VK_NULL_HANDLE) {
@@ -482,18 +478,16 @@ namespace FirstEngine {
         }
 
         void VulkanRenderer::OnWindowResize(int width, int height) {
-            if (width > 0 && height > 0) {
-                m_Swapchain->Recreate();
-            }
+            // Swapchain recreation is now handled via RHI::ISwapchain::Recreate()
+            // This method is kept for compatibility but does nothing
+            (void)width;
+            (void)height;
         }
 
         void VulkanRenderer::Present() {
-            uint32_t imageIndex;
-            if (m_Swapchain->AcquireNextImage(m_ImageAvailableSemaphore, VK_NULL_HANDLE, imageIndex)) {
-                // TODO: Record command buffer and submit here
-                // For now, just present
-                m_Swapchain->Present(imageIndex, m_RenderFinishedSemaphore);
-            }
+            // Present is now handled via RHI::ISwapchain::Present()
+            // This method is kept for compatibility but does nothing
+            // Application should use ISwapchain interface directly
         }
 
         void VulkanRenderer::WaitIdle() {

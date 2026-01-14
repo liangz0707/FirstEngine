@@ -1,14 +1,14 @@
 # Auto detect text files and perform line ending normalization
 * text=auto
 
-# Source files (Windows uses CRLF for C++ files with Visual Studio compiler)
+# Source files - use CRLF for Windows compatibility
 *.cpp text eol=crlf
 *.h text eol=crlf
 *.hpp text eol=crlf
 *.c text eol=crlf
 *.cmake text eol=crlf
 CMakeLists.txt text eol=crlf
-*.md text eol=lf
+*.md text eol=crlf
 *.txt text eol=crlf
 
 # Scripts

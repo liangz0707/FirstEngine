@@ -10,6 +10,7 @@
 #include "FirstEngine/RHI/IBuffer.h"          // Need complete definition of IBuffer
 #include "FirstEngine/RHI/IImage.h"            // Need complete definition of IImage and IImageView
 #include "FirstEngine/RHI/ISwapchain.h"        // Need complete definition of ISwapchain
+#include "FirstEngine/Core/Window.h"           // For Window in VulkanSwapchain
 #include "FirstEngine/RHI/IShaderModule.h"    // Need complete definition of IShaderModule
 #include "FirstEngine/Device/DeviceContext.h"
 #include <vulkan/vulkan.h>
@@ -139,6 +140,7 @@ namespace FirstEngine {
         class FE_DEVICE_API VulkanImage : public RHI::IImage {
         public:
             VulkanImage(DeviceContext* context, class Image* image);
+            VulkanImage(DeviceContext* context, VkImage image, VkFormat format); // For swapchain images
             ~VulkanImage() override;
 
             uint32_t GetWidth() const override;
@@ -152,17 +154,25 @@ namespace FirstEngine {
         private:
             DeviceContext* m_Context;
             std::unique_ptr<class Image> m_Image;
+            VkImage m_VkImage;  // For swapchain images (when m_Image is nullptr)
+            VkFormat m_VkFormat; // For swapchain images
             std::vector<std::unique_ptr<VulkanImageView>> m_ImageViews;
         };
 
         class FE_DEVICE_API VulkanSwapchain : public RHI::ISwapchain {
         public:
-            VulkanSwapchain(DeviceContext* context, class Swapchain* swapchain);
+            VulkanSwapchain(DeviceContext* context, Core::Window* window, VkSurfaceKHR surface);
             ~VulkanSwapchain() override;
 
             // Disable copy constructor and copy assignment operator
             VulkanSwapchain(const VulkanSwapchain&) = delete;
             VulkanSwapchain& operator=(const VulkanSwapchain&) = delete;
+
+            // Create swapchain
+            bool Create();
+
+            // Recreate swapchain (when window size changes)
+            bool Recreate();
 
             bool AcquireNextImage(RHI::SemaphoreHandle semaphore, RHI::FenceHandle fence, uint32_t& imageIndex) override;
             bool Present(uint32_t imageIndex, const std::vector<RHI::SemaphoreHandle>& waitSemaphores) override;
@@ -171,10 +181,26 @@ namespace FirstEngine {
             void GetExtent(uint32_t& width, uint32_t& height) const override;
             RHI::IImage* GetImage(uint32_t index) override;
 
+            VkSwapchainKHR GetVkSwapchain() const { return m_Swapchain; }
+
         private:
+            void CreateSwapchain();
+            void CreateImageViews();
+            void CleanupSwapchain();
+
+            VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+            VkPresentModeKHR ChooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+            VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
+
             DeviceContext* m_Context;
-            class Swapchain* m_Swapchain; // Raw pointer, owned by VulkanRenderer
-            std::vector<std::unique_ptr<VulkanImage>> m_Images;
+            Core::Window* m_Window;
+            VkSurfaceKHR m_Surface;
+            VkSwapchainKHR m_Swapchain;
+            VkFormat m_ImageFormat;
+            VkExtent2D m_Extent;
+            std::vector<VkImage> m_Images;
+            std::vector<VkImageView> m_ImageViews;
+            std::vector<std::unique_ptr<VulkanImage>> m_ImageWrappers;
         };
 
         class FE_DEVICE_API VulkanShaderModule : public RHI::IShaderModule {

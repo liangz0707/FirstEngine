@@ -94,6 +94,10 @@ namespace FirstEngine {
 
             virtual void WaitIdle() = 0;
 
+            // Fence operations
+            virtual void WaitForFence(FenceHandle fence, uint64_t timeout = UINT64_MAX) = 0;
+            virtual void ResetFence(FenceHandle fence) = 0;
+
             // Get queues
             virtual QueueHandle GetGraphicsQueue() const = 0;
             virtual QueueHandle GetPresentQueue() const = 0;
