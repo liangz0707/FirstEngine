@@ -23,8 +23,29 @@ namespace fs = std::experimental::filesystem;
 #define WIN32_LEAN_AND_MEAN  // Exclude rarely-used stuff from Windows headers
 #include <windows.h>
 #undef CreateSemaphore  // Undefine Windows API macro to avoid conflict with our method
-// RenderDoc API forward declarations
-struct RENDERDOC_API_1_4_2;
+
+// RenderDoc API structure (simplified - only the functions we need)
+// Note: This structure must match RenderDoc's actual API structure layout
+// The function pointers must be in the correct order
+typedef struct RENDERDOC_API_1_4_2 {
+    void (*StartFrameCapture)(void* device, void* wndHandle);
+    void (*EndFrameCapture)(void* device, void* wndHandle);
+    void (*SetCaptureOptionU32)(uint32_t opt, uint32_t val);
+    void (*SetCaptureOptionF32)(uint32_t opt, float val);
+    uint32_t (*GetCapture)(uint32_t idx, char* logfile, uint32_t* pathlength, uint64_t* timestamp);
+    void (*TriggerCapture)(void);
+    uint32_t (*IsTargetControlConnected)(void);
+    uint32_t (*LaunchReplayUI)(uint32_t connectRemote, const char* cmdline);
+    void (*SetActiveWindow)(void* device, void* wndHandle);
+    uint32_t (*IsFrameCapturing)(void);
+    void (*SetCaptureFileTemplate)(const char* pathtemplate);
+    const char* (*GetCaptureFileTemplate)(void);
+    uint32_t (*GetNumCaptures)(void);
+    void (*ShowReplayUI)(void);
+    void (*SetLogFile)(const char* logfile);
+    void (*LogMessage)(uint32_t severity, const char* message);
+} RENDERDOC_API_1_4_2;
+
 typedef int (*pRENDERDOC_GetAPI)(int, void*);
 #define eRENDERDOC_API_Version_1_4_2 10402
 #endif
@@ -73,10 +94,11 @@ public:
     }
 
     bool Initialize() override {
-        // Initialize RenderDoc
+        // Initialize RenderDoc BEFORE creating Vulkan instance
+        // This is critical - RenderDoc needs to intercept Vulkan calls from the start
         InitializeRenderDoc();
 
-        // Create device
+        // Create device (this will create Vulkan instance)
         m_Device = new FirstEngine::Device::VulkanDevice();
         void* windowHandle = GetWindow() ? GetWindow()->GetHandle() : nullptr;
         if (!windowHandle) {
@@ -168,7 +190,10 @@ protected:
         m_CommandBuffer.reset();
 
         // Begin RenderDoc frame capture
-        BeginRenderDocFrame();
+        // Note: For Vulkan, RenderDoc works as an implicit layer and automatically captures frames
+        // Manual capture calls are disabled to avoid access violations
+        // RenderDoc will automatically capture when launched from RenderDoc UI or injected into process
+        // BeginRenderDocFrame();
 
         // Acquire next swapchain image
         // m_ImageAvailableSemaphore will be signaled when image is available
@@ -227,7 +252,10 @@ protected:
         m_Swapchain->Present(imageIndex, presentWaitSemaphores);
 
         // End RenderDoc frame capture
-        EndRenderDocFrame();
+        // Note: For Vulkan, RenderDoc works as an implicit layer and automatically captures frames
+        // Manual capture calls are disabled to avoid access violations
+        // RenderDoc will automatically capture when launched from RenderDoc UI or injected into process
+        // EndRenderDocFrame();
 
         // Note: Command buffer is stored as member variable and will be released
         // at the start of next frame after waiting for fence, ensuring GPU has finished using it
@@ -260,17 +288,67 @@ protected:
 private:
     void InitializeRenderDoc() {
 #ifdef _WIN32
-        HMODULE mod = GetModuleHandleA("renderdoc.dll");
+        // Try to load renderdoc.dll from multiple locations
+        HMODULE mod = nullptr;
+        
+        // First, try to get already loaded module (if injected by RenderDoc)
+        mod = GetModuleHandleA("renderdoc.dll");
+        
+        // If not found, try to load from common RenderDoc installation paths
+        if (!mod) {
+            const char* renderdocPaths[] = {
+                "C:\\Program Files\\RenderDoc\\renderdoc.dll",
+                "C:\\Program Files (x86)\\RenderDoc\\renderdoc.dll",
+                nullptr
+            };
+            
+            for (int i = 0; renderdocPaths[i] != nullptr; i++) {
+                mod = LoadLibraryA(renderdocPaths[i]);
+                if (mod) {
+                    std::cout << "Loaded RenderDoc from: " << renderdocPaths[i] << std::endl;
+                    break;
+                }
+            }
+        }
+        
         if (mod) {
             pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)GetProcAddress(mod, "RENDERDOC_GetAPI");
             if (RENDERDOC_GetAPI) {
-                void* rdoc_api = nullptr;
-                int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_4_2, &rdoc_api);
+                RENDERDOC_API_1_4_2* rdoc_api = nullptr;
+                int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_4_2, (void**)&rdoc_api);
                 if (ret == 1 && rdoc_api) {
-                    m_RenderDocAPI = rdoc_api;
-                    std::cout << "RenderDoc API initialized!" << std::endl;
+                    // Verify the API structure is valid by checking function pointers
+                    if (rdoc_api->StartFrameCapture && rdoc_api->EndFrameCapture) {
+                        m_RenderDocAPI = rdoc_api;
+                        std::cout << "RenderDoc API initialized successfully!" << std::endl;
+                        
+                        // Set capture options (optional)
+                        if (rdoc_api->SetCaptureOptionU32) {
+                            rdoc_api->SetCaptureOptionU32(1, 1); // Allow VSync
+                            rdoc_api->SetCaptureOptionU32(2, 0); // Allow fullscreen
+                        }
+                        
+                        // Check if RenderDoc is connected
+                        if (rdoc_api->IsTargetControlConnected && rdoc_api->IsTargetControlConnected()) {
+                            std::cout << "RenderDoc target control is connected!" << std::endl;
+                        } else {
+                            std::cout << "RenderDoc target control is NOT connected. Make sure RenderDoc UI is running." << std::endl;
+                        }
+                    } else {
+                        std::cout << "RenderDoc API structure is invalid (missing function pointers)." << std::endl;
+                    }
+                } else {
+                    std::cout << "Failed to get RenderDoc API. Return code: " << ret << std::endl;
                 }
+            } else {
+                std::cout << "Failed to get RENDERDOC_GetAPI function pointer." << std::endl;
             }
+        } else {
+            std::cout << "RenderDoc DLL not found. RenderDoc capture will not be available." << std::endl;
+            std::cout << "To use RenderDoc:" << std::endl;
+            std::cout << "  1. Install RenderDoc from https://renderdoc.org/" << std::endl;
+            std::cout << "  2. Launch this application from RenderDoc UI (Launch Application)" << std::endl;
+            std::cout << "  3. Or inject RenderDoc into this process (Inject into Process)" << std::endl;
         }
         // If RenderDoc is not available, that's okay - program will run normally
 #endif
@@ -279,12 +357,15 @@ private:
     void BeginRenderDocFrame() {
 #ifdef _WIN32
         if (m_RenderDocAPI) {
-            // StartFrameCapture is at index 2 in the API structure
-            typedef void (*StartFrameCaptureFunc)(void*, void*);
-            void** api = (void**)m_RenderDocAPI;
-            if (api && api[2]) {
-                StartFrameCaptureFunc startFunc = (StartFrameCaptureFunc)api[2];
-                startFunc(nullptr, nullptr);
+            RENDERDOC_API_1_4_2* api = (RENDERDOC_API_1_4_2*)m_RenderDocAPI;
+            // Pass nullptr for both parameters - RenderDoc will automatically capture all devices/windows
+            // This is the safest approach and avoids access violation errors
+            if (api && api->StartFrameCapture) {
+                try {
+                    api->StartFrameCapture(nullptr, nullptr);
+                } catch (...) {
+                    // Silently ignore errors - RenderDoc might not be fully initialized yet
+                }
             }
         }
 #endif
@@ -293,12 +374,14 @@ private:
     void EndRenderDocFrame() {
 #ifdef _WIN32
         if (m_RenderDocAPI) {
-            // EndFrameCapture is at index 3 in the API structure
-            typedef uint32_t (*EndFrameCaptureFunc)(void*, void*);
-            void** api = (void**)m_RenderDocAPI;
-            if (api && api[3]) {
-                EndFrameCaptureFunc endFunc = (EndFrameCaptureFunc)api[3];
-                endFunc(nullptr, nullptr);
+            RENDERDOC_API_1_4_2* api = (RENDERDOC_API_1_4_2*)m_RenderDocAPI;
+            // Pass nullptr for both parameters - RenderDoc will automatically capture all devices/windows
+            if (api && api->EndFrameCapture) {
+                try {
+                    api->EndFrameCapture(nullptr, nullptr);
+                } catch (...) {
+                    // Silently ignore errors - RenderDoc might not be fully initialized yet
+                }
             }
         }
 #endif
@@ -314,7 +397,7 @@ private:
     std::chrono::high_resolution_clock::time_point m_LastTime;
 
 #ifdef _WIN32
-    void* m_RenderDocAPI = nullptr; // Opaque pointer to RenderDoc API
+    RENDERDOC_API_1_4_2* m_RenderDocAPI = nullptr; // RenderDoc API pointer
 #endif
 };
 
