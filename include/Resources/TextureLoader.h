@@ -6,7 +6,7 @@
 
 namespace FirstEngine {
     namespace Resources {
-        struct FE_RESOURCES_API Texture {
+        FE_RESOURCES_API struct Texture {
             VkImage image;
             VkImageView imageView;
             VkDeviceMemory imageMemory;

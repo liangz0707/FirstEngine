@@ -1,6 +1,6 @@
 #include "FirstEngine/Device/VulkanRenderer.h"
 #include "FirstEngine/Device/Swapchain.h"
-#include "FirstEngine/Device/Pipeline.h"
+#include "FirstEngine/Device/DeviceContext.h"
 #include <iostream>
 #include <stdexcept>
 #include <set>
@@ -26,8 +26,16 @@ namespace FirstEngine {
             CreateLogicalDevice();
             CreateCommandPool();
             
-            m_Swapchain = std::make_unique<Swapchain>(this);
-            m_Pipeline = std::make_unique<Pipeline>(this);
+            // 创建设备上下文
+            m_DeviceContext = std::make_unique<DeviceContext>(
+                m_Instance, m_Device, m_PhysicalDevice,
+                m_GraphicsQueue, m_PresentQueue, m_CommandPool,
+                m_GraphicsQueueFamily, m_PresentQueueFamily
+            );
+            
+            // 创建交换链
+            m_Swapchain = std::make_unique<Swapchain>(m_DeviceContext.get(), m_Window, m_Surface);
+            m_Swapchain->Create();
             
             CreateSyncObjects();
         }
@@ -45,8 +53,8 @@ namespace FirstEngine {
                 vkDestroySemaphore(m_Device, m_ImageAvailableSemaphore, nullptr);
             }
 
-            m_Pipeline.reset();
             m_Swapchain.reset();
+            m_DeviceContext.reset();
 
             if (m_CommandPool != VK_NULL_HANDLE) {
                 vkDestroyCommandPool(m_Device, m_CommandPool, nullptr);
@@ -287,7 +295,12 @@ namespace FirstEngine {
         }
 
         void VulkanRenderer::Present() {
-            m_Swapchain->Present(m_ImageAvailableSemaphore, m_RenderFinishedSemaphore, m_InFlightFence);
+            uint32_t imageIndex;
+            if (m_Swapchain->AcquireNextImage(m_ImageAvailableSemaphore, VK_NULL_HANDLE, imageIndex)) {
+                // TODO: Record command buffer and submit here
+                // For now, just present
+                m_Swapchain->Present(imageIndex, m_RenderFinishedSemaphore);
+            }
         }
 
         void VulkanRenderer::WaitIdle() {

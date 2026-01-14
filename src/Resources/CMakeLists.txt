@@ -24,9 +24,18 @@ set(RESOURCES_SOURCES
     ModelLoader.cpp
 )
 
+# Header files (add to project so they show up in Visual Studio)
+set(RESOURCES_HEADERS
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/Export.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ImageLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ModelLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/TextureLoader.h
+)
+
 # Create shared library
 add_library(FirstEngine_Resources SHARED
     ${RESOURCES_SOURCES}
+    ${RESOURCES_HEADERS}
 )
 
 # Include directories

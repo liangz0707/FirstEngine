@@ -21,16 +21,16 @@ int main() {
     std::cout << "\n[1] 从C++调用Python函数（基本类型）" << std::endl;
     try {
         // 执行Python代码定义函数
-        engine.ExecuteString(R"(
-def python_add(a, b):
-    return a + b
-
-def python_multiply(a, b):
-    return a * b
-
-def python_hello(name):
-    return f"Hello, {name}!"
-)");
+        engine.ExecuteString(
+            "def python_add(a, b):\n"
+            "    return a + b\n"
+            "\n"
+            "def python_multiply(a, b):\n"
+            "    return a * b\n"
+            "\n"
+            "def python_hello(name):\n"
+            "    return 'Hello, ' + name + '!'\n"
+        );
         
         // 调用Python函数 - 使用pybind11直接调用
         py::module_ main = py::module_::import("__main__");
@@ -54,18 +54,18 @@ def python_hello(name):
     
     std::cout << "\n[2] 从C++调用Python函数（容器类型）" << std::endl;
     try {
-        engine.ExecuteString(R"(
-def python_process_list(numbers):
-    return [x * 2 for x in numbers]
-
-def python_process_dict(data):
-    result = {}
-    for key, value in data.items():
-        result[key] = value * 10
-    return result
-)");
+        engine.ExecuteString(
+            "def python_process_list(numbers):\n"
+            "    return [x * 2 for x in numbers]\n"
+            "\n"
+            "def python_process_dict(data):\n"
+            "    result = {}\n"
+            "    for key, value in data.items():\n"
+            "        result[key] = value * 10\n"
+            "    return result\n"
+        );
         
-        // 调用处理列表的函数
+       
         std::vector<int> input_list = {1, 2, 3, 4, 5};
         py::module_ main = py::module_::import("__main__");
         py::object process_list_func = main.attr("python_process_list");
@@ -79,7 +79,6 @@ def python_process_dict(data):
         }
         std::cout << "]" << std::endl;
         
-        // 调用处理字典的函数
         std::map<std::string, int> input_map = {{"a", 1}, {"b", 2}, {"c", 3}};
         py::object process_dict_func = main.attr("python_process_dict");
         result = process_dict_func(input_map);
@@ -97,37 +96,36 @@ def python_process_dict(data):
         std::cerr << "  Error: " << e.what() << std::endl;
     }
     
-    std::cout << "\n[3] 从Python调用C++函数（需要先导入模块）" << std::endl;
+    std::cout << "\n[3] Call C++ from Python (need to import module first)" << std::endl;
     try {
         // 注意：在实际使用中，firstengine模块需要先编译并安装
         // 这里演示如何从Python调用C++函数
-        engine.ExecuteString(
+        std::string python_code = 
             "# 如果firstengine模块已编译，可以这样使用：\n"
             "# import firstengine\n"
             "# result = firstengine.add(10, 20)\n"
-            "# print(f'C++ add(10, 20) = {result}')\n"
+            "# print('C++ add(10, 20) =', result)\n"
             "# \n"
             "# v1 = firstengine.Vector3(1, 2, 3)\n"
             "# v2 = firstengine.Vector3(4, 5, 6)\n"
             "# v3 = firstengine.add_vectors(v1, v2)\n"
-            "# print(f'Vector3 addition: {v3}')\n"
+            "# print('Vector3 addition:', v3)\n"
             "\n"
-            "print('  (需要先编译firstengine模块才能从Python调用C++函数)')\n"
-        );
+            "print('  (需要先编译firstengine模块才能从Python调用C++函数)')\n";
+        engine.ExecuteString(python_code);
     } catch (const std::exception& e) {
         std::cerr << "  Error: " << e.what() << std::endl;
     }
     
     std::cout << "\n[4] Python回调函数示例" << std::endl;
     try {
-        engine.ExecuteString(R"(
-def python_callback(x):
-    return x * x + 1
-
-# 这个回调函数可以被C++调用
-)");
+        engine.ExecuteString(
+            "def python_callback(x):\n"
+            "    return x * x + 1\n"
+            "\n"
+            "# 这个回调函数可以被C++调用\n"
+        );
         
-        // 从C++获取Python函数并调用
         py::module_ main = py::module_::import("__main__");
         py::object callback = main.attr("python_callback");
         

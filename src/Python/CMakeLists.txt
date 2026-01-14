@@ -96,6 +96,13 @@ set(PYTHON_SOURCES
     Bindings.cpp
 )
 
+# Header files (add to project so they show up in Visual Studio)
+set(PYTHON_HEADERS
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Python/Export.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Python/Bindings.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Python/PythonEngine.h
+)
+
 # Python扩展模块（用于从Python调用C++）
 if(Python3_FOUND)
     # 使用标准方式创建Python扩展模块
@@ -143,6 +150,7 @@ endif()
 # Create shared library
 add_library(FirstEngine_Python SHARED
     ${PYTHON_SOURCES}
+    ${PYTHON_HEADERS}
 )
 
 # Link Bindings

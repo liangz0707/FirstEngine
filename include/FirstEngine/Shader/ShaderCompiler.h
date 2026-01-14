@@ -16,7 +16,7 @@ namespace FirstEngine {
         };
 
         // Shader resource information (from AST)
-        struct FE_SHADER_API ShaderResource {
+        FE_SHADER_API struct ShaderResource {
             std::string name;
             uint32_t id;
             uint32_t type_id;
@@ -32,7 +32,7 @@ namespace FirstEngine {
         };
 
         // Uniform buffer information
-        struct FE_SHADER_API UniformBuffer {
+        FE_SHADER_API struct UniformBuffer {
             std::string name;
             uint32_t id;
             uint32_t set;
@@ -42,7 +42,7 @@ namespace FirstEngine {
         };
 
         // Shader reflection data (AST-based)
-        struct FE_SHADER_API ShaderReflection {
+        FE_SHADER_API struct ShaderReflection {
             ShaderLanguage language;
             std::vector<UniformBuffer> uniform_buffers;
             std::vector<ShaderResource> samplers;

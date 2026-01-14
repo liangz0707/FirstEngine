@@ -10,7 +10,7 @@
 namespace FirstEngine {
     namespace Device {
         class Swapchain;
-        class Pipeline;
+        class DeviceContext;
 
         class FE_DEVICE_API VulkanRenderer {
         public:
@@ -32,6 +32,7 @@ namespace FirstEngine {
             uint32_t GetGraphicsQueueFamily() const { return m_GraphicsQueueFamily; }
             uint32_t GetPresentQueueFamily() const { return m_PresentQueueFamily; }
             Swapchain* GetSwapchain() const { return m_Swapchain.get(); }
+            DeviceContext* GetDeviceContext() const { return m_DeviceContext.get(); }
 
         private:
             void CreateInstance();
@@ -57,8 +58,8 @@ namespace FirstEngine {
             uint32_t m_PresentQueueFamily;
             VkSurfaceKHR m_Surface;
 
+            std::unique_ptr<DeviceContext> m_DeviceContext;
             std::unique_ptr<Swapchain> m_Swapchain;
-            std::unique_ptr<Pipeline> m_Pipeline;
 
             VkSemaphore m_ImageAvailableSemaphore;
             VkSemaphore m_RenderFinishedSemaphore;

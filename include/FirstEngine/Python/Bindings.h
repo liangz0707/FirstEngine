@@ -11,7 +11,7 @@
 namespace FirstEngine {
     namespace Python {
 
-        // 示例C++类 - 用于演示Python绑定
+        // Example C++ class - for demonstrating Python bindings
         class FE_PYTHON_API Vector3 {
         public:
             Vector3();
@@ -36,21 +36,21 @@ namespace FirstEngine {
             float m_X, m_Y, m_Z;
         };
 
-        // 示例C++函数 - 基本类型
+        // Example C++ functions - basic types
         FE_PYTHON_API int Add(int a, int b);
         FE_PYTHON_API float Multiply(float a, float b);
         FE_PYTHON_API std::string Concatenate(const std::string& a, const std::string& b);
         
-        // 示例C++函数 - 容器类型
+        // Example C++ functions - container types
         FE_PYTHON_API std::vector<int> ProcessIntVector(const std::vector<int>& input);
         FE_PYTHON_API std::vector<float> ProcessFloatVector(const std::vector<float>& input);
         FE_PYTHON_API std::map<std::string, int> ProcessMap(const std::map<std::string, int>& input);
         
-        // 示例C++函数 - 自定义类型
+        // Example C++ functions - custom types
         FE_PYTHON_API Vector3 AddVectors(const Vector3& a, const Vector3& b);
         FE_PYTHON_API float CalculateDistance(const Vector3& a, const Vector3& b);
         
-        // 示例C++函数 - 混合类型
+        // Example C++ functions - mixed types
         FE_PYTHON_API std::string ProcessData(
             int id,
             float value,
@@ -59,13 +59,13 @@ namespace FirstEngine {
             const Vector3& position
         );
         
-        // 示例C++函数 - 返回多个值（使用tuple）
+        // Example C++ functions - return multiple values (using tuple)
         FE_PYTHON_API std::tuple<int, float, std::string> GetMultipleValues();
         
-        // 示例C++函数 - 可选参数
+        // Example C++ functions - optional parameters
         FE_PYTHON_API int SumWithDefault(int a, int b = 10, int c = 20);
         
-        // 示例C++函数 - 回调函数（从Python接收函数）
+        // Example C++ functions - callback functions (receive functions from Python)
         FE_PYTHON_API int CallPythonFunction(int value, std::function<int(int)> callback);
 
     } // namespace Python

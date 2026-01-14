@@ -11,22 +11,22 @@ namespace FirstEngine {
             PythonEngine();
             ~PythonEngine();
 
-            // 初始化Python解释器
+            // Initialize Python interpreter
             bool Initialize();
             
-            // 关闭Python解释器
+            // Shutdown Python interpreter
             void Shutdown();
 
-            // 执行Python脚本文件
+            // Execute Python script file
             bool ExecuteFile(const std::string& filepath);
 
-            // 执行Python代码字符串
+            // Execute Python code string
             bool ExecuteString(const std::string& code);
 
-            // 检查Python是否已初始化
+            // Check if Python is initialized
             bool IsInitialized() const;
 
-            // 获取错误信息
+            // Get error message
             std::string GetLastError() const;
 
         private:

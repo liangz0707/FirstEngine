@@ -7,25 +7,25 @@
 
 namespace FirstEngine {
     namespace Resources {
-        struct FE_RESOURCES_API Vertex {
+        FE_RESOURCES_API struct Vertex {
             glm::vec3 position;
             glm::vec3 normal;
             glm::vec2 texCoord;
         };
 
-        struct FE_RESOURCES_API Mesh {
+        FE_RESOURCES_API struct Mesh {
             std::vector<Vertex> vertices;
             std::vector<uint32_t> indices;
             std::string materialName;
         };
 
-        struct FE_RESOURCES_API Bone {
+        FE_RESOURCES_API struct Bone {
             std::string name;
             glm::mat4 offsetMatrix;
             int parentIndex;
         };
 
-        struct FE_RESOURCES_API Model {
+        FE_RESOURCES_API struct Model {
             std::vector<Mesh> meshes;
             std::vector<Bone> bones;
             std::string name;
@@ -33,13 +33,10 @@ namespace FirstEngine {
 
         class FE_RESOURCES_API ModelLoader {
         public:
-            // 从文件加载模型
             static Model LoadFromFile(const std::string& filepath);
 
-            // 支持的格式
             static bool IsFormatSupported(const std::string& filepath);
 
-            // 获取支持的格式列表
             static std::vector<std::string> GetSupportedFormats();
         };
     }

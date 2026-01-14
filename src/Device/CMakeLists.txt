@@ -10,14 +10,38 @@ endif()
 # Source files
 set(DEVICE_SOURCES
     VulkanRenderer.cpp
+    VulkanDevice.cpp
+    VulkanRHIWrappers.cpp
     Swapchain.cpp
     Pipeline.cpp
     ShaderModule.cpp
+    DeviceContext.cpp
+    MemoryManager.cpp
+    RenderPass.cpp
+    RenderTarget.cpp
+    Framebuffer.cpp
+)
+
+# Header files (add to project so they show up in Visual Studio)
+set(DEVICE_HEADERS
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/Export.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/DeviceContext.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/Framebuffer.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/MemoryManager.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/Pipeline.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/RenderPass.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/RenderTarget.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/ShaderModule.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/Swapchain.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/VulkanDevice.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/VulkanRenderer.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/VulkanRHIWrappers.h
 )
 
 # Create shared library
 add_library(FirstEngine_Device SHARED
     ${DEVICE_SOURCES}
+    ${DEVICE_HEADERS}
 )
 
 # Include directories
@@ -35,6 +59,7 @@ target_link_libraries(FirstEngine_Device
         FirstEngine_Core
         FirstEngine_Shader
         FirstEngine_Resources
+        FirstEngine_RHI
         ${Vulkan_LIBRARIES}
 )
 
@@ -63,11 +88,19 @@ else()
     target_compile_options(FirstEngine_Device PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-# Set library output name
+# Set library output name and directories
+# Enable Windows export all symbols to ensure import library is generated
 set_target_properties(FirstEngine_Device PROPERTIES
     OUTPUT_NAME "FirstEngine_Device"
     VERSION ${PROJECT_VERSION}
     FOLDER "FirstEngine"  # Organize in Visual Studio solution
+    ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib/Debug
+    ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib/Release
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/bin/Debug
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin/Release
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    WINDOWS_EXPORT_ALL_SYMBOLS TRUE
 )
 
 # Copy DLL to bin directory on Windows

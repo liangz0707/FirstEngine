@@ -10,6 +10,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
+# Set debug postfix for Windows (Debug configuration will append 'd' to library names)
+if(WIN32)
+    set(CMAKE_DEBUG_POSTFIX "d")
+endif()
+
 # Find required packages
 # Try to find GLFW3 - support multiple methods
 find_package(glfw3 QUIET)
@@ -60,10 +65,14 @@ endif()
 # Core modules (FirstEngine自己的模块)
 add_subdirectory(src/Shader)
 add_subdirectory(src/Resources)
-add_subdirectory(src/Device)
 add_subdirectory(src/Core)
 add_subdirectory(src/Python)
 add_subdirectory(src/Application)
+
+# Graphics modules (图形相关模块)
+add_subdirectory(src/RHI)
+add_subdirectory(src/Device)
+add_subdirectory(src/Renderer)
 
 # Tools (工具项目)
 add_subdirectory(src/Tools/ShaderManager)

@@ -13,7 +13,6 @@ namespace FirstEngine {
 
             Assimp::Importer importer;
 
-            // 导入模型，应用各种后处理
             const aiScene* scene = importer.ReadFile(
                 filepath,
                 aiProcess_Triangulate |
@@ -26,23 +25,19 @@ namespace FirstEngine {
                 throw std::runtime_error("Failed to load model: " + filepath + " - " + importer.GetErrorString());
             }
 
-            // 处理网格
             for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
                 aiMesh* aiMesh = scene->mMeshes[i];
                 Mesh mesh;
 
-                // 处理顶点
                 for (unsigned int j = 0; j < aiMesh->mNumVertices; j++) {
                     Vertex vertex;
 
-                    // 位置
                     vertex.position = glm::vec3(
                         aiMesh->mVertices[j].x,
                         aiMesh->mVertices[j].y,
                         aiMesh->mVertices[j].z
                     );
 
-                    // 法线
                     if (aiMesh->mNormals) {
                         vertex.normal = glm::vec3(
                             aiMesh->mNormals[j].x,
@@ -51,7 +46,6 @@ namespace FirstEngine {
                         );
                     }
 
-                    // 纹理坐标
                     if (aiMesh->mTextureCoords[0]) {
                         vertex.texCoord = glm::vec2(
                             aiMesh->mTextureCoords[0][j].x,
@@ -62,7 +56,6 @@ namespace FirstEngine {
                     mesh.vertices.push_back(vertex);
                 }
 
-                // 处理索引
                 for (unsigned int j = 0; j < aiMesh->mNumFaces; j++) {
                     aiFace face = aiMesh->mFaces[j];
                     for (unsigned int k = 0; k < face.mNumIndices; k++) {
@@ -70,7 +63,6 @@ namespace FirstEngine {
                     }
                 }
 
-                // 材质名称
                 if (aiMesh->mMaterialIndex >= 0) {
                     aiMaterial* material = scene->mMaterials[aiMesh->mMaterialIndex];
                     aiString matName;
@@ -81,8 +73,8 @@ namespace FirstEngine {
                 model.meshes.push_back(mesh);
             }
 
-            // 处理骨骼信息
-            // 注意：这是一个简化版本，完整的骨骼动画需要更复杂的处理
+            // Process bone information
+            // Note: This is a simplified version, complete skeletal animation requires more complex processing
             for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
                 aiMesh* aiMesh = scene->mMeshes[i];
                 if (aiMesh->mBones) {
@@ -91,7 +83,7 @@ namespace FirstEngine {
                         Bone bone;
                         bone.name = aiBone->mName.C_Str();
 
-                        // 转换偏移矩阵
+                        // Convert offset matrix
                         aiMatrix4x4 offsetMatrix = aiBone->mOffsetMatrix;
                         bone.offsetMatrix = glm::mat4(
                             offsetMatrix.a1, offsetMatrix.b1, offsetMatrix.c1, offsetMatrix.d1,
@@ -100,7 +92,7 @@ namespace FirstEngine {
                             offsetMatrix.a4, offsetMatrix.b4, offsetMatrix.c4, offsetMatrix.d4
                         );
 
-                        bone.parentIndex = -1; // 需要从场景图中确定
+                        bone.parentIndex = -1; // Need to determine from scene graph
                         model.bones.push_back(bone);
                     }
                 }

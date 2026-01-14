@@ -26,10 +26,18 @@ set(SHADER_SOURCES
     ShaderSourceCompiler.cpp
 )
 
+# Header files (add to project so they show up in Visual Studio)
+set(SHADER_HEADERS
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Shader/Export.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Shader/ShaderCompiler.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Shader/ShaderLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Shader/ShaderSourceCompiler.h
+)
+
 # Create shared library
 add_library(FirstEngine_Shader SHARED
     ${SHADER_SOURCES}
-    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Export.h
+    ${SHADER_HEADERS}
 )
 
 # Include directories

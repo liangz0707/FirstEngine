@@ -72,51 +72,15 @@ namespace FirstEngine {
                     return false;
                 }
             }
-            
-            // 调用Python函数（返回Python对象）
-            bool CallFunction(const std::string& moduleName, const std::string& functionName, 
-                            py::object& result) {
-                if (!m_Initialized) {
-                    m_LastError = "Python interpreter not initialized";
-                    return false;
-                }
-                
-                try {
-                    py::module_ module = py::module_::import(moduleName.c_str());
-                    py::object func = module.attr(functionName.c_str());
-                    result = func();
-                    return true;
-                } catch (const std::exception& e) {
-                    m_LastError = e.what();
-                    return false;
-                }
-            }
-            
-            template<typename... Args>
-            bool CallFunction(const std::string& moduleName, const std::string& functionName, 
-                            py::object& result, Args... args) {
-                if (!m_Initialized) {
-                    m_LastError = "Python interpreter not initialized";
-                    return false;
-                }
-                
-                try {
-                    py::module_ module = py::module_::import(moduleName.c_str());
-                    py::object func = module.attr(functionName.c_str());
-                    result = func(args...);
-                    return true;
-                } catch (const std::exception& e) {
-                    m_LastError = e.what();
-                    return false;
-                }
-            }
         };
 
         PythonEngine::PythonEngine() : m_Impl(std::make_unique<Impl>()) {
         }
 
         PythonEngine::~PythonEngine() {
-            Shutdown();
+            if (m_Impl) {
+                m_Impl->Shutdown();
+            }
         }
 
         bool PythonEngine::Initialize() {

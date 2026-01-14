@@ -7,7 +7,7 @@
 
 namespace FirstEngine {
     namespace Resources {
-        struct FE_RESOURCES_API ImageData {
+        FE_RESOURCES_API struct ImageData {
             std::vector<uint8_t> data;
             uint32_t width;
             uint32_t height;
@@ -15,7 +15,7 @@ namespace FirstEngine {
             bool hasAlpha;
         };
 
-        enum class FE_RESOURCES_API ImageFormat {
+        FE_RESOURCES_API enum class ImageFormat {
             JPEG,
             PNG,
             BMP,
@@ -28,17 +28,13 @@ namespace FirstEngine {
 
         class FE_RESOURCES_API ImageLoader {
         public:
-            // 从文件加载图像
             static ImageData LoadFromFile(const std::string& filepath);
 
-            // 从内存加载图像
             static ImageData LoadFromMemory(const uint8_t* data, size_t size);
 
-            // 检测图像格式
             static ImageFormat DetectFormat(const std::string& filepath);
             static ImageFormat DetectFormat(const uint8_t* data, size_t size);
 
-            // 释放图像数据
             static void FreeImageData(ImageData& imageData);
         };
     }

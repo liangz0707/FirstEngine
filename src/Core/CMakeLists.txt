@@ -10,11 +10,21 @@ endif()
 # Source files
 set(CORE_SOURCES
     Window.cpp
+    CommandLine.cpp
+)
+
+# Header files (add to project so they show up in Visual Studio)
+set(CORE_HEADERS
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Export.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Application.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/CommandLine.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Window.h
 )
 
 # Create shared library
 add_library(FirstEngine_Core SHARED
     ${CORE_SOURCES}
+    ${CORE_HEADERS}
 )
 
 # Include directories

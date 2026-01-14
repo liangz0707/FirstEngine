@@ -1,47 +1,54 @@
 #include "FirstEngine/Device/ShaderModule.h"
+#include "FirstEngine/Device/DeviceContext.h"
+#include "FirstEngine/Shader/ShaderLoader.h"
 #include <fstream>
 #include <stdexcept>
 
 namespace FirstEngine {
     namespace Device {
-        VkShaderModule ShaderModule::Create(VkDevice device, const std::vector<uint32_t>& spirv_code) {
+
+        ShaderModule::ShaderModule(DeviceContext* context)
+            : m_Context(context), m_ShaderModule(VK_NULL_HANDLE),
+              m_Stage(VK_SHADER_STAGE_VERTEX_BIT) {
+        }
+
+        ShaderModule::~ShaderModule() {
+            Destroy();
+        }
+
+        bool ShaderModule::Create(const std::vector<uint32_t>& spirvCode) {
+            if (spirvCode.empty()) {
+                return false;
+            }
+
             VkShaderModuleCreateInfo createInfo{};
             createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-            createInfo.codeSize = spirv_code.size() * sizeof(uint32_t);
-            createInfo.pCode = spirv_code.data();
+            createInfo.codeSize = spirvCode.size() * sizeof(uint32_t);
+            createInfo.pCode = spirvCode.data();
 
-            VkShaderModule shaderModule;
-            if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-                throw std::runtime_error("Failed to create shader module!");
+            if (vkCreateShaderModule(m_Context->GetDevice(), &createInfo, nullptr, &m_ShaderModule) != VK_SUCCESS) {
+                return false;
             }
 
-            return shaderModule;
+            return true;
         }
-        
-        VkShaderModule ShaderModule::CreateFromFile(VkDevice device, const std::string& filepath) {
-            std::ifstream file(filepath, std::ios::ate | std::ios::binary);
-            
-            if (!file.is_open()) {
-                throw std::runtime_error("Failed to open shader file: " + filepath);
+
+        bool ShaderModule::CreateFromFile(const std::string& filepath) {
+            // 使用ShaderLoader加载SPIR-V文件
+            auto spirvCode = FirstEngine::Shader::ShaderLoader::LoadSPIRVFromFile(filepath);
+            if (spirvCode.empty()) {
+                return false;
             }
-            
-            size_t fileSize = (size_t)file.tellg();
-            if (fileSize % 4 != 0) {
-                throw std::runtime_error("SPIR-V file size must be a multiple of 4 bytes");
-            }
-            
-            std::vector<uint32_t> buffer(fileSize / 4);
-            file.seekg(0);
-            file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
-            file.close();
-            
-            return Create(device, buffer);
+
+            return Create(spirvCode);
         }
-        
-        void ShaderModule::Destroy(VkDevice device, VkShaderModule shaderModule) {
-            if (shaderModule != VK_NULL_HANDLE) {
-                vkDestroyShaderModule(device, shaderModule, nullptr);
+
+        void ShaderModule::Destroy() {
+            if (m_ShaderModule != VK_NULL_HANDLE) {
+                vkDestroyShaderModule(m_Context->GetDevice(), m_ShaderModule, nullptr);
+                m_ShaderModule = VK_NULL_HANDLE;
             }
         }
-    }
-}
+
+    } // namespace Device
+} // namespace FirstEngine

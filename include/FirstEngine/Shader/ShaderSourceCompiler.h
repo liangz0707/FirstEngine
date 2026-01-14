@@ -21,7 +21,7 @@ namespace FirstEngine {
             Compute
         };
         
-        struct FE_SHADER_API CompileOptions {
+        FE_SHADER_API struct CompileOptions {
             // Shader stage
             ShaderStage stage = ShaderStage::Vertex;
             
@@ -47,7 +47,7 @@ namespace FirstEngine {
             std::string target_profile; // e.g., "vs_6_0", "ps_6_0"
         };
         
-        struct FE_SHADER_API CompileResult {
+        FE_SHADER_API struct CompileResult {
             bool success = false;
             std::vector<uint32_t> spirv_code; // Compiled SPIR-V bytecode
             std::string error_message;

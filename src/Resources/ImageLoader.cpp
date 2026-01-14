@@ -4,16 +4,17 @@
 #include <vector>
 #include <cstring>
 
-// 使用stb_image进行图像加载
+// Use stb_image for image loading
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 
-// 使用stb_image_write进行图像保存（可选）
+// Use stb_image_write for image saving (optional)
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
 
 namespace FirstEngine {
     namespace Resources {
+
         ImageData ImageLoader::LoadFromFile(const std::string& filepath) {
             ImageData result{};
             result.width = 0;
@@ -33,12 +34,12 @@ namespace FirstEngine {
             result.channels = static_cast<uint32_t>(channels);
             result.hasAlpha = (channels == 4);
 
-            // 复制数据
+            // Copy data
             size_t dataSize = width * height * channels;
             result.data.resize(dataSize);
             std::memcpy(result.data.data(), data, dataSize);
 
-            // 释放stb_image分配的内存
+            // Free memory allocated by stb_image
             stbi_image_free(data);
 
             return result;
@@ -64,12 +65,11 @@ namespace FirstEngine {
             result.channels = static_cast<uint32_t>(channels);
             result.hasAlpha = (channels == 4);
 
-            // 复制数据
+            // Copy data
             size_t dataSize = width * height * channels;
             result.data.resize(dataSize);
             std::memcpy(result.data.data(), imageData, dataSize);
 
-            // 释放stb_image分配的内存
             stbi_image_free(imageData);
 
             return result;
@@ -108,8 +108,8 @@ namespace FirstEngine {
                 return ImageFormat::BMP;
             }
 
-            // TGA: 检查文件扩展名或特定格式
-            // TGA格式较复杂，这里简化处理
+            // TGA: Check file extension or specific format
+            // TGA format is complex, simplified handling here
 
             // DDS: 44 44 53 20 (DDS )
             if (size >= 4 && data[0] == 0x44 && data[1] == 0x44 && data[2] == 0x53 && data[3] == 0x20) {
@@ -122,7 +122,7 @@ namespace FirstEngine {
                 return ImageFormat::TIFF;
             }
 
-            // HDR: #?RADIANCE 或 #?RGBE
+            // HDR: #?RADIANCE or #?RGBE
             if (size >= 10 && data[0] == '#' && data[1] == '?') {
                 return ImageFormat::HDR;
             }
