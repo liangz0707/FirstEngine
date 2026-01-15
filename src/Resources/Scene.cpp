@@ -762,11 +762,14 @@ namespace FirstEngine {
                             file << "              \"type\": \"" << static_cast<int>(comp->GetType()) << "\",\n";
 
                             // Save ModelComponent
-                            if (auto* modelComp = dynamic_cast<const ModelComponent*>(comp.get())) {
-                                ModelHandle model = modelComp->GetModel();
-                                if (model) {
-                                    ResourceID modelID = model->GetMetadata().resourceID;
-                                    file << "              \"modelID\": " << modelID << ",\n";
+                            // Note: ModelComponent uses ComponentType::Mesh
+                            if (comp->GetType() == ComponentType::Mesh) {
+                                if (auto* modelComp = dynamic_cast<const ModelComponent*>(comp.get())) {
+                                    ModelHandle model = modelComp->GetModel();
+                                    if (model) {
+                                        ResourceID modelID = model->GetMetadata().resourceID;
+                                        file << "              \"modelID\": " << modelID << ",\n";
+                                    }
                                 }
                             }
 
@@ -987,9 +990,10 @@ namespace FirstEngine {
                                                             }
 
                                                             // Create ModelComponent
-                                                            if (componentType == static_cast<int>(ComponentType::Model) && modelIDPos != std::string::npos) {
-                                                                size_t colonPos = compStr.find(':', modelIDPos);
-                                                                size_t valueStart = compStr.find_first_not_of(" \t\n\r", colonPos + 1);
+                                                            // Note: ModelComponent uses ComponentType::Mesh (not ComponentType::Model)
+                                                            if (componentType == static_cast<int>(ComponentType::Mesh) && modelIDPos != std::string::npos) {
+                                                                size_t colonPos2 = compStr.find(':', modelIDPos);
+                                                                size_t valueStart = compStr.find_first_not_of(" \t\n\r", colonPos2 + 1);
                                                                 size_t valueEnd = compStr.find_first_of(",}\n\r", valueStart);
                                                                 ResourceID modelID = 0;
                                                                 if (valueStart != std::string::npos && valueEnd != std::string::npos) {
@@ -997,9 +1001,9 @@ namespace FirstEngine {
                                                                         modelID = std::stoull(compStr.substr(valueStart, valueEnd - valueStart));
                                                                         // Load model resource
                                                                         ResourceHandle modelHandle = resourceManager.Load(modelID);
-                                                                        if (modelHandle) {
+                                                                        if (modelHandle.ptr != nullptr && modelHandle.model != nullptr) {
                                                                             ModelComponent* modelComp = entity->AddComponent<ModelComponent>();
-                                                                            modelComp->SetModel(modelHandle.As<IModel>());
+                                                                            modelComp->SetModel(modelHandle.model);
                                                                         }
                                                                     } catch (...) {}
                                                                 }
