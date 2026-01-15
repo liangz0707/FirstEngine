@@ -2,9 +2,14 @@
 #include "FirstEngine/Resources/SceneLevel.h"
 #include "FirstEngine/Resources/LightComponent.h"
 #include "FirstEngine/Resources/EffectComponent.h"
+#include "FirstEngine/Resources/ModelComponent.h"
+#include "FirstEngine/Resources/ResourceProvider.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 
@@ -636,15 +641,403 @@ namespace FirstEngine {
             return LoadFromJSON(filepath, scene);
         }
 
+        // Helper function to escape JSON string
+        static std::string EscapeJSONString(const std::string& str) {
+            std::ostringstream o;
+            for (char c : str) {
+                switch (c) {
+                case '"': o << "\\\""; break;
+                case '\\': o << "\\\\"; break;
+                case '\b': o << "\\b"; break;
+                case '\f': o << "\\f"; break;
+                case '\n': o << "\\n"; break;
+                case '\r': o << "\\r"; break;
+                case '\t': o << "\\t"; break;
+                default:
+                    if ('\x00' <= c && c <= '\x1f') {
+                        o << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)c;
+                    } else {
+                        o << c;
+                    }
+                }
+            }
+            return o.str();
+        }
+
+        // Helper function to unescape JSON string
+        static std::string UnescapeJSONString(const std::string& str) {
+            std::string result;
+            for (size_t i = 0; i < str.length(); ++i) {
+                if (str[i] == '\\' && i + 1 < str.length()) {
+                    switch (str[i + 1]) {
+                    case '"': result += '"'; ++i; break;
+                    case '\\': result += '\\'; ++i; break;
+                    case 'n': result += '\n'; ++i; break;
+                    case 'r': result += '\r'; ++i; break;
+                    case 't': result += '\t'; ++i; break;
+                    case 'b': result += '\b'; ++i; break;
+                    case 'f': result += '\f'; ++i; break;
+                    case 'u':
+                        if (i + 5 < str.length()) {
+                            i += 5; // Skip \uXXXX
+                        }
+                        break;
+                    default: result += str[i]; break;
+                    }
+                } else {
+                    result += str[i];
+                }
+            }
+            return result;
+        }
+
         bool SceneLoader::SaveToJSON(const std::string& filepath, const Scene& scene) {
-            // TODO: Implement JSON serialization using a library like nlohmann/json or rapidjson
-            // For now, return false to indicate not implemented
-            return false;
+            try {
+                std::ofstream file(filepath, std::ios::out | std::ios::trunc);
+                if (!file.is_open()) {
+                    return false;
+                }
+
+                file << "{\n";
+                file << "  \"version\": 1,\n";
+                file << "  \"name\": \"" << EscapeJSONString(scene.GetName()) << "\",\n";
+                file << "  \"levels\": [\n";
+
+                // Save levels
+                const auto& levels = scene.GetLevels();
+                bool firstLevel = true;
+                for (const auto& levelPtr : levels) {
+                    if (!levelPtr) continue;
+                    const SceneLevel* level = levelPtr.get();
+
+                    if (!firstLevel) {
+                        file << ",\n";
+                    }
+                    firstLevel = false;
+
+                    file << "    {\n";
+                    file << "      \"name\": \"" << EscapeJSONString(level->GetName()) << "\",\n";
+                    file << "      \"order\": " << level->GetOrder() << ",\n";
+                    file << "      \"visible\": " << (level->IsVisible() ? "true" : "false") << ",\n";
+                    file << "      \"enabled\": " << (level->IsEnabled() ? "true" : "false") << ",\n";
+                    file << "      \"entities\": [\n";
+
+                    // Save entities
+                    const auto& entities = level->GetEntities();
+                    bool firstEntity = true;
+                    for (Entity* entity : entities) {
+                        if (!entity) continue;
+
+                        if (!firstEntity) {
+                            file << ",\n";
+                        }
+                        firstEntity = false;
+
+                        file << "        {\n";
+                        file << "          \"id\": " << entity->GetID() << ",\n";
+                        file << "          \"name\": \"" << EscapeJSONString(entity->GetName()) << "\",\n";
+                        file << "          \"active\": " << (entity->IsActive() ? "true" : "false") << ",\n";
+
+                        // Save transform
+                        const Transform& transform = entity->GetTransform();
+                        file << "          \"transform\": {\n";
+                        file << "            \"position\": [" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << "],\n";
+                        file << "            \"rotation\": [" << transform.rotation.w << ", " << transform.rotation.x << ", " << transform.rotation.y << ", " << transform.rotation.z << "],\n";
+                        file << "            \"scale\": [" << transform.scale.x << ", " << transform.scale.y << ", " << transform.scale.z << "]\n";
+                        file << "          },\n";
+
+                        // Save components
+                        file << "          \"components\": [\n";
+                        const auto& components = entity->GetComponents();
+                        bool firstComponent = true;
+                        for (const auto& comp : components) {
+                            if (!comp) continue;
+
+                            if (!firstComponent) {
+                                file << ",\n";
+                            }
+                            firstComponent = false;
+
+                            file << "            {\n";
+                            file << "              \"type\": \"" << static_cast<int>(comp->GetType()) << "\",\n";
+
+                            // Save ModelComponent
+                            if (auto* modelComp = dynamic_cast<const ModelComponent*>(comp.get())) {
+                                ModelHandle model = modelComp->GetModel();
+                                if (model) {
+                                    ResourceID modelID = model->GetMetadata().resourceID;
+                                    file << "              \"modelID\": " << modelID << ",\n";
+                                }
+                            }
+
+                            file << "            }";
+                        }
+                        file << "\n          ]\n";
+                        file << "        }";
+                    }
+
+                    file << "\n      ]\n";
+                    file << "    }";
+                }
+
+                file << "\n  ]\n";
+                file << "}\n";
+
+                file.close();
+                return true;
+            } catch (...) {
+                return false;
+            }
         }
 
         bool SceneLoader::LoadFromJSON(const std::string& filepath, Scene& scene) {
-            // TODO: Implement JSON deserialization
-            return false;
+            try {
+                std::ifstream file(filepath, std::ios::in);
+                if (!file.is_open()) {
+                    return false;
+                }
+
+                // Read entire file
+                std::string content((std::istreambuf_iterator<char>(file)),
+                                    std::istreambuf_iterator<char>());
+                file.close();
+
+                // Simple JSON parser
+                // Find scene name
+                size_t namePos = content.find("\"name\"");
+                if (namePos != std::string::npos) {
+                    size_t colonPos = content.find(':', namePos);
+                    size_t quoteStart = content.find('"', colonPos);
+                    size_t quoteEnd = content.find('"', quoteStart + 1);
+                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                        std::string nameStr = content.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                        scene.SetName(UnescapeJSONString(nameStr));
+                    }
+                }
+
+                // Find levels array
+                size_t levelsPos = content.find("\"levels\"");
+                if (levelsPos == std::string::npos) {
+                    return false;
+                }
+
+                size_t arrayStart = content.find('[', levelsPos);
+                if (arrayStart == std::string::npos) {
+                    return false;
+                }
+
+                // Parse levels
+                size_t pos = arrayStart + 1;
+                ResourceManager& resourceManager = ResourceManager::GetInstance();
+
+                while (pos < content.length()) {
+                    size_t levelStart = content.find('{', pos);
+                    if (levelStart == std::string::npos) break;
+
+                    size_t levelEnd = content.find('}', levelStart);
+                    if (levelEnd == std::string::npos) break;
+
+                    std::string levelStr = content.substr(levelStart, levelEnd - levelStart + 1);
+
+                    // Parse level name
+                    size_t namePos = levelStr.find("\"name\"");
+                    size_t orderPos = levelStr.find("\"order\"");
+                    size_t entitiesPos = levelStr.find("\"entities\"");
+
+                    if (namePos != std::string::npos) {
+                        size_t colonPos = levelStr.find(':', namePos);
+                        size_t quoteStart = levelStr.find('"', colonPos);
+                        size_t quoteEnd = levelStr.find('"', quoteStart + 1);
+                        if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                            std::string levelName = UnescapeJSONString(levelStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1));
+
+                            // Parse order
+                            uint32_t order = 0;
+                            if (orderPos != std::string::npos) {
+                                size_t colonPos = levelStr.find(':', orderPos);
+                                size_t valueStart = levelStr.find_first_not_of(" \t\n\r", colonPos + 1);
+                                size_t valueEnd = levelStr.find_first_of(",}\n\r", valueStart);
+                                if (valueStart != std::string::npos && valueEnd != std::string::npos) {
+                                    try {
+                                        order = std::stoul(levelStr.substr(valueStart, valueEnd - valueStart));
+                                    } catch (...) {}
+                                }
+                            }
+
+                            SceneLevel* level = scene.CreateLevel(levelName, order);
+
+                            // Parse entities
+                            if (entitiesPos != std::string::npos) {
+                                size_t entitiesArrayStart = levelStr.find('[', entitiesPos);
+                                if (entitiesArrayStart != std::string::npos) {
+                                    size_t entityPos = entitiesArrayStart + 1;
+                                    while (entityPos < levelStr.length()) {
+                                        size_t entityStart = levelStr.find('{', entityPos);
+                                        if (entityStart == std::string::npos) break;
+
+                                        size_t entityEnd = levelStr.find('}', entityStart);
+                                        if (entityEnd == std::string::npos) break;
+
+                                        std::string entityStr = levelStr.substr(entityStart, entityEnd - entityStart + 1);
+
+                                        // Parse entity
+                                        size_t idPos = entityStr.find("\"id\"");
+                                        size_t namePos = entityStr.find("\"name\"");
+                                        size_t transformPos = entityStr.find("\"transform\"");
+                                        size_t componentsPos = entityStr.find("\"components\"");
+
+                                        if (idPos != std::string::npos && namePos != std::string::npos) {
+                                            // Parse ID
+                                            size_t colonPos = entityStr.find(':', idPos);
+                                            size_t valueStart = entityStr.find_first_not_of(" \t\n\r", colonPos + 1);
+                                            size_t valueEnd = entityStr.find_first_of(",}\n\r", valueStart);
+                                            uint64_t entityID = 0;
+                                            if (valueStart != std::string::npos && valueEnd != std::string::npos) {
+                                                try {
+                                                    entityID = std::stoull(entityStr.substr(valueStart, valueEnd - valueStart));
+                                                } catch (...) {}
+                                            }
+
+                                            // Parse name
+                                            colonPos = entityStr.find(':', namePos);
+                                            quoteStart = entityStr.find('"', colonPos);
+                                            size_t quoteEnd = entityStr.find('"', quoteStart + 1);
+                                            std::string entityName;
+                                            if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                                                entityName = UnescapeJSONString(entityStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1));
+                                            }
+
+                                            Entity* entity = level->CreateEntity(entityName);
+
+                                            // Parse transform
+                                            if (transformPos != std::string::npos) {
+                                                size_t transformObjStart = entityStr.find('{', transformPos);
+                                                size_t transformObjEnd = entityStr.find('}', transformObjStart);
+                                                if (transformObjStart != std::string::npos && transformObjEnd != std::string::npos) {
+                                                    std::string transformStr = entityStr.substr(transformObjStart, transformObjEnd - transformObjStart + 1);
+
+                                                    // Parse position
+                                                    size_t posPos = transformStr.find("\"position\"");
+                                                    if (posPos != std::string::npos) {
+                                                        size_t arrayStart = transformStr.find('[', posPos);
+                                                        size_t arrayEnd = transformStr.find(']', arrayStart);
+                                                        if (arrayStart != std::string::npos && arrayEnd != std::string::npos) {
+                                                            std::string arrayStr = transformStr.substr(arrayStart + 1, arrayEnd - arrayStart - 1);
+                                                            std::istringstream iss(arrayStr);
+                                                            char comma;
+                                                            iss >> entity->GetTransform().position.x >> comma >> entity->GetTransform().position.y >> comma >> entity->GetTransform().position.z;
+                                                        }
+                                                    }
+
+                                                    // Parse rotation
+                                                    size_t rotPos = transformStr.find("\"rotation\"");
+                                                    if (rotPos != std::string::npos) {
+                                                        size_t arrayStart = transformStr.find('[', rotPos);
+                                                        size_t arrayEnd = transformStr.find(']', arrayStart);
+                                                        if (arrayStart != std::string::npos && arrayEnd != std::string::npos) {
+                                                            std::string arrayStr = transformStr.substr(arrayStart + 1, arrayEnd - arrayStart - 1);
+                                                            std::istringstream iss(arrayStr);
+                                                            char comma;
+                                                            iss >> entity->GetTransform().rotation.w >> comma >> entity->GetTransform().rotation.x >> comma >> entity->GetTransform().rotation.y >> comma >> entity->GetTransform().rotation.z;
+                                                        }
+                                                    }
+
+                                                    // Parse scale
+                                                    size_t scalePos = transformStr.find("\"scale\"");
+                                                    if (scalePos != std::string::npos) {
+                                                        size_t arrayStart = transformStr.find('[', scalePos);
+                                                        size_t arrayEnd = transformStr.find(']', arrayStart);
+                                                        if (arrayStart != std::string::npos && arrayEnd != std::string::npos) {
+                                                            std::string arrayStr = transformStr.substr(arrayStart + 1, arrayEnd - arrayStart - 1);
+                                                            std::istringstream iss(arrayStr);
+                                                            char comma;
+                                                            iss >> entity->GetTransform().scale.x >> comma >> entity->GetTransform().scale.y >> comma >> entity->GetTransform().scale.z;
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // Parse components
+                                            if (componentsPos != std::string::npos) {
+                                                size_t componentsArrayStart = entityStr.find('[', componentsPos);
+                                                if (componentsArrayStart != std::string::npos) {
+                                                    size_t compPos = componentsArrayStart + 1;
+                                                    while (compPos < entityStr.length()) {
+                                                        size_t compStart = entityStr.find('{', compPos);
+                                                        if (compStart == std::string::npos) break;
+
+                                                        size_t compEnd = entityStr.find('}', compStart);
+                                                        if (compEnd == std::string::npos) break;
+
+                                                        std::string compStr = entityStr.substr(compStart, compEnd - compStart + 1);
+
+                                                        // Parse component type
+                                                        size_t typePos = compStr.find("\"type\"");
+                                                        size_t modelIDPos = compStr.find("\"modelID\"");
+
+                                                        if (typePos != std::string::npos) {
+                                                            size_t colonPos = compStr.find(':', typePos);
+                                                            size_t valueStart = compStr.find_first_not_of(" \t\n\r", colonPos + 1);
+                                                            size_t valueEnd = compStr.find_first_of(",}\n\r", valueStart);
+                                                            int componentType = 0;
+                                                            if (valueStart != std::string::npos && valueEnd != std::string::npos) {
+                                                                try {
+                                                                    componentType = std::stoi(compStr.substr(valueStart, valueEnd - valueStart));
+                                                                } catch (...) {}
+                                                            }
+
+                                                            // Create ModelComponent
+                                                            if (componentType == static_cast<int>(ComponentType::Model) && modelIDPos != std::string::npos) {
+                                                                size_t colonPos = compStr.find(':', modelIDPos);
+                                                                size_t valueStart = compStr.find_first_not_of(" \t\n\r", colonPos + 1);
+                                                                size_t valueEnd = compStr.find_first_of(",}\n\r", valueStart);
+                                                                ResourceID modelID = 0;
+                                                                if (valueStart != std::string::npos && valueEnd != std::string::npos) {
+                                                                    try {
+                                                                        modelID = std::stoull(compStr.substr(valueStart, valueEnd - valueStart));
+                                                                        // Load model resource
+                                                                        ResourceHandle modelHandle = resourceManager.Load(modelID);
+                                                                        if (modelHandle) {
+                                                                            ModelComponent* modelComp = entity->AddComponent<ModelComponent>();
+                                                                            modelComp->SetModel(modelHandle.As<IModel>());
+                                                                        }
+                                                                    } catch (...) {}
+                                                                }
+                                                            }
+                                                        }
+
+                                                        compPos = compEnd + 1;
+                                                        size_t nextComp = entityStr.find('{', compPos);
+                                                        if (nextComp == std::string::npos || nextComp > entityStr.find(']', componentsArrayStart)) {
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            entityPos = entityEnd + 1;
+                                            size_t nextEntity = levelStr.find('{', entityPos);
+                                            if (nextEntity == std::string::npos || nextEntity > levelStr.find(']', entitiesArrayStart)) {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            pos = levelEnd + 1;
+                            size_t nextLevel = content.find('{', pos);
+                            if (nextLevel == std::string::npos || nextLevel > content.find(']', arrayStart)) {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                return true;
+            } catch (...) {
+                return false;
+            }
         }
 
     } // namespace Resources

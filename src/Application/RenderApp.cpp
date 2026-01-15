@@ -5,11 +5,17 @@
 #include "FirstEngine/Renderer/FrameGraph.h"
 #include "FirstEngine/Renderer/PipelineConfig.h"
 #include "FirstEngine/Renderer/PipelineBuilder.h"
+#include "FirstEngine/Renderer/SceneRenderer.h"
+#include "FirstEngine/Resources/Scene.h"
+#include "FirstEngine/Resources/ResourceProvider.h"
+#include "FirstEngine/Resources/ResourceID.h"
 #include "FirstEngine/RHI/IDevice.h"
 #include "FirstEngine/RHI/ICommandBuffer.h"
 #include "FirstEngine/RHI/ISwapchain.h"
 #include <iostream>
 #include <chrono>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #ifdef _WIN32
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -57,6 +63,8 @@ public:
           m_Device(nullptr),
           m_FrameGraph(nullptr),
           m_CommandBuffer(nullptr),
+          m_Scene(nullptr),
+          m_SceneRenderer(nullptr),
           m_LastTime(std::chrono::high_resolution_clock::now()) {
     }
 
@@ -84,6 +92,12 @@ public:
 
         m_Swapchain.reset();
 
+        if (m_SceneRenderer) {
+            delete m_SceneRenderer;
+        }
+        if (m_Scene) {
+            delete m_Scene;
+        }
         if (m_FrameGraph) {
             delete m_FrameGraph;
         }
@@ -166,6 +180,48 @@ public:
             return false;
         }
 
+        // Initialize ResourceManager
+        FirstEngine::Resources::ResourceManager::Initialize();
+        FirstEngine::Resources::ResourceManager& resourceManager = FirstEngine::Resources::ResourceManager::GetInstance();
+
+        // Add Package directory as search path
+        resourceManager.AddSearchPath("build/Package");
+        resourceManager.AddSearchPath("build/Package/Models");
+        resourceManager.AddSearchPath("build/Package/Materials");
+        resourceManager.AddSearchPath("build/Package/Textures");
+        resourceManager.AddSearchPath("build/Package/Shaders");
+
+        // Load resource manifest
+        std::string manifestPath = "build/Package/resource_manifest.json";
+        if (fs::exists(manifestPath)) {
+            if (resourceManager.GetIDManager().LoadManifest(manifestPath)) {
+                std::cout << "Loaded resource manifest from: " << manifestPath << std::endl;
+            } else {
+                std::cerr << "Failed to load resource manifest!" << std::endl;
+            }
+        } else {
+            std::cout << "Resource manifest not found, will register resources on demand." << std::endl;
+        }
+
+        // Create scene
+        m_Scene = new FirstEngine::Resources::Scene("Example Scene");
+
+        // Load scene from file
+        std::string scenePath = "build/Package/Scenes/example_scene.json";
+        if (fs::exists(scenePath)) {
+            if (FirstEngine::Resources::SceneLoader::LoadFromFile(scenePath, *m_Scene)) {
+                std::cout << "Loaded scene from: " << scenePath << std::endl;
+            } else {
+                std::cerr << "Failed to load scene from: " << scenePath << std::endl;
+            }
+        } else {
+            std::cout << "Scene file not found: " << scenePath << std::endl;
+        }
+
+        // Create scene renderer
+        m_SceneRenderer = new FirstEngine::Renderer::SceneRenderer(m_Device);
+        m_SceneRenderer->SetScene(m_Scene);
+
         std::cout << "RenderApp initialized successfully!" << std::endl;
         return true;
     }
@@ -222,6 +278,30 @@ protected:
                 FirstEngine::RHI::Format::B8G8R8A8_UNORM, // New layout (color attachment)
                 1 // mipLevels
             );
+        }
+
+        // Render scene if available
+        if (m_SceneRenderer && m_Scene) {
+            // Calculate view and projection matrices
+            int width = GetWindow() ? GetWindow()->GetWidth() : 1280;
+            int height = GetWindow() ? GetWindow()->GetHeight() : 720;
+            float aspect = static_cast<float>(width) / static_cast<float>(height);
+
+            glm::mat4 viewMatrix = glm::lookAt(
+                glm::vec3(0.0f, 2.0f, 5.0f),  // Camera position
+                glm::vec3(0.0f, 0.0f, -5.0f), // Look at
+                glm::vec3(0.0f, 1.0f, 0.0f)   // Up vector
+            );
+
+            glm::mat4 projMatrix = glm::perspective(
+                glm::radians(45.0f),  // FOV
+                aspect,                // Aspect ratio
+                0.1f,                  // Near plane
+                100.0f                 // Far plane
+            );
+
+            // Render scene
+            m_SceneRenderer->Render(m_CommandBuffer.get(), viewMatrix, projMatrix);
         }
 
         // Execute FrameGraph (this will render to the swapchain image)
@@ -421,6 +501,8 @@ private:
     FirstEngine::RHI::SemaphoreHandle m_RenderFinishedSemaphore;
     FirstEngine::RHI::FenceHandle m_InFlightFence;
     std::unique_ptr<FirstEngine::RHI::ICommandBuffer> m_CommandBuffer; // Store command buffer to defer destruction
+    FirstEngine::Resources::Scene* m_Scene;
+    FirstEngine::Renderer::SceneRenderer* m_SceneRenderer;
     std::chrono::high_resolution_clock::time_point m_LastTime;
 
 #ifdef _WIN32
