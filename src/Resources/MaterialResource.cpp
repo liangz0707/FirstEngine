@@ -113,7 +113,9 @@ namespace FirstEngine {
                         continue;
                     }
                     
-                    // Load by ID (ResourceManager singleton handles path resolution internally)
+                    // Load by ID through ResourceManager
+                    // ResourceManager internally uses the appropriate Resource::Load method
+                    // (e.g., TextureResource::Load for textures, ModelResource::Load for models, etc.)
                     ResourceHandle handle = resourceManager.Load(dep.resourceID);
                     if (handle.texture) {
                         SetTexture(dep.slot.empty() ? "texture0" : dep.slot, handle.texture);

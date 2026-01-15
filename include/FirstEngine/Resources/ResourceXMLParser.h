@@ -60,7 +60,7 @@ namespace FirstEngine {
 
             // Model-specific data
             struct ModelData {
-                std::string modelFile; // Original model file (fbx, obj, etc.)
+                std::string modelFile; // Deprecated: Model is a logical resource, actual geometry files are in Mesh XML files (MeshFile)
                 std::vector<std::pair<uint32_t, ResourceID>> meshIndices; // mesh index -> ResourceID
                 std::vector<std::pair<uint32_t, ResourceID>> materialIndices; // material index -> ResourceID
                 std::vector<std::pair<std::string, ResourceID>> textureSlots; // slot name -> ResourceID

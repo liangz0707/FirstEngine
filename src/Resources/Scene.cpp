@@ -793,6 +793,42 @@ namespace FirstEngine {
             }
         }
 
+        // Helper function to find matching closing brace for nested objects
+        static size_t FindMatchingBrace(const std::string& str, size_t startPos) {
+            if (startPos >= str.length() || str[startPos] != '{') {
+                return std::string::npos;
+            }
+            
+            int depth = 1;
+            size_t pos = startPos + 1;
+            bool inString = false;
+            bool escaped = false;
+            
+            while (pos < str.length() && depth > 0) {
+                char c = str[pos];
+                
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"' && !escaped) {
+                    inString = !inString;
+                } else if (!inString) {
+                    if (c == '{') {
+                        depth++;
+                    } else if (c == '}') {
+                        depth--;
+                        if (depth == 0) {
+                            return pos;
+                        }
+                    }
+                }
+                pos++;
+            }
+            
+            return std::string::npos;
+        }
+
         bool SceneLoader::LoadFromJSON(const std::string& filepath, Scene& scene) {
             try {
                 std::ifstream file(filepath, std::ios::in);
@@ -837,7 +873,8 @@ namespace FirstEngine {
                     size_t levelStart = content.find('{', pos);
                     if (levelStart == std::string::npos) break;
 
-                    size_t levelEnd = content.find('}', levelStart);
+                    // Use matching brace function to find the correct end of nested object
+                    size_t levelEnd = FindMatchingBrace(content, levelStart);
                     if (levelEnd == std::string::npos) break;
 
                     std::string levelStr = content.substr(levelStart, levelEnd - levelStart + 1);
@@ -878,7 +915,8 @@ namespace FirstEngine {
                                         size_t entityStart = levelStr.find('{', entityPos);
                                         if (entityStart == std::string::npos) break;
 
-                                        size_t entityEnd = levelStr.find('}', entityStart);
+                                        // Use matching brace function to find the correct end of nested object
+                                        size_t entityEnd = FindMatchingBrace(levelStr, entityStart);
                                         if (entityEnd == std::string::npos) break;
 
                                         std::string entityStr = levelStr.substr(entityStart, entityEnd - entityStart + 1);
@@ -915,7 +953,7 @@ namespace FirstEngine {
                                             // Parse transform
                                             if (transformPos != std::string::npos) {
                                                 size_t transformObjStart = entityStr.find('{', transformPos);
-                                                size_t transformObjEnd = entityStr.find('}', transformObjStart);
+                                                size_t transformObjEnd = FindMatchingBrace(entityStr, transformObjStart);
                                                 if (transformObjStart != std::string::npos && transformObjEnd != std::string::npos) {
                                                     std::string transformStr = entityStr.substr(transformObjStart, transformObjEnd - transformObjStart + 1);
 
@@ -999,7 +1037,9 @@ namespace FirstEngine {
                                                                 if (valueStart != std::string::npos && valueEnd != std::string::npos) {
                                                                     try {
                                                                         modelID = std::stoull(compStr.substr(valueStart, valueEnd - valueStart));
-                                                                        // Load model resource
+                                                                        // Load model resource through ResourceManager
+                                                                        // ResourceManager internally creates ModelResource and calls ModelResource::Load
+                                                                        // This ensures unified loading interface using ModelResource's Load method
                                                                         ResourceHandle modelHandle = resourceManager.Load(modelID);
                                                                         if (modelHandle.ptr != nullptr && modelHandle.model != nullptr) {
                                                                             ModelComponent* modelComp = entity->AddComponent<ModelComponent>();

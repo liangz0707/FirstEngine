@@ -33,7 +33,12 @@ namespace FirstEngine {
                 return false;
             }
 
-            m_RootNode = m_Document->root();
+            // Get the document element (root element, not the document node itself)
+            m_RootNode = m_Document->document_element();
+            if (m_RootNode.empty()) {
+                // Fallback to root() if document_element() is empty
+                m_RootNode = m_Document->root();
+            }
             return !m_RootNode.empty();
         }
 
@@ -43,19 +48,42 @@ namespace FirstEngine {
                 return false;
             }
 
-            m_RootNode = m_Document->root();
+            // Get the document element (root element, not the document node itself)
+            m_RootNode = m_Document->document_element();
+            if (m_RootNode.empty()) {
+                // Fallback to root() if document_element() is empty
+                m_RootNode = m_Document->root();
+            }
             return !m_RootNode.empty();
         }
 
         std::string ResourceXMLParser::GetName() const {
             if (m_RootNode.empty()) return "";
             auto nameNode = m_RootNode.child("Name");
-            return nameNode ? nameNode.text().as_string() : "";
+            if (nameNode) {
+                std::string name = nameNode.text().as_string();
+                // Trim whitespace
+                if (!name.empty()) {
+                    size_t start = name.find_first_not_of(" \t\n\r");
+                    if (start != std::string::npos) {
+                        size_t end = name.find_last_not_of(" \t\n\r");
+                        return name.substr(start, end - start + 1);
+                    }
+                }
+                return name;
+            }
+            return "";
         }
 
         ResourceID ResourceXMLParser::GetResourceID() const {
             if (m_RootNode.empty()) return InvalidResourceID;
+            // Try ResourceID first (preferred for Model, Mesh, Texture)
             auto idNode = m_RootNode.child("ResourceID");
+            if (idNode) {
+                return ParseResourceID(idNode.text().as_string());
+            }
+            // Fallback to ID (for backward compatibility with Material, etc.)
+            idNode = m_RootNode.child("ID");
             if (idNode) {
                 return ParseResourceID(idNode.text().as_string());
             }
@@ -202,13 +230,22 @@ namespace FirstEngine {
         }
 
         bool ResourceXMLParser::GetModelData(ModelData& outData) const {
-            if (m_RootNode.empty() || m_RootNode.name() != std::string("Model")) {
+            if (m_RootNode.empty()) {
+                return false;
+            }
+            // Check root node name - use string comparison for safety
+            const char* nodeName = m_RootNode.name();
+            if (!nodeName || std::string(nodeName) != "Model") {
                 return false;
             }
 
+            // ModelFile is deprecated - Model is a logical resource, actual geometry files
+            // are specified in Mesh XML files (MeshFile). This is kept for backward compatibility only.
             auto modelFileNode = m_RootNode.child("ModelFile");
             if (!modelFileNode.empty()) {
                 outData.modelFile = modelFileNode.text().as_string();
+            } else {
+                outData.modelFile = ""; // Model is logical, no source file
             }
 
             // Parse meshes
@@ -486,7 +523,8 @@ namespace FirstEngine {
             
             root.append_child("Name").text().set(name.c_str());
             root.append_child("ResourceID").text().set(std::to_string(id).c_str());
-            root.append_child("ModelFile").text().set(data.modelFile.c_str());
+            // ModelFile is deprecated - Model is a logical resource, actual geometry files
+            // are specified in Mesh XML files (MeshFile). Do not save ModelFile.
 
             // Save meshes
             auto meshesNode = root.append_child("Meshes");

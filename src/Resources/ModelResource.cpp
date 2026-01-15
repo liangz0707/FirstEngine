@@ -79,11 +79,14 @@ namespace FirstEngine {
             ResourceManager& resourceManager = ResourceManager::GetInstance();
 
             // Load and connect dependencies based on type
+            // Use ResourceManager::Load which internally calls the appropriate Resource::Load method
+            // (e.g., ModelResource::Load for models, MeshResource::Load for meshes, etc.)
             for (const auto& dep : m_Metadata.dependencies) {
                 if (dep.resourceID == InvalidResourceID) {
                     continue;
                 }
 
+                // ResourceManager::Load internally uses ModelResource::Load, MeshResource::Load, etc.
                 ResourceHandle depHandle = resourceManager.Load(dep.resourceID);
                 
                 switch (dep.type) {
@@ -170,6 +173,7 @@ namespace FirstEngine {
 
                 if (depType != ResourceType::Unknown) {
                     // Load dependency by ID (ResourceManager singleton handles path resolution internally)
+                    // ResourceManager::Load internally uses ModelResource::Load, MeshResource::Load, etc.
                     ResourceHandle depHandle = resourceManager.Load(dep.resourceID);
                     
                     if (depHandle.ptr) {

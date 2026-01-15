@@ -13,6 +13,7 @@
 #include "FirstEngine/RHI/ICommandBuffer.h"
 #include "FirstEngine/RHI/ISwapchain.h"
 #include <iostream>
+#include <algorithm>
 #include <chrono>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -184,15 +185,83 @@ public:
         FirstEngine::Resources::ResourceManager::Initialize();
         FirstEngine::Resources::ResourceManager& resourceManager = FirstEngine::Resources::ResourceManager::GetInstance();
 
+        // Helper function to resolve path (try multiple locations)
+        auto resolvePath = [](const std::string& relativePath) -> std::string {
+            // Normalize path separators
+            std::string normalizedPath = relativePath;
+            std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/');
+            
+            // Try current working directory first
+            if (fs::exists(normalizedPath)) {
+                return fs::absolute(normalizedPath).string();
+            }
+            
+            // Try relative to executable directory (Windows)
+#ifdef _WIN32
+            char exePath[MAX_PATH];
+            DWORD pathLen = GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+            if (pathLen > 0 && pathLen < MAX_PATH) {
+                // Remove executable name, keep directory
+                std::string exeDir;
+                for (int i = pathLen - 1; i >= 0; i--) {
+                    if (exePath[i] == '\\' || exePath[i] == '/') {
+                        exePath[i + 1] = '\0';
+                        exeDir = exePath;
+                        // Normalize to forward slashes for consistency
+                        std::replace(exeDir.begin(), exeDir.end(), '\\', '/');
+                        break;
+                    }
+                }
+                
+                if (!exeDir.empty()) {
+                    // Try in executable directory
+                    std::string fullPath = exeDir + normalizedPath;
+                    if (fs::exists(fullPath)) {
+                        return fs::absolute(fullPath).string();
+                    }
+                    // Try going up one directory (if exe is in build/Debug or build/Release)
+                    std::string parentPath = exeDir + "../" + normalizedPath;
+                    if (fs::exists(parentPath)) {
+                        return fs::absolute(parentPath).string();
+                    }
+                    // Try going up two directories (if exe is in build/Debug/FirstEngine or similar)
+                    std::string grandParentPath = exeDir + "../../" + normalizedPath;
+                    if (fs::exists(grandParentPath)) {
+                        return fs::absolute(grandParentPath).string();
+                    }
+                    // Try going up three directories (if exe is deep in build tree)
+                    std::string greatGrandParentPath = exeDir + "../../../" + normalizedPath;
+                    if (fs::exists(greatGrandParentPath)) {
+                        return fs::absolute(greatGrandParentPath).string();
+                    }
+                }
+            }
+#endif
+            // Return original path if not found (caller will handle error)
+            return normalizedPath;
+        };
+
         // Add Package directory as search path
-        resourceManager.AddSearchPath("build/Package");
-        resourceManager.AddSearchPath("build/Package/Models");
-        resourceManager.AddSearchPath("build/Package/Materials");
-        resourceManager.AddSearchPath("build/Package/Textures");
-        resourceManager.AddSearchPath("build/Package/Shaders");
+        std::string packageBase = resolvePath("build/Package");
+        if (fs::exists(packageBase)) {
+            resourceManager.AddSearchPath(packageBase);
+            resourceManager.AddSearchPath(packageBase + "/Models");
+            resourceManager.AddSearchPath(packageBase + "/Materials");
+            resourceManager.AddSearchPath(packageBase + "/Textures");
+            resourceManager.AddSearchPath(packageBase + "/Shaders");
+            resourceManager.AddSearchPath(packageBase + "/Scenes");
+        } else {
+            // Fallback to relative paths
+            resourceManager.AddSearchPath("build/Package");
+            resourceManager.AddSearchPath("build/Package/Models");
+            resourceManager.AddSearchPath("build/Package/Materials");
+            resourceManager.AddSearchPath("build/Package/Textures");
+            resourceManager.AddSearchPath("build/Package/Shaders");
+            resourceManager.AddSearchPath("build/Package/Scenes");
+        }
 
         // Load resource manifest
-        std::string manifestPath = "build/Package/resource_manifest.json";
+        std::string manifestPath = resolvePath("build/Package/resource_manifest.json");
         if (fs::exists(manifestPath)) {
             if (resourceManager.GetIDManager().LoadManifest(manifestPath)) {
                 std::cout << "Loaded resource manifest from: " << manifestPath << std::endl;
@@ -200,14 +269,15 @@ public:
                 std::cerr << "Failed to load resource manifest!" << std::endl;
             }
         } else {
-            std::cout << "Resource manifest not found, will register resources on demand." << std::endl;
+            std::cout << "Resource manifest not found: " << manifestPath << std::endl;
+            std::cout << "Will register resources on demand." << std::endl;
         }
 
         // Create scene
         m_Scene = new FirstEngine::Resources::Scene("Example Scene");
 
         // Load scene from file
-        std::string scenePath = "build/Package/Scenes/example_scene.json";
+        std::string scenePath = resolvePath("build/Package/Scenes/example_scene.json");
         if (fs::exists(scenePath)) {
             if (FirstEngine::Resources::SceneLoader::LoadFromFile(scenePath, *m_Scene)) {
                 std::cout << "Loaded scene from: " << scenePath << std::endl;
@@ -215,7 +285,8 @@ public:
                 std::cerr << "Failed to load scene from: " << scenePath << std::endl;
             }
         } else {
-            std::cout << "Scene file not found: " << scenePath << std::endl;
+            std::cerr << "Scene file not found: " << scenePath << std::endl;
+            std::cerr << "Current working directory: " << fs::current_path().string() << std::endl;
         }
 
         // Create scene renderer

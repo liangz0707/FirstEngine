@@ -143,6 +143,8 @@ namespace FirstEngine {
         }
 
         // Primary load method using ResourceID
+        // This method internally creates the appropriate Resource instance (ModelResource, MeshResource, etc.)
+        // and calls the Resource's Load method (e.g., ModelResource::Load) for unified loading interface
         ResourceHandle ResourceManager::Load(ResourceID id) {
             if (id == InvalidResourceID) {
                 return ResourceHandle();
@@ -220,8 +222,10 @@ namespace FirstEngine {
             resource->GetMetadata().resourceID = id;
 
             // Resource object calls Load on itself with ID
+            // This ensures unified loading interface: ModelResource::Load, MeshResource::Load, etc.
             // Load flow: 1) Collect dependencies 2) Load dependencies 3) Load resource data 4) Initialize
             // ResourceManager is accessed via singleton, no parameter needed
+            // For Model resources, this calls ModelResource::Load which uses ModelLoader internally
             ResourceLoadResult result = resourceProvider->Load(id);
             if (result != ResourceLoadResult::Success) {
                 return ResourceHandle();
