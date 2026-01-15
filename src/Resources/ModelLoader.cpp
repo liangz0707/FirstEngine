@@ -1,12 +1,106 @@
 #include "FirstEngine/Resources/ModelLoader.h"
+#include "FirstEngine/Resources/ResourceXMLParser.h"
+#include "FirstEngine/Resources/ResourceDependency.h"
+#include "FirstEngine/Resources/ResourceProvider.h"
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 #include <stdexcept>
 #include <iostream>
+#if __has_include(<filesystem>)
+#include <filesystem>
+namespace fs = std::filesystem;
+#else
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
+#endif
 
 namespace FirstEngine {
     namespace Resources {
+
+        ModelLoader::LoadResult ModelLoader::Load(ResourceID id) {
+            LoadResult result;
+            result.success = false;
+
+            // Get ResourceManager singleton internally
+            ResourceManager& resourceManager = ResourceManager::GetInstance();
+
+            // Get resolved path from ResourceManager (internal cache usage)
+            std::string resolvedPath = resourceManager.GetResolvedPath(id);
+            if (resolvedPath.empty()) {
+                return result;
+            }
+
+            // Check cache first (ResourceManager internal cache)
+            ResourceHandle cached = resourceManager.Get(id);
+            if (cached.model) {
+                // Return cached data - dependencies are stored in metadata.dependencies
+                IModel* model = cached.model;
+                result.metadata = model->GetMetadata();
+                result.success = true;
+                return result;
+            }
+
+            // Resolve XML file path
+            std::string xmlFilePath = resolvedPath;
+            std::string ext = fs::path(xmlFilePath).extension().string();
+            if (ext != ".xml") {
+                xmlFilePath = fs::path(xmlFilePath).replace_extension(".xml").string();
+            }
+
+            // Parse XML file
+            ResourceXMLParser parser;
+            if (!parser.ParseFromFile(xmlFilePath)) {
+                return result;
+            }
+
+            // Get metadata from XML
+            result.metadata.name = parser.GetName();
+            result.metadata.resourceID = parser.GetResourceID();
+            result.metadata.filePath = resolvedPath; // Internal use only
+            result.metadata.dependencies = parser.GetDependencies();
+            result.metadata.isLoaded = false; // Will be set to true after successful load
+
+            // Get model-specific data from XML (only ResourceID references, no actual geometry)
+            ResourceXMLParser::ModelData modelData;
+            if (!parser.GetModelData(modelData)) {
+                return result;
+            }
+
+            // Convert ResourceID references to dependencies (stored in metadata)
+            // Dependencies will be loaded by Resource::Load, Loader only records them
+            for (const auto& pair : modelData.meshIndices) {
+                ResourceDependency dep;
+                dep.type = ResourceDependency::DependencyType::Mesh;
+                dep.resourceID = pair.second;
+                dep.slot = std::to_string(pair.first); // Use index as slot to identify mesh position
+                dep.isRequired = true;
+                result.metadata.dependencies.push_back(dep);
+            }
+
+            for (const auto& pair : modelData.materialIndices) {
+                ResourceDependency dep;
+                dep.type = ResourceDependency::DependencyType::Material;
+                dep.resourceID = pair.second;
+                dep.slot = std::to_string(pair.first); // Use index as slot to identify material position
+                dep.isRequired = true;
+                result.metadata.dependencies.push_back(dep);
+            }
+
+            for (const auto& pair : modelData.textureSlots) {
+                ResourceDependency dep;
+                dep.type = ResourceDependency::DependencyType::Texture;
+                dep.resourceID = pair.second;
+                dep.slot = pair.first; // Use slot name
+                dep.isRequired = true;
+                result.metadata.dependencies.push_back(dep);
+            }
+
+            result.metadata.isLoaded = true;
+            result.success = true;
+            return result;
+        }
+
         Model ModelLoader::LoadFromFile(const std::string& filepath) {
             Model model;
             model.name = filepath;
@@ -106,12 +200,62 @@ namespace FirstEngine {
             return importer.IsExtensionSupported(filepath.substr(filepath.find_last_of('.') + 1));
         }
 
+        bool ModelLoader::Save(const std::string& xmlFilePath,
+                              const std::string& name,
+                              ResourceID id,
+                              const std::vector<std::pair<uint32_t, ResourceID>>& meshIndices,
+                              const std::vector<std::pair<uint32_t, ResourceID>>& materialIndices,
+                              const std::vector<std::pair<std::string, ResourceID>>& textureSlots,
+                              const std::vector<ResourceDependency>& dependencies) {
+            // Convert meshIndices, materialIndices, textureSlots to dependencies
+            // These will be saved in XML and loaded as dependencies
+            std::vector<ResourceDependency> allDependencies = dependencies;
+            
+            for (const auto& pair : meshIndices) {
+                ResourceDependency dep;
+                dep.type = ResourceDependency::DependencyType::Mesh;
+                dep.resourceID = pair.second;
+                dep.slot = std::to_string(pair.first);
+                dep.isRequired = true;
+                allDependencies.push_back(dep);
+            }
+
+            for (const auto& pair : materialIndices) {
+                ResourceDependency dep;
+                dep.type = ResourceDependency::DependencyType::Material;
+                dep.resourceID = pair.second;
+                dep.slot = std::to_string(pair.first);
+                dep.isRequired = true;
+                allDependencies.push_back(dep);
+            }
+
+            for (const auto& pair : textureSlots) {
+                ResourceDependency dep;
+                dep.type = ResourceDependency::DependencyType::Texture;
+                dep.resourceID = pair.second;
+                dep.slot = pair.first;
+                dep.isRequired = true;
+                allDependencies.push_back(dep);
+            }
+
+            // Save to XML (ModelData is still used for XML structure, but dependencies are the source of truth)
+            ResourceXMLParser::ModelData modelData;
+            modelData.modelFile = ""; // Model is logical, no source file needed
+            modelData.meshIndices = meshIndices;  // For XML structure compatibility
+            modelData.materialIndices = materialIndices;  // For XML structure compatibility
+            modelData.textureSlots = textureSlots;  // For XML structure compatibility
+
+            return ResourceXMLParser::SaveModelToXML(xmlFilePath, name, id, modelData, allDependencies);
+        }
+
         std::vector<std::string> ModelLoader::GetSupportedFormats() {
             Assimp::Importer importer;
             aiString extensions;
             importer.GetExtensionList(extensions);
 
             std::vector<std::string> formats;
+            formats.push_back(".xml"); // Add XML support
+            
             std::string extStr = extensions.C_Str();
             std::string delimiter = ";";
 

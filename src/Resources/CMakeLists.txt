@@ -21,7 +21,22 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/assimp assimp)
 set(RESOURCES_SOURCES
     TextureLoader.cpp
     ImageLoader.cpp
+    MaterialLoader.cpp
+    MeshLoader.cpp
     ModelLoader.cpp
+    ResourceXMLParser.cpp
+    Scene.cpp
+    Component.cpp
+    SceneLevel.cpp
+    TextureResource.cpp
+    MeshResource.cpp
+    MaterialResource.cpp
+    MaterialParameter.cpp
+    ModelResource.cpp
+    ResourceProvider.cpp
+    ModelComponent.cpp
+    ResourceDependency.cpp
+    ResourceID.cpp
 )
 
 # Header files (add to project so they show up in Visual Studio)
@@ -30,12 +45,90 @@ set(RESOURCES_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ImageLoader.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ModelLoader.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/TextureLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MaterialLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MeshLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceXMLParser.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MaterialLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MeshLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceXMLParser.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/Scene.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/Component.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/SceneLevel.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ModelComponent.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/LightComponent.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/EffectComponent.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceTypes.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceProvider.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/TextureResource.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MeshResource.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MaterialResource.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ModelResource.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceDependency.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceID.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MaterialParameter.h
 )
 
 # Create shared library
 add_library(FirstEngine_Resources SHARED
     ${RESOURCES_SOURCES}
     ${RESOURCES_HEADERS}
+)
+
+# Organize files in Visual Studio solution explorer
+# Resource classes
+source_group("Resource" FILES
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceTypes.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceProvider.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceDependency.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceID.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/TextureResource.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MeshResource.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MaterialResource.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MaterialParameter.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ModelResource.h
+    TextureResource.cpp
+    MeshResource.cpp
+    MaterialResource.cpp
+    MaterialParameter.cpp
+    ModelResource.cpp
+    ResourceProvider.cpp
+    ResourceDependency.cpp
+    ResourceID.cpp
+)
+
+# Loader classes
+source_group("Loader" FILES
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ImageLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/TextureLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MaterialLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MeshLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ModelLoader.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceXMLParser.h
+    ImageLoader.cpp
+    TextureLoader.cpp
+    MaterialLoader.cpp
+    MeshLoader.cpp
+    ModelLoader.cpp
+    ResourceXMLParser.cpp
+)
+
+# Scene management
+source_group("Scene" FILES
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/Scene.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/SceneLevel.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/Component.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ModelComponent.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/LightComponent.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/EffectComponent.h
+    Scene.cpp
+    SceneLevel.cpp
+    Component.cpp
+    ModelComponent.cpp
+)
+
+# Common headers
+source_group("Common" FILES
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/Export.h
 )
 
 # Include directories
@@ -47,10 +140,11 @@ target_include_directories(FirstEngine_Resources
         ${CMAKE_SOURCE_DIR}/src
 )
 
-# Include directories for stb (header-only)
+# Include directories for stb (header-only) and pugixml
 target_include_directories(FirstEngine_Resources
     PRIVATE
         ${CMAKE_SOURCE_DIR}/third_party
+        ${CMAKE_SOURCE_DIR}/third_party/assimp/contrib/pugixml/src
 )
 
 # Link dependencies

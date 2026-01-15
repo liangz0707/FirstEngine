@@ -12,6 +12,9 @@ set(RENDERER_SOURCES
     FrameGraph.cpp
     PipelineConfig.cpp
     PipelineBuilder.cpp
+    RenderBatch.cpp
+    SceneRenderer.cpp
+    RenderResource.cpp
 )
 
 # Header files (add to project so they show up in Visual Studio)
@@ -20,6 +23,8 @@ set(RENDERER_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/FrameGraph.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/PipelineBuilder.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/PipelineConfig.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/RenderBatch.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/SceneRenderer.h
 )
 
 # Create shared library
@@ -41,6 +46,9 @@ target_include_directories(FirstEngine_Renderer
 target_link_libraries(FirstEngine_Renderer
     PUBLIC
         FirstEngine_RHI
+        FirstEngine_Resources
+    PRIVATE
+        glm::glm
 )
 
 # Compiler-specific options
