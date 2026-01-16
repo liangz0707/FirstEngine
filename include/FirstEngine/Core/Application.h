@@ -18,7 +18,9 @@ namespace FirstEngine {
 
         protected:
             virtual void OnUpdate(float deltaTime) {}
+            virtual void OnPrepareFrameGraph() {} // Called before OnRender() to build FrameGraph execution plan
             virtual void OnRender() {}
+            virtual void OnSubmit() {} // Called after OnRender() to submit command buffers
             virtual void OnResize(int width, int height) {}
 
             std::unique_ptr<Window> m_Window;

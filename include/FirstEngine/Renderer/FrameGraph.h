@@ -1,6 +1,9 @@
 #pragma once
 
 #include "FirstEngine/Renderer/Export.h"
+#include "FirstEngine/Renderer/RenderCommandList.h"
+#include "FirstEngine/Renderer/RenderPassTypes.h"
+#include "FirstEngine/Renderer/ResourceTypes.h"
 #include "FirstEngine/RHI/IDevice.h"
 #include "FirstEngine/RHI/Types.h"
 #include <memory>
@@ -9,6 +12,15 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <functional>
+#include <cstdint>
+#include <climits>
+
+// Forward declaration
+namespace FirstEngine {
+    namespace Renderer {
+        class FrameGraphExecutionPlan;
+    }
+}
 
 namespace FirstEngine {
     namespace Renderer {
@@ -19,45 +31,94 @@ namespace FirstEngine {
         class FrameGraphResource;
         class FrameGraphBuilder;
 
-        // FrameGraph resource type
-        enum class ResourceType {
-            Texture,
-            Buffer,
-            Attachment,
-        };
+        // FrameGraph resource description base class
+        // Concrete resource types (AttachmentResource, BufferResource) inherit from this
+        class FE_RENDERER_API ResourceDescription {
+        public:
+            ResourceDescription(ResourceType type, const std::string& name);
+            virtual ~ResourceDescription() = default;
 
-        // FrameGraph resource description
-        FE_RENDERER_API struct ResourceDescription {
-            ResourceType type;
-            std::string name;
+            ResourceType GetType() const { return m_Type; }
+            const std::string& GetName() const { return m_Name; }
             
             // For textures/attachments
-            uint32_t width = 0;
-            uint32_t height = 0;
-            RHI::Format format = RHI::Format::Undefined;
-            bool hasDepth = false;
+            uint32_t GetWidth() const { return m_Width; }
+            uint32_t GetHeight() const { return m_Height; }
+            RHI::Format GetFormat() const { return m_Format; }
+            bool HasDepth() const { return m_HasDepth; }
             
             // For buffers
-            uint64_t size = 0;
-            RHI::BufferUsageFlags bufferUsage = RHI::BufferUsageFlags::None;
+            uint64_t GetSize() const { return m_Size; }
+            RHI::BufferUsageFlags GetBufferUsage() const { return m_BufferUsage; }
             
             // Resource lifecycle
-            uint32_t firstPass = 0;
-            uint32_t lastPass = 0;
+            uint32_t GetFirstPass() const { return m_FirstPass; }
+            uint32_t GetLastPass() const { return m_LastPass; }
+            void SetFirstPass(uint32_t pass) { m_FirstPass = pass; }
+            void SetLastPass(uint32_t pass) { m_LastPass = pass; }
+
+        protected:
+            ResourceType m_Type;
+            std::string m_Name;
+            
+            // For textures/attachments
+            uint32_t m_Width = 0;
+            uint32_t m_Height = 0;
+            RHI::Format m_Format = RHI::Format::Undefined;
+            bool m_HasDepth = false;
+            
+            // For buffers
+            uint64_t m_Size = 0;
+            RHI::BufferUsageFlags m_BufferUsage = RHI::BufferUsageFlags::None;
+            
+            // Resource lifecycle
+            uint32_t m_FirstPass = 0;
+            uint32_t m_LastPass = 0;
         };
+
+        // Attachment resource (for G-Buffer, final output, etc.)
+        class FE_RENDERER_API AttachmentResource : public ResourceDescription {
+        public:
+            AttachmentResource(
+                const std::string& name,
+                uint32_t width,
+                uint32_t height,
+                RHI::Format format,
+                bool hasDepth = false
+            );
+        };
+
+        // Buffer resource
+        class FE_RENDERER_API BufferResource : public ResourceDescription {
+        public:
+            BufferResource(
+                const std::string& name,
+                uint64_t size,
+                RHI::BufferUsageFlags usage
+            );
+        };
+
+        // Forward declaration
+        class FrameGraph;
 
         // FrameGraph node (render pass)
         class FE_RENDERER_API FrameGraphNode {
         public:
-            FrameGraphNode(const std::string& name, uint32_t index);
-            ~FrameGraphNode();
+            FrameGraphNode(const std::string& name, uint32_t index = 0xFFFFFFFF);
+            virtual ~FrameGraphNode(); // Virtual destructor for polymorphism (required for dynamic_cast)
 
             const std::string& GetName() const { return m_Name; }
             uint32_t GetIndex() const { return m_Index; }
+            void SetIndex(uint32_t index) { m_Index = index; }
+
+            // Set FrameGraph reference (for automatic resource management)
+            void SetFrameGraph(FrameGraph* frameGraph) { m_FrameGraph = frameGraph; }
+            FrameGraph* GetFrameGraph() const { return m_FrameGraph; }
 
             // Resource access
-            void AddReadResource(const std::string& resourceName);
-            void AddWriteResource(const std::string& resourceName);
+            // If FrameGraph is set, these methods will automatically add and allocate resources
+            void AddReadResource(const std::string& resourceName, const ResourceDescription* resourceDesc = nullptr);
+            void AddWriteResource(const std::string& resourceName, const ResourceDescription* resourceDesc = nullptr);
             const std::vector<std::string>& GetReadResources() const { return m_ReadResources; }
             const std::vector<std::string>& GetWriteResources() const { return m_WriteResources; }
 
@@ -65,18 +126,29 @@ namespace FirstEngine {
             void AddDependency(uint32_t nodeIndex);
             const std::vector<uint32_t>& GetDependencies() const { return m_Dependencies; }
 
-            // Execution callback
-            using ExecuteCallback = std::function<void(RHI::ICommandBuffer*, FrameGraphBuilder&)>;
+            // Execution callback - now returns RenderCommandList instead of writing to CommandBuffer
+            // The second parameter is optional scene render commands (for geometry/forward passes)
+            using ExecuteCallback = std::function<RenderCommandList(FrameGraphBuilder&, const RenderCommandList*)>;
             void SetExecuteCallback(ExecuteCallback callback) { m_ExecuteCallback = callback; }
             const ExecuteCallback& GetExecuteCallback() const { return m_ExecuteCallback; }
 
-        private:
+            // Node type (for execution plan) - using enum
+            void SetType(RenderPassType type) { m_Type = type; }
+            RenderPassType GetType() const { return m_Type; }
+            
+            // String conversion helpers (for backward compatibility and serialization)
+            void SetType(const std::string& typeStr) { m_Type = StringToRenderPassType(typeStr); }
+            std::string GetTypeString() const { return RenderPassTypeToString(m_Type); }
+
+        protected:
             std::string m_Name;
             uint32_t m_Index;
+            RenderPassType m_Type; // Node type using enum
             std::vector<std::string> m_ReadResources;
             std::vector<std::string> m_WriteResources;
             std::vector<uint32_t> m_Dependencies;
             ExecuteCallback m_ExecuteCallback;
+            FrameGraph* m_FrameGraph = nullptr; // Reference to FrameGraph for automatic resource management
         };
 
         // FrameGraph resource
@@ -137,15 +209,33 @@ namespace FirstEngine {
 
             // Add node
             FrameGraphNode* AddNode(const std::string& name);
+            
+            // Add an existing node (for IRenderPass that inherits from FrameGraphNode)
+            // If the node is an IRenderPass, automatically sets execute callback from OnDraw()
+            FrameGraphNode* AddNode(FrameGraphNode* node);
 
             // Add resource
             FrameGraphResource* AddResource(const std::string& name, const ResourceDescription& desc);
 
-            // Compile FrameGraph (analyze dependencies, allocate resources)
-            bool Compile();
+            // Allocate a single resource (for per-pass resource allocation)
+            // Returns true if allocation succeeded
+            bool AllocateResource(const std::string& resourceName);
 
-            // Execute FrameGraph (generate actual render commands)
-            void Execute(RHI::ICommandBuffer* commandBuffer);
+            // Build execution plan (creates intermediate structure without CommandBuffer/Device dependencies)
+            // This should be called before OnRender() to determine what scene resources need to be collected
+            bool BuildExecutionPlan(FrameGraphExecutionPlan& plan);
+
+            // Compile FrameGraph (analyze dependencies, allocate resources)
+            // Note: This now allocates resources based on the execution plan
+            bool Compile(const FrameGraphExecutionPlan& plan);
+
+            // Execute FrameGraph (generate render command list from execution plan, no CommandBuffer dependency)
+            // Returns a RenderCommandList that can be recorded to CommandBuffer later
+            // scene: Scene to render (passed to Passes with SceneRenderer)
+            // This method will:
+            //   1. For each Pass with SceneRenderer, call Render() to generate SceneRenderCommands
+            //   2. Pass SceneRenderCommands to OnDraw() callback
+            RenderCommandList Execute(const FrameGraphExecutionPlan& plan, Resources::Scene* scene = nullptr);
 
             // Get resource
             FrameGraphResource* GetResource(const std::string& name);
@@ -157,7 +247,12 @@ namespace FirstEngine {
             uint32_t GetNodeCount() const { return static_cast<uint32_t>(m_Nodes.size()); }
 
             // Clear (for next frame)
+            // This clears the graph structure but does NOT release resources
             void Clear();
+
+            // Release all allocated resources
+            // This should be called before rebuilding the FrameGraph
+            void ReleaseResources();
 
             // Get device
             RHI::IDevice* GetDevice() const { return m_Device; }

@@ -11,6 +11,9 @@ endif()
 set(CORE_SOURCES
     Window.cpp
     CommandLine.cpp
+    Thread.cpp
+    ThreadManager.cpp
+    Barrier.cpp
 )
 
 # Header files (add to project so they show up in Visual Studio)
@@ -19,6 +22,10 @@ set(CORE_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Application.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/CommandLine.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Window.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Thread.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/ThreadManager.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Task.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Barrier.h
 )
 
 # Create shared library

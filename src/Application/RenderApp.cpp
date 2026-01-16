@@ -3,9 +3,14 @@
 #include "FirstEngine/Core/CommandLine.h"
 #include "FirstEngine/Device/VulkanDevice.h"
 #include "FirstEngine/Renderer/FrameGraph.h"
-#include "FirstEngine/Renderer/PipelineConfig.h"
-#include "FirstEngine/Renderer/PipelineBuilder.h"
+#include "FirstEngine/Renderer/FrameGraphExecutionPlan.h"
+#include "FirstEngine/Renderer/IRenderPipeline.h"
+#include "FirstEngine/Renderer/DeferredRenderPipeline.h"
 #include "FirstEngine/Renderer/SceneRenderer.h"
+#include "FirstEngine/Renderer/RenderBatch.h"
+#include "FirstEngine/Renderer/RenderCommandList.h"
+#include "FirstEngine/Renderer/CommandRecorder.h"
+#include "FirstEngine/Renderer/RenderConfig.h"
 #include "FirstEngine/Resources/Scene.h"
 #include "FirstEngine/Resources/ResourceProvider.h"
 #include "FirstEngine/Resources/ResourceID.h"
@@ -66,7 +71,12 @@ public:
           m_CommandBuffer(nullptr),
           m_Scene(nullptr),
           m_SceneRenderer(nullptr),
+          m_RenderQueue(),
+          m_RenderConfig(),
+          m_CurrentImageIndex(0),
           m_LastTime(std::chrono::high_resolution_clock::now()) {
+        // Initialize render config with window dimensions
+        m_RenderConfig.SetResolution(width, height);
     }
 
     ~RenderApp() override {
@@ -102,6 +112,9 @@ public:
         if (m_FrameGraph) {
             delete m_FrameGraph;
         }
+        if (m_RenderPipeline) {
+            delete m_RenderPipeline;
+        }
         if (m_Device) {
             m_Device->Shutdown();
             delete m_Device;
@@ -126,44 +139,42 @@ public:
             return false;
         }
 
-        // Load pipeline config
-        std::string configPath = "configs/deferred_rendering.pipeline";
+        // Create render pipeline based on RenderConfig
+        const auto& pipelineConfig = m_RenderConfig.GetPipelineConfig();
         
-        // Create configs directory if it doesn't exist
-        try {
-            fs::create_directories("configs");
-        } catch (...) {
-            std::cerr << "Warning: Failed to create configs directory!" << std::endl;
-        }
-        
-        FirstEngine::Renderer::PipelineConfig config;
-        int width = GetWindow() ? GetWindow()->GetWidth() : 1280;
-        int height = GetWindow() ? GetWindow()->GetHeight() : 720;
-        
-        if (!FirstEngine::Renderer::PipelineConfigParser::ParseFromFile(configPath, config)) {
-            std::cout << "Config file not found, creating default deferred rendering config..." << std::endl;
-            config = FirstEngine::Renderer::PipelineBuilder::CreateDeferredRenderingConfig(width, height);
-            
-            // Save config for future use
-            if (!FirstEngine::Renderer::PipelineConfigParser::SaveToFile(configPath, config)) {
-                std::cerr << "Warning: Failed to save config file!" << std::endl;
+        // Create pipeline instance based on type
+        switch (pipelineConfig.type) {
+            case FirstEngine::Renderer::RenderPipelineType::Deferred: {
+                m_RenderPipeline = new FirstEngine::Renderer::DeferredRenderPipeline(m_Device);
+                break;
+            }
+            case FirstEngine::Renderer::RenderPipelineType::Forward: {
+                // TODO: Implement ForwardRenderPipeline
+                std::cerr << "Forward rendering pipeline not yet implemented, falling back to deferred." << std::endl;
+                m_RenderPipeline = new FirstEngine::Renderer::DeferredRenderPipeline(m_Device);
+                break;
+            }
+            default: {
+                std::cerr << "Unknown pipeline type, using default deferred rendering." << std::endl;
+                m_RenderPipeline = new FirstEngine::Renderer::DeferredRenderPipeline(m_Device);
+                break;
             }
         }
 
-        // Build FrameGraph from config
-        FirstEngine::Renderer::PipelineBuilder builder(m_Device);
+        // Create FrameGraph
         m_FrameGraph = new FirstEngine::Renderer::FrameGraph(m_Device);
         
-        if (!builder.BuildFromConfig(config, *m_FrameGraph)) {
-            std::cerr << "Failed to build FrameGraph from config!" << std::endl;
-            return false;
-        }
+        // Note: FrameGraph will be rebuilt every frame in OnPrepareFrameGraph()
+        // This allows per-frame adjustments to the rendering pipeline configuration
+        // Initial build is not needed here as it will be done in the first OnPrepareFrameGraph() call
 
         // Create swapchain
         if (GetWindow()) {
+            // Use RenderConfig for resolution
+            const auto& resolution = m_RenderConfig.GetResolution();
             FirstEngine::RHI::SwapchainDescription swapchainDesc;
-            swapchainDesc.width = GetWindow()->GetWidth();
-            swapchainDesc.height = GetWindow()->GetHeight();
+            swapchainDesc.width = resolution.width;
+            swapchainDesc.height = resolution.height;
             m_Swapchain = m_Device->CreateSwapchain(GetWindow()->GetHandle(), swapchainDesc);
             if (!m_Swapchain) {
                 std::cerr << "Failed to create swapchain!" << std::endl;
@@ -302,7 +313,84 @@ protected:
         // Update logic here
     }
 
+    void OnPrepareFrameGraph() override {
+        if (!m_FrameGraph || !m_RenderPipeline) {
+            return;
+        }
+
+        // Rebuild FrameGraph every frame to allow dynamic configuration changes
+        // This enables per-frame adjustments to the rendering pipeline
+        // 
+        // Note: Resource release is safe here because:
+        // - OnSubmit() (previous frame) already waited for GPU to complete (WaitForFence)
+        // - This is called after OnSubmit(), so GPU is guaranteed to be done with old resources
+        // - New resources will be allocated after this, and used in the next OnSubmit()
+        
+        // Release old resources (from previous frame)
+        m_FrameGraph->ReleaseResources();
+        
+        // Clear the graph structure
+        m_FrameGraph->Clear();
+        
+        // Rebuild FrameGraph structure from pipeline (using current RenderConfig)
+        // This allows the pipeline to be reconfigured per frame based on RenderConfig changes
+        if (!m_RenderPipeline->BuildFrameGraph(*m_FrameGraph, m_RenderConfig)) {
+            std::cerr << "Failed to rebuild FrameGraph!" << std::endl;
+            return;
+        }
+
+        // Build FrameGraph execution plan (Device/CommandBuffer independent)
+        // This determines the rendering pipeline structure and what resources are needed
+        // This happens before OnRender(), so we can use this information to decide
+        // which scene resources need to be collected
+        if (!m_RenderPipeline->BuildExecutionPlan(*m_FrameGraph, m_FrameGraphPlan)) {
+            std::cerr << "Failed to build execution plan!" << std::endl;
+            return;
+        }
+
+        // Compile FrameGraph based on the execution plan (allocate new resources)
+        // Note: Resource allocation happens here, after the plan structure is built
+        // New resources will be used in the current frame's rendering
+        if (!m_RenderPipeline->Compile(*m_FrameGraph, m_FrameGraphPlan)) {
+            std::cerr << "Failed to compile FrameGraph!" << std::endl;
+        }
+    }
+
     void OnRender() override {
+        if (!m_SceneRenderer || !m_Scene) {
+            return;
+        }
+
+        // Clear render queue and command lists from previous frame
+        m_RenderQueue.Clear();
+        m_SceneRenderCommands.Clear();
+        m_FrameGraphRenderCommands.Clear();
+
+        // Update render config with current window dimensions
+        if (GetWindow()) {
+            m_RenderConfig.UpdateResolutionFromWindow(
+                GetWindow()->GetWidth(),
+                GetWindow()->GetHeight()
+            );
+        }
+
+        // Only perform scene traversal and build render queue
+        // No CommandBuffer operations here - this allows for multi-threaded optimization
+        // Scene traversal can be done in parallel or on a different thread
+        // Use RenderConfig for camera and render settings
+        m_SceneRenderer->Render(m_RenderQueue, m_RenderConfig);
+
+        // Convert render queue to render command list (data structure, no CommandBuffer dependency)
+        // This happens after scene traversal, allowing for multi-threaded optimization
+        m_SceneRenderCommands = m_SceneRenderer->SubmitRenderQueue(m_RenderQueue);
+
+        // Execute FrameGraph to get render command list (data structure, no CommandBuffer dependency)
+        // Pass scene commands to FrameGraph so they can be merged into geometry/forward passes
+        // FrameGraph will merge scene commands into appropriate passes (geometry, forward)
+        m_FrameGraphRenderCommands = m_FrameGraph->Execute(m_FrameGraphPlan, &m_SceneRenderCommands);
+    }
+
+    void OnSubmit() override {
         if (!m_Device || !m_FrameGraph || !m_Swapchain) {
             return;
         }
@@ -325,8 +413,7 @@ protected:
         // Acquire next swapchain image
         // m_ImageAvailableSemaphore will be signaled when image is available
         // After waiting for fence, the semaphore from previous frame should be unsignaled
-        uint32_t imageIndex;
-        if (!m_Swapchain->AcquireNextImage(m_ImageAvailableSemaphore, nullptr, imageIndex)) {
+        if (!m_Swapchain->AcquireNextImage(m_ImageAvailableSemaphore, nullptr, m_CurrentImageIndex)) {
             // Image acquisition failed or swapchain needs recreation
             return;
         }
@@ -341,7 +428,7 @@ protected:
         m_CommandBuffer->Begin();
 
         // Transition swapchain image from undefined to color attachment layout
-        auto* swapchainImage = m_Swapchain->GetImage(imageIndex);
+        auto* swapchainImage = m_Swapchain->GetImage(m_CurrentImageIndex);
         if (swapchainImage) {
             m_CommandBuffer->TransitionImageLayout(
                 swapchainImage,
@@ -351,34 +438,20 @@ protected:
             );
         }
 
-        // Render scene if available
-        if (m_SceneRenderer && m_Scene) {
-            // Calculate view and projection matrices
-            int width = GetWindow() ? GetWindow()->GetWidth() : 1280;
-            int height = GetWindow() ? GetWindow()->GetHeight() : 720;
-            float aspect = static_cast<float>(width) / static_cast<float>(height);
-
-            glm::mat4 viewMatrix = glm::lookAt(
-                glm::vec3(0.0f, 2.0f, 5.0f),  // Camera position
-                glm::vec3(0.0f, 0.0f, -5.0f), // Look at
-                glm::vec3(0.0f, 1.0f, 0.0f)   // Up vector
-            );
-
-            glm::mat4 projMatrix = glm::perspective(
-                glm::radians(45.0f),  // FOV
-                aspect,                // Aspect ratio
-                0.1f,                  // Near plane
-                100.0f                 // Far plane
-            );
-
-            // Render scene
-            m_SceneRenderer->Render(m_CommandBuffer.get(), viewMatrix, projMatrix);
+        // Record render commands to command buffer
+        // FrameGraph commands were generated in OnRender() as data structures
+        // Scene commands have been merged into FrameGraph passes (geometry/forward)
+        // Now we convert these data structures to actual GPU commands
+        // This provides complete logical isolation between data generation and command recording
+        
+        // Record FrameGraph render commands (includes merged scene commands)
+        // Scene commands are now part of FrameGraph passes, so we only need to record FrameGraph commands
+        if (!m_FrameGraphRenderCommands.IsEmpty()) {
+            m_CommandRecorder.RecordCommands(m_CommandBuffer.get(), m_FrameGraphRenderCommands);
         }
 
-        // Execute FrameGraph (this will render to the swapchain image)
-        m_FrameGraph->Execute(m_CommandBuffer.get());
-
         // Transition swapchain image from color attachment to present layout
+        // This is a direct CommandBuffer operation (not part of scene/FrameGraph data)
         // This must be done before ending the command buffer
         if (swapchainImage) {
             m_CommandBuffer->TransitionImageLayout(
@@ -400,7 +473,7 @@ protected:
 
         // Present - wait for render finished
         std::vector<FirstEngine::RHI::SemaphoreHandle> presentWaitSemaphores = {m_RenderFinishedSemaphore};
-        m_Swapchain->Present(imageIndex, presentWaitSemaphores);
+        m_Swapchain->Present(m_CurrentImageIndex, presentWaitSemaphores);
 
         // End RenderDoc frame capture
         // Note: For Vulkan, RenderDoc works as an implicit layer and automatically captures frames
@@ -411,6 +484,7 @@ protected:
         // Note: Command buffer is stored as member variable and will be released
         // at the start of next frame after waiting for fence, ensuring GPU has finished using it
         // Semaphores are reused, not destroyed here
+        // Render queue is cleared at the start of OnRender() for next frame
     }
 
     void OnResize(int width, int height) override {
@@ -418,6 +492,9 @@ protected:
         if (width <= 0 || height <= 0) {
             return;
         }
+
+        // Update render config with new resolution
+        m_RenderConfig.UpdateResolutionFromWindow(width, height);
 
         if (m_FrameGraph && m_Device) {
             // Wait for GPU to finish before recreating swapchain
@@ -453,13 +530,14 @@ protected:
                 }
             }
 
-            // Rebuild FrameGraph with new dimensions
-            FirstEngine::Renderer::PipelineConfig config = 
-                FirstEngine::Renderer::PipelineBuilder::CreateDeferredRenderingConfig(width, height);
-            
-            m_FrameGraph->Clear();
-            FirstEngine::Renderer::PipelineBuilder builder(m_Device);
-            builder.BuildFromConfig(config, *m_FrameGraph);
+            // Rebuild FrameGraph with new dimensions from RenderConfig
+            if (m_RenderPipeline && m_FrameGraph) {
+                m_FrameGraph->Clear();
+                if (!m_RenderPipeline->BuildFrameGraph(*m_FrameGraph, m_RenderConfig)) {
+                    std::cerr << "Failed to rebuild FrameGraph on resize!" << std::endl;
+                    return;
+                }
+            }
         }
     }
 
@@ -566,7 +644,9 @@ private:
     }
 
     FirstEngine::Device::VulkanDevice* m_Device;
+    FirstEngine::Renderer::IRenderPipeline* m_RenderPipeline = nullptr; // Render pipeline (Deferred, Forward, etc.)
     FirstEngine::Renderer::FrameGraph* m_FrameGraph;
+    FirstEngine::Renderer::FrameGraphExecutionPlan m_FrameGraphPlan; // FrameGraph execution plan (Device/CommandBuffer independent)
     std::unique_ptr<FirstEngine::RHI::ISwapchain> m_Swapchain;
     FirstEngine::RHI::SemaphoreHandle m_ImageAvailableSemaphore;
     FirstEngine::RHI::SemaphoreHandle m_RenderFinishedSemaphore;
@@ -574,6 +654,12 @@ private:
     std::unique_ptr<FirstEngine::RHI::ICommandBuffer> m_CommandBuffer; // Store command buffer to defer destruction
     FirstEngine::Resources::Scene* m_Scene;
     FirstEngine::Renderer::SceneRenderer* m_SceneRenderer;
+    FirstEngine::Renderer::RenderQueue m_RenderQueue; // Global render queue for collecting render data
+    FirstEngine::Renderer::RenderConfig m_RenderConfig; // Global render configuration (camera, resolution, flags)
+    FirstEngine::Renderer::RenderCommandList m_SceneRenderCommands; // Render commands from scene (CommandBuffer independent)
+    FirstEngine::Renderer::RenderCommandList m_FrameGraphRenderCommands; // Render commands from FrameGraph (CommandBuffer independent)
+    FirstEngine::Renderer::CommandRecorder m_CommandRecorder; // Converts RenderCommandList to CommandBuffer commands
+    uint32_t m_CurrentImageIndex = 0; // Store current image index for OnSubmit
     std::chrono::high_resolution_clock::time_point m_LastTime;
 
 #ifdef _WIN32

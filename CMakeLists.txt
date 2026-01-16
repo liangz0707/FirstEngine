@@ -162,3 +162,4 @@ add_subdirectory(src/Renderer)
 
 # Tools (工具项目)
 add_subdirectory(src/Tools/ShaderManager)
+add_subdirectory(src/Tools/ResourceImport)

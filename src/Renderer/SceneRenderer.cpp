@@ -1,4 +1,6 @@
 #include "FirstEngine/Renderer/SceneRenderer.h"
+#include "FirstEngine/Renderer/RenderConfig.h"
+#include "FirstEngine/Renderer/RenderFlags.h"
 #include "FirstEngine/Resources/Scene.h"
 #include "FirstEngine/Resources/ModelComponent.h"
 #include "FirstEngine/Renderer/RenderResource.h"
@@ -16,38 +18,65 @@ namespace FirstEngine {
 
         SceneRenderer::~SceneRenderer() = default;
 
-        void SceneRenderer::SetScene(Resources::Scene* scene) {
-            m_Scene = scene;
+        void SceneRenderer::Render(
+            Resources::Scene* scene,
+            const CameraConfig& cameraConfig,
+            const ResolutionConfig& resolutionConfig,
+            const RenderFlags& renderFlags
+        ) {
+            if (!scene) {
+                m_SceneRenderCommands.Clear();
+                return;
+            }
+
+            // Clear previous commands
+            m_SceneRenderCommands.Clear();
+
+            // Build render queue
+            RenderQueue renderQueue;
+            BuildRenderQueue(scene, cameraConfig, resolutionConfig, renderFlags, renderQueue);
+
+            // Convert render queue to render command list
+            m_SceneRenderCommands = SubmitRenderQueue(renderQueue);
         }
 
         void SceneRenderer::BuildRenderQueue(
-            const glm::mat4& viewMatrix,
-            const glm::mat4& projMatrix,
+            Resources::Scene* scene,
+            const CameraConfig& cameraConfig,
+            const ResolutionConfig& resolutionConfig,
+            const RenderFlags& renderFlags,
             RenderQueue& renderQueue
         ) {
-            if (!m_Scene) {
+            if (!scene) {
                 return;
             }
 
             renderQueue.Clear();
 
+            // Get view and projection matrices from camera config
+            glm::mat4 viewMatrix = cameraConfig.GetViewMatrix();
+            glm::mat4 projMatrix = cameraConfig.GetProjectionMatrix(resolutionConfig.GetAspectRatio());
             glm::mat4 viewProjMatrix = projMatrix * viewMatrix;
             Frustum frustum(viewProjMatrix);
+
+            // Use render flags from parameter
+            bool frustumCulling = renderFlags.frustumCulling && m_FrustumCullingEnabled;
+            bool occlusionCulling = renderFlags.occlusionCulling && m_OcclusionCullingEnabled;
 
             // Get visible entities
             std::vector<Resources::Entity*> visibleEntities;
 
-            if (m_FrustumCullingEnabled) {
+            if (frustumCulling) {
                 // Use octree for efficient culling
-                visibleEntities = m_Scene->QueryFrustum(viewProjMatrix);
+                visibleEntities = scene->QueryFrustum(viewProjMatrix);
                 
                 // Additional culling pass (optional, for more precise culling)
-                if (m_OcclusionCullingEnabled) {
+                if (occlusionCulling) {
                     m_CullingSystem.PerformOcclusionCulling(frustum, visibleEntities, visibleEntities);
                 }
             } else {
                 // No culling - get all active entities from all levels
-                std::vector<Resources::Entity*> allEntities = m_Scene->GetAllEntities();
+                std::vector<Resources::Entity*> allEntities = scene->GetAllEntities();
                 for (Resources::Entity* entity : allEntities) {
                     if (entity && entity->IsActive()) {
                         visibleEntities.push_back(entity);
@@ -55,15 +84,24 @@ namespace FirstEngine {
                 }
             }
 
-            // Build render items from visible entities
-            BuildRenderQueueFromEntities(visibleEntities, renderQueue);
+            // Filter entities by render flags
+            std::vector<Resources::Entity*> filteredEntities;
+            for (Resources::Entity* entity : visibleEntities) {
+                if (MatchesRenderFlags(entity)) {
+                    filteredEntities.push_back(entity);
+                }
+            }
+
+            // Build render items from filtered entities
+            BuildRenderQueueFromEntities(filteredEntities, renderQueue);
 
             // Update statistics
-            size_t totalEntities = m_Scene->GetAllEntities().size();
-            m_VisibleEntityCount = visibleEntities.size();
-            m_CulledEntityCount = totalEntities - visibleEntities.size();
+            size_t totalEntities = scene->GetAllEntities().size();
+            m_VisibleEntityCount = filteredEntities.size();
+            m_CulledEntityCount = totalEntities - filteredEntities.size();
             m_DrawCallCount = renderQueue.GetTotalItemCount();
         }
+
 
         void SceneRenderer::BuildRenderQueueFromEntities(
             const std::vector<Resources::Entity*>& visibleEntities,
@@ -92,19 +130,27 @@ namespace FirstEngine {
             renderQueue.Sort();
         }
 
-        void SceneRenderer::Render(
-            RHI::ICommandBuffer* commandBuffer,
-            const glm::mat4& viewMatrix,
-            const glm::mat4& projMatrix
-        ) {
-            if (!commandBuffer || !m_Scene) {
-                return;
+        bool SceneRenderer::MatchesRenderFlags(Resources::Entity* entity) const {
+            if (!entity) {
+                return false;
             }
 
-            RenderQueue renderQueue;
-            BuildRenderQueue(viewMatrix, projMatrix, renderQueue);
+            // TODO: Check entity's render flags against m_RenderFlags
+            // For now, if RenderObjectFlag::All is set, accept all entities
+            if ((m_RenderFlags & RenderObjectFlag::All) == RenderObjectFlag::All) {
+                return true;
+            }
 
-            // Execute render batches
+            // TODO: Implement proper flag checking based on entity properties
+            // This would check if entity has Shadow/Transparent/Opaque/UI flags
+            // For now, default to accepting all entities
+            return true;
+        }
+
+        RenderCommandList SceneRenderer::SubmitRenderQueue(const RenderQueue& renderQueue) {
+            RenderCommandList commandList;
+
+            // Convert render batches to render commands (data structures)
             const auto& batches = renderQueue.GetBatches();
             for (const auto& batch : batches) {
                 const auto& items = batch.GetItems();
@@ -115,33 +161,71 @@ namespace FirstEngine {
                 for (const auto& item : items) {
                     // Bind pipeline if changed
                     if (item.pipeline != currentPipeline) {
-                        commandBuffer->BindPipeline(item.pipeline);
+                        RenderCommand cmd;
+                        cmd.type = RenderCommandType::BindPipeline;
+                        cmd.params.bindPipeline.pipeline = item.pipeline;
+                        commandList.AddCommand(std::move(cmd));
                         currentPipeline = item.pipeline;
                     }
 
                     // Bind descriptor set if changed
                     if (item.descriptorSet != currentDescriptorSet) {
-                        // TODO: Implement descriptor set binding
-                        // commandBuffer->BindDescriptorSets(0, {item.descriptorSet}, {});
+                        RenderCommand cmd;
+                        cmd.type = RenderCommandType::BindDescriptorSets;
+                        cmd.params.bindDescriptorSets.firstSet = 0;
+                        if (item.descriptorSet) {
+                            cmd.params.bindDescriptorSets.descriptorSets = {item.descriptorSet};
+                        } else {
+                            cmd.params.bindDescriptorSets.descriptorSets.clear();
+                        }
+                        cmd.params.bindDescriptorSets.dynamicOffsets.clear();
+                        commandList.AddCommand(std::move(cmd));
                         currentDescriptorSet = item.descriptorSet;
                     }
 
-                    // Bind vertex and index buffers
+                    // Bind vertex buffers
                     if (item.vertexBuffer) {
-                        commandBuffer->BindVertexBuffers(0, {item.vertexBuffer}, {item.vertexBufferOffset});
-                    }
-                    if (item.indexBuffer) {
-                        commandBuffer->BindIndexBuffer(item.indexBuffer, item.indexBufferOffset, true);
+                        RenderCommand cmd;
+                        cmd.type = RenderCommandType::BindVertexBuffers;
+                        cmd.params.bindVertexBuffers.firstBinding = 0;
+                        cmd.params.bindVertexBuffers.buffers = {item.vertexBuffer};
+                        cmd.params.bindVertexBuffers.offsets = {item.vertexBufferOffset};
+                        commandList.AddCommand(std::move(cmd));
                     }
 
-                    // Draw
+                    // Bind index buffer
+                    if (item.indexBuffer) {
+                        RenderCommand cmd;
+                        cmd.type = RenderCommandType::BindIndexBuffer;
+                        cmd.params.bindIndexBuffer.buffer = item.indexBuffer;
+                        cmd.params.bindIndexBuffer.offset = item.indexBufferOffset;
+                        cmd.params.bindIndexBuffer.is32Bit = true;
+                        commandList.AddCommand(std::move(cmd));
+                    }
+
+                    // Draw command
                     if (item.indexCount > 0) {
-                        commandBuffer->DrawIndexed(item.indexCount, 1, item.firstIndex, 0);
+                        RenderCommand cmd;
+                        cmd.type = RenderCommandType::DrawIndexed;
+                        cmd.params.drawIndexed.indexCount = item.indexCount;
+                        cmd.params.drawIndexed.instanceCount = 1;
+                        cmd.params.drawIndexed.firstIndex = item.firstIndex;
+                        cmd.params.drawIndexed.vertexOffset = 0;
+                        cmd.params.drawIndexed.firstInstance = 0;
+                        commandList.AddCommand(std::move(cmd));
                     } else if (item.vertexCount > 0) {
-                        commandBuffer->Draw(item.vertexCount, 1, item.firstVertex, 0);
+                        RenderCommand cmd;
+                        cmd.type = RenderCommandType::Draw;
+                        cmd.params.draw.vertexCount = item.vertexCount;
+                        cmd.params.draw.instanceCount = 1;
+                        cmd.params.draw.firstVertex = item.firstVertex;
+                        cmd.params.draw.firstInstance = 0;
+                        commandList.AddCommand(std::move(cmd));
                     }
                 }
             }
+
+            return commandList;
         }
 
         void SceneRenderer::EntityToRenderItems(

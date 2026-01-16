@@ -38,7 +38,9 @@ namespace FirstEngine {
                 }
 
                 OnUpdate(deltaTime);
-                OnRender();
+                OnPrepareFrameGraph(); // Build FrameGraph execution plan (before OnRender)
+                OnRender();  // Collect render data
+                OnSubmit();  // Submit command buffers
             }
         }
     }

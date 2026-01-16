@@ -10,21 +10,45 @@ endif()
 # Source files
 set(RENDERER_SOURCES
     FrameGraph.cpp
+    FrameGraphExecutionPlan.cpp
     PipelineConfig.cpp
     PipelineBuilder.cpp
+    IRenderPipeline.cpp
+    DeferredRenderPipeline.cpp
     RenderBatch.cpp
+    RenderCommandList.cpp
+    CommandRecorder.cpp
+    RenderConfig.cpp
     SceneRenderer.cpp
     RenderResource.cpp
+    RenderPassTypes.cpp
+    IRenderPass.cpp
+    GeometryPass.cpp
+    LightingPass.cpp
+    PostProcessPass.cpp
+    ResourceDescription.cpp
 )
 
 # Header files (add to project so they show up in Visual Studio)
 set(RENDERER_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/Export.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/FrameGraph.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/FrameGraphExecutionPlan.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/PipelineBuilder.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/PipelineConfig.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/IRenderPipeline.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/DeferredRenderPipeline.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/RenderBatch.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/RenderCommandList.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/CommandRecorder.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/RenderConfig.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/SceneRenderer.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/RenderPassTypes.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ResourceTypes.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/IRenderPass.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/GeometryPass.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/LightingPass.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/PostProcessPass.h
 )
 
 # Create shared library
