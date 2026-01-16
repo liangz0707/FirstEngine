@@ -22,6 +22,8 @@ namespace FirstEngine {
         void IRenderPass::SetSceneRenderer(std::unique_ptr<SceneRenderer> sceneRenderer) {
             m_SceneRenderer = std::move(sceneRenderer);
             if (m_SceneRenderer) {
+                // Set render flags
+                // Camera config will be automatically set in Render() based on pass's camera settings
                 m_SceneRenderer->SetRenderFlags(m_RenderFlags);
             }
         }

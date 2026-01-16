@@ -315,7 +315,8 @@ namespace FirstEngine {
                 FirstEngine::Resources::ResourceType resourceType = FirstEngine::Resources::ResourceType::Texture;
 
                 // Generate or get ResourceID (use relative XML path for manifest registration)
-                ResourceID id = GenerateResourceID(xmlPathForManifest, resourceType, options.virtual_path);
+
+                FirstEngine::Resources::ResourceID id = GenerateResourceID(xmlPathForManifest, resourceType, options.virtual_path);
 
                 // Create TextureData
                 FirstEngine::Resources::ResourceXMLParser::TextureData textureData;
@@ -378,7 +379,7 @@ namespace FirstEngine {
                 FirstEngine::Resources::ResourceType resourceType = FirstEngine::Resources::ResourceType::Mesh;
 
                 // Generate or get ResourceID (use relative XML path for manifest registration)
-                ResourceID id = GenerateResourceID(xmlPathForManifest, resourceType, options.virtual_path);
+                FirstEngine::Resources::ResourceID id = GenerateResourceID(xmlPathForManifest, resourceType, options.virtual_path);
 
                 // Create MeshData
                 FirstEngine::Resources::ResourceXMLParser::MeshData meshData;
@@ -441,7 +442,7 @@ namespace FirstEngine {
                 FirstEngine::Resources::ResourceType resourceType = FirstEngine::Resources::ResourceType::Model;
 
                 // Generate or get ResourceID (use relative XML path for manifest registration)
-                ResourceID id = GenerateResourceID(xmlPathForManifest, resourceType, options.virtual_path);
+                FirstEngine::Resources::ResourceID id = GenerateResourceID(xmlPathForManifest, resourceType, options.virtual_path);
 
                 // For now, create an empty model (meshes and materials will be extracted during runtime)
                 // In a full implementation, we would use Assimp to extract meshes and materials here
@@ -509,7 +510,7 @@ namespace FirstEngine {
                 FirstEngine::Resources::ResourceType resourceType = FirstEngine::Resources::ResourceType::Material;
 
                 // Generate or get ResourceID (use relative XML path for manifest registration)
-                ResourceID id = GenerateResourceID(xmlPathForManifest, resourceType, options.virtual_path);
+                FirstEngine::Resources::ResourceID id = GenerateResourceID(xmlPathForManifest, resourceType, options.virtual_path);
 
                 // For now, create a basic material XML
                 // In a full implementation, we would parse the material file and extract parameters
@@ -551,23 +552,23 @@ namespace FirstEngine {
             return m_IDManager.SaveManifest(manifestPath);
         }
 
-        ResourceID ResourceImport::GenerateResourceID(const std::string& path, FirstEngine::Resources::ResourceType type, const std::string& virtualPath) {
+        FirstEngine::Resources::ResourceID ResourceImport::GenerateResourceID(const std::string& path, FirstEngine::Resources::ResourceType type, const std::string& virtualPath) {
             // Check if path already registered
-            ResourceID existingID = m_IDManager.GetIDFromPath(path);
+            FirstEngine::Resources::ResourceID existingID = m_IDManager.GetIDFromPath(path);
             if (existingID != FirstEngine::Resources::InvalidResourceID) {
                 return existingID;
             }
 
             // Check if virtual path already registered
             if (!virtualPath.empty()) {
-                ResourceID existingVirtualID = m_IDManager.GetIDFromVirtualPath(virtualPath);
+                FirstEngine::Resources::ResourceID existingVirtualID = m_IDManager.GetIDFromVirtualPath(virtualPath);
                 if (existingVirtualID != FirstEngine::Resources::InvalidResourceID) {
                     return existingVirtualID;
                 }
             }
 
             // Generate new ID
-            ResourceID newID = m_IDManager.GenerateID();
+            FirstEngine::Resources::ResourceID newID = m_IDManager.GenerateID();
             
             // Register the resource
             if (!RegisterResource(newID, path, type, virtualPath)) {
@@ -577,7 +578,7 @@ namespace FirstEngine {
             return newID;
         }
 
-        bool ResourceImport::RegisterResource(ResourceID id, const std::string& path, FirstEngine::Resources::ResourceType type, const std::string& virtualPath) {
+        bool ResourceImport::RegisterResource(FirstEngine::Resources::ResourceID id, const std::string& path, FirstEngine::Resources::ResourceType type, const std::string& virtualPath) {
             return m_IDManager.RegisterResourceWithID(id, path, type, virtualPath);
         }
 

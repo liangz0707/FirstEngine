@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #ifdef _WIN32
 // Push and undefine Windows API macros that conflict with our method names

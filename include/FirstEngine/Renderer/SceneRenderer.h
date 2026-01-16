@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "FirstEngine/Renderer/Export.h"
 #include "FirstEngine/Renderer/RenderBatch.h"
@@ -15,6 +15,10 @@ namespace FirstEngine {
     namespace Resources {
         class Scene;
         class Entity;
+    }
+    namespace Renderer {
+        class IRenderPass;
+        class RenderConfig;
     }
 }
 
@@ -33,15 +37,22 @@ namespace FirstEngine {
             void SetRenderFlags(RenderObjectFlag flags) { m_RenderFlags = flags; }
             RenderObjectFlag GetRenderFlags() const { return m_RenderFlags; }
 
+            // Set camera configuration (stored in SceneRenderer)
+            // This allows each SceneRenderer to have its own camera (e.g., shadow pass)
+            void SetCameraConfig(const CameraConfig& cameraConfig) { m_CameraConfig = cameraConfig; }
+            const CameraConfig& GetCameraConfig() const { return m_CameraConfig; }
+            CameraConfig& GetCameraConfig() { return m_CameraConfig; }
+
             // Render the scene (builds queue and generates commands)
             // Scene is passed as parameter (no longer stored in SceneRenderer)
-            // Camera config can be different from global RenderConfig (e.g., for shadow pass)
+            // Camera config is automatically determined from pass and renderConfig
+            // renderPass: Optional RHI render pass for pipeline creation (if provided, pipelines will be created)
             // Returns the generated RenderCommandList which is stored internally
             void Render(
                 Resources::Scene* scene,
-                const CameraConfig& cameraConfig,
-                const ResolutionConfig& resolutionConfig,
-                const RenderFlags& renderFlags
+                IRenderPass* pass,  // Pass that owns this SceneRenderer (for custom camera)
+                const RenderConfig& renderConfig,  // Global render config (for default camera and other settings)
+                RHI::IRenderPass* renderPass = nullptr  // RHI render pass for pipeline creation
             );
 
             // Get the generated render commands (stored internally after Render() call)
@@ -53,6 +64,11 @@ namespace FirstEngine {
 
             // Clear render commands
             void ClearRenderCommands() { m_SceneRenderCommands.Clear(); }
+
+            // Convert render queue to render command list (data structure, no CommandBuffer dependency)
+            // This method generates render commands as data, not GPU commands
+            // renderPass: Optional render pass for pipeline creation (if nullptr, pipelines must be created elsewhere)
+            RenderCommandList SubmitRenderQueue(const RenderQueue& renderQueue, RHI::IRenderPass* renderPass = nullptr);
 
             // Enable/disable features
             void SetFrustumCullingEnabled(bool enabled) { m_FrustumCullingEnabled = enabled; }
@@ -67,10 +83,9 @@ namespace FirstEngine {
             size_t GetDrawCallCount() const { return m_DrawCallCount; }
 
         private:
-            // Build render queue from scene
+            // Build render queue from scene (uses stored camera config)
             void BuildRenderQueue(
                 Resources::Scene* scene,
-                const CameraConfig& cameraConfig,
                 const ResolutionConfig& resolutionConfig,
                 const RenderFlags& renderFlags,
                 RenderQueue& renderQueue
@@ -83,24 +98,22 @@ namespace FirstEngine {
             );
 
             // Convert entity to render items (filtered by render flags)
+            // Entity now caches its own world matrix, no need to pass parentTransform
             void EntityToRenderItems(
                 Resources::Entity* entity,
-                const glm::mat4& parentTransform,
                 std::vector<RenderItem>& items
             );
 
-            // Create render item from model component
-            RenderItem CreateRenderItem(
-                Resources::ModelComponent* modelComponent,
-                Resources::Entity* entity,
-                const glm::mat4& worldMatrix
-            );
+            // Components now handle their own CreateRenderItem and MatchesRenderFlags
+            // No need for these methods in SceneRenderer anymore
 
-            // Check if entity matches render flags
-            bool MatchesRenderFlags(Resources::Entity* entity) const;
+            // Convert render queue to render command list (internal helper)
+            RenderCommandList SubmitRenderQueue(const RenderQueue& renderQueue);
 
             RHI::IDevice* m_Device;
+            IRenderPass* m_CurrentRenderPass = nullptr; // Current render pass (set during Render())
             RenderObjectFlag m_RenderFlags = RenderObjectFlag::All;
+            CameraConfig m_CameraConfig; // Camera configuration (stored in SceneRenderer)
             CullingSystem m_CullingSystem;
             bool m_FrustumCullingEnabled = true;
             bool m_OcclusionCullingEnabled = false;

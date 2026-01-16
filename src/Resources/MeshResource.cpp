@@ -1,4 +1,5 @@
 #include "FirstEngine/Resources/MeshResource.h"
+#include "FirstEngine/Renderer/RenderGeometry.h"
 #include "FirstEngine/Resources/ResourceProvider.h"
 #include "FirstEngine/Resources/MeshLoader.h"
 #include "FirstEngine/Resources/ModelLoader.h"
@@ -19,9 +20,8 @@ namespace FirstEngine {
         MeshResource::MeshResource() {
             m_Metadata.refCount = 0;
             m_Metadata.isLoaded = false;
+            m_RenderGeometry = nullptr;
         }
-
-        MeshResource::~MeshResource() = default;
 
         bool MeshResource::Initialize(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices, uint32_t vertexStride) {
             if (vertices.empty()) {
@@ -110,6 +110,64 @@ namespace FirstEngine {
             // Save XML with source mesh file path (similar to TextureResource::Save)
             return MeshLoader::Save(xmlFilePath, m_Metadata.name, m_Metadata.resourceID,
                                    m_SourceMeshFile, m_VertexStride);
+        }
+
+        // Render resource management implementation (internal)
+        bool MeshResource::CreateRenderGeometry() {
+            // Check if already created
+            if (m_RenderGeometry) {
+                auto* geometry = static_cast<Renderer::RenderGeometry*>(m_RenderGeometry);
+                if (geometry) {
+                    return true; // Already exists
+                }
+            }
+
+            // Create RenderGeometry from mesh data
+            auto geometry = std::make_unique<Renderer::RenderGeometry>();
+            if (!geometry->InitializeFromMesh(this)) {
+                return false; // Failed to initialize
+            }
+
+            // Schedule creation (will be processed in OnCreateResources)
+            geometry->ScheduleCreate();
+
+            // Store in MeshResource (takes ownership)
+            m_RenderGeometry = geometry.release();
+            return true;
+        }
+
+        bool MeshResource::IsRenderGeometryReady() const {
+            if (!m_RenderGeometry) {
+                return false;
+            }
+            auto* geometry = static_cast<Renderer::RenderGeometry*>(m_RenderGeometry);
+            return geometry && geometry->IsCreated();
+        }
+
+        bool MeshResource::GetRenderData(RenderData& outData) const {
+            if (!m_RenderGeometry) {
+                return false;
+            }
+            auto* geometry = static_cast<Renderer::RenderGeometry*>(m_RenderGeometry);
+            if (!geometry || !geometry->IsCreated()) {
+                return false;
+            }
+
+            outData.vertexBuffer = geometry->GetVertexBuffer();
+            outData.indexBuffer = geometry->GetIndexBuffer();
+            outData.vertexCount = geometry->GetVertexCount();
+            outData.indexCount = geometry->GetIndexCount();
+            outData.firstIndex = geometry->GetFirstIndex();
+            outData.firstVertex = geometry->GetFirstVertex();
+            return true;
+        }
+
+        // Update destructor to clean up render geometry
+        MeshResource::~MeshResource() {
+            if (m_RenderGeometry) {
+                delete static_cast<Renderer::RenderGeometry*>(m_RenderGeometry);
+                m_RenderGeometry = nullptr;
+            }
         }
 
     } // namespace Resources

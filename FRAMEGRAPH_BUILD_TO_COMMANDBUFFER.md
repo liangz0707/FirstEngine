@@ -1,4 +1,4 @@
-# FrameGraph 从 BuildFrameGraph 到 CommandBuffer 的完整流程
+﻿# FrameGraph 从 BuildFrameGraph 到 CommandBuffer 的完整流程
 
 本文档详细说明从 `BuildFrameGraph()` 构造 Node 到最终提交给 CommandBuffer 的完整数据流和转换过程。
 

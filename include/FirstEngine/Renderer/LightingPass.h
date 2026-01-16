@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "FirstEngine/Renderer/Export.h"
 #include "FirstEngine/Renderer/IRenderPass.h"

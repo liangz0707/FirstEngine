@@ -15,8 +15,11 @@
 #include <cstdint>
 #include <climits>
 
-// Forward declaration
+// Forward declarations
 namespace FirstEngine {
+    namespace Resources {
+        class Scene;
+    }
     namespace Renderer {
         class FrameGraphExecutionPlan;
     }
@@ -180,7 +183,7 @@ namespace FirstEngine {
 
         class FE_RENDERER_API FrameGraphBuilder {
         public:
-            FrameGraphBuilder(FrameGraph* graph);
+            FrameGraphBuilder(FrameGraph* graph, RHI::IRenderPass* renderPass = nullptr);
 
             // Read resources
             RHI::IImage* ReadTexture(const std::string& name);
@@ -194,8 +197,12 @@ namespace FirstEngine {
             std::string CreateTexture(const std::string& name, const ResourceDescription& desc);
             std::string CreateBuffer(const std::string& name, const ResourceDescription& desc);
 
+            // Get current render pass (for pipeline creation)
+            RHI::IRenderPass* GetRenderPass() const { return m_RenderPass; }
+
         private:
             FrameGraph* m_Graph;
+            RHI::IRenderPass* m_RenderPass = nullptr;
         };
 
         class FE_RENDERER_API FrameGraph {
@@ -232,10 +239,12 @@ namespace FirstEngine {
             // Execute FrameGraph (generate render command list from execution plan, no CommandBuffer dependency)
             // Returns a RenderCommandList that can be recorded to CommandBuffer later
             // scene: Scene to render (passed to Passes with SceneRenderer)
+            // renderConfig: Render configuration (camera, resolution, flags) - used by SceneRenderer
             // This method will:
             //   1. For each Pass with SceneRenderer, call Render() to generate SceneRenderCommands
             //   2. Pass SceneRenderCommands to OnDraw() callback
-            RenderCommandList Execute(const FrameGraphExecutionPlan& plan, Resources::Scene* scene = nullptr);
+
+            RenderCommandList Execute(const FrameGraphExecutionPlan& plan, Resources::Scene* scene, const RenderConfig& renderConfig);
 
             // Get resource
             FrameGraphResource* GetResource(const std::string& name);

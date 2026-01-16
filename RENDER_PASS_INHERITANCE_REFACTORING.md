@@ -1,4 +1,4 @@
-# IRenderPass 继承自 FrameGraphNode 重构说明
+﻿# IRenderPass 继承自 FrameGraphNode 重构说明
 
 本文档说明了将 `IRenderPass` 重构为继承自 `FrameGraphNode` 的设计，进一步简化了参数传递和资源管理。
 

@@ -1,9 +1,10 @@
-#include "FirstEngine/Renderer/SceneRenderer.h"
+﻿#include "FirstEngine/Renderer/SceneRenderer.h"
 #include "FirstEngine/Renderer/RenderConfig.h"
 #include "FirstEngine/Renderer/RenderFlags.h"
+#include "FirstEngine/Renderer/IRenderPass.h"
+#include "FirstEngine/Renderer/ShadingMaterial.h"
 #include "FirstEngine/Resources/Scene.h"
 #include "FirstEngine/Resources/ModelComponent.h"
-#include "FirstEngine/Renderer/RenderResource.h"
 #include "FirstEngine/RHI/IDevice.h"
 #include "FirstEngine/RHI/IBuffer.h"
 #include "FirstEngine/RHI/IImage.h"
@@ -20,29 +21,44 @@ namespace FirstEngine {
 
         void SceneRenderer::Render(
             Resources::Scene* scene,
-            const CameraConfig& cameraConfig,
-            const ResolutionConfig& resolutionConfig,
-            const RenderFlags& renderFlags
+            IRenderPass* pass,
+            const RenderConfig& renderConfig,
+            RHI::IRenderPass* renderPass
         ) {
             if (!scene) {
                 m_SceneRenderCommands.Clear();
                 return;
             }
 
+            // Store current render pass for pipeline creation
+            m_CurrentRenderPass = pass;
+
+            // Determine camera config (use custom camera from pass if set, otherwise use global from RenderConfig)
+            // This is done here to simplify FrameGraph::Execute
+            if (pass && pass->UsesCustomCamera()) {
+                m_CameraConfig = pass->GetCameraConfig();
+            } else {
+                m_CameraConfig = renderConfig.GetCamera();
+            }
+
             // Clear previous commands
             m_SceneRenderCommands.Clear();
 
-            // Build render queue
+            // Get resolution config and render flags from RenderConfig
+            const ResolutionConfig& resolutionConfig = renderConfig.GetResolution();
+            const RenderFlags& renderFlags = renderConfig.GetRenderFlags();
+
+            // Build render queue (uses stored camera config)
             RenderQueue renderQueue;
-            BuildRenderQueue(scene, cameraConfig, resolutionConfig, renderFlags, renderQueue);
+            BuildRenderQueue(scene, resolutionConfig, renderFlags, renderQueue);
 
             // Convert render queue to render command list
-            m_SceneRenderCommands = SubmitRenderQueue(renderQueue);
+            // Pass renderPass to ensure pipelines are created
+            m_SceneRenderCommands = SubmitRenderQueue(renderQueue, renderPass);
         }
 
         void SceneRenderer::BuildRenderQueue(
             Resources::Scene* scene,
-            const CameraConfig& cameraConfig,
             const ResolutionConfig& resolutionConfig,
             const RenderFlags& renderFlags,
             RenderQueue& renderQueue
@@ -53,9 +69,9 @@ namespace FirstEngine {
 
             renderQueue.Clear();
 
-            // Get view and projection matrices from camera config
-            glm::mat4 viewMatrix = cameraConfig.GetViewMatrix();
-            glm::mat4 projMatrix = cameraConfig.GetProjectionMatrix(resolutionConfig.GetAspectRatio());
+            // Get view and projection matrices from stored camera config
+            glm::mat4 viewMatrix = m_CameraConfig.GetViewMatrix();
+            glm::mat4 projMatrix = m_CameraConfig.GetProjectionMatrix(resolutionConfig.GetAspectRatio());
             glm::mat4 viewProjMatrix = projMatrix * viewMatrix;
             Frustum frustum(viewProjMatrix);
 
@@ -84,21 +100,14 @@ namespace FirstEngine {
                 }
             }
 
-            // Filter entities by render flags
-            std::vector<Resources::Entity*> filteredEntities;
-            for (Resources::Entity* entity : visibleEntities) {
-                if (MatchesRenderFlags(entity)) {
-                    filteredEntities.push_back(entity);
-                }
-            }
-
-            // Build render items from filtered entities
-            BuildRenderQueueFromEntities(filteredEntities, renderQueue);
+            // Build render items from visible entities
+            // Component-level filtering is now done in CreateRenderItem
+            BuildRenderQueueFromEntities(visibleEntities, renderQueue);
 
             // Update statistics
             size_t totalEntities = scene->GetAllEntities().size();
-            m_VisibleEntityCount = filteredEntities.size();
-            m_CulledEntityCount = totalEntities - filteredEntities.size();
+            m_VisibleEntityCount = visibleEntities.size();
+            m_CulledEntityCount = totalEntities - visibleEntities.size();
             m_DrawCallCount = renderQueue.GetTotalItemCount();
         }
 
@@ -112,13 +121,14 @@ namespace FirstEngine {
             std::vector<RenderItem> allItems;
 
             // Convert entities to render items
+            // Entity now manages its own world matrix, no need to compute or pass it
             for (Resources::Entity* entity : visibleEntities) {
                 if (!entity || !entity->IsActive()) {
                     continue;
                 }
 
-                glm::mat4 worldMatrix = entity->GetTransform().GetMatrix();
-                EntityToRenderItems(entity, worldMatrix, allItems);
+                // Entity's world matrix is cached and automatically updated
+                EntityToRenderItems(entity, allItems);
             }
 
             // Add all items to render queue (will be batched automatically)
@@ -130,24 +140,47 @@ namespace FirstEngine {
             renderQueue.Sort();
         }
 
-        bool SceneRenderer::MatchesRenderFlags(Resources::Entity* entity) const {
-            if (!entity) {
-                return false;
+        void SceneRenderer::EntityToRenderItems(
+            Resources::Entity* entity,
+            std::vector<RenderItem>& items
+        ) {
+            if (!entity || !entity->IsActive()) {
+                return;
             }
 
-            // TODO: Check entity's render flags against m_RenderFlags
-            // For now, if RenderObjectFlag::All is set, accept all entities
-            if ((m_RenderFlags & RenderObjectFlag::All) == RenderObjectFlag::All) {
-                return true;
+            // Get world matrix from Entity (cached, automatically updated when dirty)
+            // GetWorldMatrix() internally handles lazy update if matrix is dirty
+            const glm::mat4& worldMatrix = entity->GetWorldMatrix();
+
+            // Process all components that can render
+            // Components now handle their own CreateRenderItem and MatchesRenderFlags
+            const auto& components = entity->GetComponents();
+            for (const auto& component : components) {
+                if (!component) {
+                    continue;
+                }
+
+                // Components are loaded via OnLoad() when Entity is fully loaded
+                // No need to manually trigger loading here
+
+                // Component creates its own render item (returns nullptr if doesn't match flags)
+                auto renderItem = component->CreateRenderItem(worldMatrix, m_RenderFlags);
+                if (renderItem) {
+                    // Component matched render flags and created a valid render item
+                    items.push_back(*renderItem);
+                }
             }
 
-            // TODO: Implement proper flag checking based on entity properties
-            // This would check if entity has Shadow/Transparent/Opaque/UI flags
-            // For now, default to accepting all entities
-            return true;
+            // Process children (children will compute their own world matrix from their parent)
+            for (Resources::Entity* child : entity->GetChildren()) {
+                EntityToRenderItems(child, items);
+            }
         }
 
-        RenderCommandList SceneRenderer::SubmitRenderQueue(const RenderQueue& renderQueue) {
+        // MatchesRenderFlags is now handled by Components themselves
+        // No need for this method in SceneRenderer anymore
+
+        RenderCommandList SceneRenderer::SubmitRenderQueue(const RenderQueue& renderQueue, RHI::IRenderPass* renderPass) {
             RenderCommandList commandList;
 
             // Convert render batches to render commands (data structures)
@@ -159,66 +192,90 @@ namespace FirstEngine {
                 void* currentDescriptorSet = nullptr;
 
                 for (const auto& item : items) {
+                    // Get pipeline from material data
+                    RHI::IPipeline* itemPipeline = static_cast<RHI::IPipeline*>(item.materialData.pipeline);
+                    void* itemDescriptorSet = item.materialData.descriptorSet;
+                    
+                    // If ShadingMaterial is available, prefer it for pipeline and descriptor set
+                    if (item.materialData.shadingMaterial) {
+                        auto* shadingMaterial = static_cast<ShadingMaterial*>(item.materialData.shadingMaterial);
+                        if (shadingMaterial && shadingMaterial->IsCreated()) {
+                            // Ensure pipeline is created (lazy creation)
+                            // If renderPass is available, create pipeline now
+                            if (renderPass && !shadingMaterial->GetShadingState().GetPipeline()) {
+                                shadingMaterial->EnsurePipelineCreated(m_Device, renderPass);
+                            }
+                            
+                            itemPipeline = shadingMaterial->GetShadingState().GetPipeline();
+                            itemDescriptorSet = shadingMaterial->GetDescriptorSet(0);
+                            
+                            // If pipeline is not created yet and we don't have renderPass, skip this item
+                            if (!itemPipeline) {
+                                continue; // Skip this item if pipeline is not ready
+                            }
+                        }
+                    }
+                    
                     // Bind pipeline if changed
-                    if (item.pipeline != currentPipeline) {
+                    if (itemPipeline != currentPipeline) {
                         RenderCommand cmd;
                         cmd.type = RenderCommandType::BindPipeline;
-                        cmd.params.bindPipeline.pipeline = item.pipeline;
+                        cmd.params.bindPipeline.pipeline = itemPipeline;
                         commandList.AddCommand(std::move(cmd));
-                        currentPipeline = item.pipeline;
+                        currentPipeline = itemPipeline;
                     }
 
                     // Bind descriptor set if changed
-                    if (item.descriptorSet != currentDescriptorSet) {
+                    if (itemDescriptorSet != currentDescriptorSet) {
                         RenderCommand cmd;
                         cmd.type = RenderCommandType::BindDescriptorSets;
                         cmd.params.bindDescriptorSets.firstSet = 0;
-                        if (item.descriptorSet) {
-                            cmd.params.bindDescriptorSets.descriptorSets = {item.descriptorSet};
+                        if (itemDescriptorSet) {
+                            cmd.params.bindDescriptorSets.descriptorSets = {itemDescriptorSet};
                         } else {
                             cmd.params.bindDescriptorSets.descriptorSets.clear();
                         }
                         cmd.params.bindDescriptorSets.dynamicOffsets.clear();
                         commandList.AddCommand(std::move(cmd));
-                        currentDescriptorSet = item.descriptorSet;
+                        currentDescriptorSet = itemDescriptorSet;
                     }
 
                     // Bind vertex buffers
-                    if (item.vertexBuffer) {
+                    if (item.geometryData.vertexBuffer) {
                         RenderCommand cmd;
                         cmd.type = RenderCommandType::BindVertexBuffers;
                         cmd.params.bindVertexBuffers.firstBinding = 0;
-                        cmd.params.bindVertexBuffers.buffers = {item.vertexBuffer};
-                        cmd.params.bindVertexBuffers.offsets = {item.vertexBufferOffset};
+                        cmd.params.bindVertexBuffers.buffers = {static_cast<RHI::IBuffer*>(item.geometryData.vertexBuffer)};
+                        cmd.params.bindVertexBuffers.offsets = {item.geometryData.vertexBufferOffset};
                         commandList.AddCommand(std::move(cmd));
                     }
 
                     // Bind index buffer
-                    if (item.indexBuffer) {
+                    if (item.geometryData.indexBuffer) {
                         RenderCommand cmd;
                         cmd.type = RenderCommandType::BindIndexBuffer;
-                        cmd.params.bindIndexBuffer.buffer = item.indexBuffer;
-                        cmd.params.bindIndexBuffer.offset = item.indexBufferOffset;
+                        cmd.params.bindIndexBuffer.buffer = static_cast<RHI::IBuffer*>(item.geometryData.indexBuffer);
+                        cmd.params.bindIndexBuffer.offset = item.geometryData.indexBufferOffset;
                         cmd.params.bindIndexBuffer.is32Bit = true;
                         commandList.AddCommand(std::move(cmd));
                     }
 
                     // Draw command
-                    if (item.indexCount > 0) {
+                    if (item.geometryData.indexCount > 0) {
                         RenderCommand cmd;
                         cmd.type = RenderCommandType::DrawIndexed;
-                        cmd.params.drawIndexed.indexCount = item.indexCount;
+                        cmd.params.drawIndexed.indexCount = item.geometryData.indexCount;
                         cmd.params.drawIndexed.instanceCount = 1;
-                        cmd.params.drawIndexed.firstIndex = item.firstIndex;
+                        cmd.params.drawIndexed.firstIndex = item.geometryData.firstIndex;
                         cmd.params.drawIndexed.vertexOffset = 0;
                         cmd.params.drawIndexed.firstInstance = 0;
                         commandList.AddCommand(std::move(cmd));
-                    } else if (item.vertexCount > 0) {
+                    } else if (item.geometryData.vertexCount > 0) {
                         RenderCommand cmd;
                         cmd.type = RenderCommandType::Draw;
-                        cmd.params.draw.vertexCount = item.vertexCount;
+                        cmd.params.draw.vertexCount = item.geometryData.vertexCount;
                         cmd.params.draw.instanceCount = 1;
-                        cmd.params.draw.firstVertex = item.firstVertex;
+                        cmd.params.draw.firstVertex = item.geometryData.firstVertex;
                         cmd.params.draw.firstInstance = 0;
                         commandList.AddCommand(std::move(cmd));
                     }
@@ -228,86 +285,8 @@ namespace FirstEngine {
             return commandList;
         }
 
-        void SceneRenderer::EntityToRenderItems(
-            Resources::Entity* entity,
-            const glm::mat4& parentTransform,
-            std::vector<RenderItem>& items
-        ) {
-            if (!entity || !entity->IsActive()) {
-                return;
-            }
-
-            // Compute world transform
-            glm::mat4 worldMatrix = parentTransform * entity->GetTransform().GetMatrix();
-            glm::mat4 normalMatrix = glm::transpose(glm::inverse(glm::mat3(worldMatrix)));
-
-            // Process model components
-            auto* modelComponent = entity->GetComponent<Resources::ModelComponent>();
-            if (modelComponent) {
-                RenderItem item = CreateRenderItem(modelComponent, entity, worldMatrix);
-                item.normalMatrix = normalMatrix;
-                items.push_back(item);
-            }
-
-            // Process children
-            for (Resources::Entity* child : entity->GetChildren()) {
-                EntityToRenderItems(child, worldMatrix, items);
-            }
-        }
-
-        RenderItem SceneRenderer::CreateRenderItem(
-            Resources::ModelComponent* modelComponent,
-            Resources::Entity* entity,
-            const glm::mat4& worldMatrix
-        ) {
-            RenderItem item;
-            item.entity = entity;
-            item.worldMatrix = worldMatrix;
-            
-            // Get model from component
-            auto* model = modelComponent->GetModel();
-            if (!model || model->GetMeshCount() == 0) {
-                return item; // Return empty item if no model
-            }
-
-            // Get material from model (first mesh's material)
-            Resources::MaterialHandle materialResource = model->GetMaterial(0);
-            if (materialResource) {
-                item.materialName = materialResource->GetMetadata().name;
-            } else {
-                item.materialName = "Default";
-            }
-
-            // Get mesh from model and create render mesh
-            auto* mesh = model->GetMesh(0);
-            if (mesh) {
-                // Create render mesh directly (or use cached render mesh)
-                // For now, create render mesh on the fly
-                auto renderMesh = std::make_unique<Renderer::RenderMesh>();
-                if (renderMesh->Initialize(m_Device, mesh)) {
-                    item.vertexBuffer = renderMesh->GetVertexBuffer();
-                    item.indexBuffer = renderMesh->GetIndexBuffer();
-                    item.vertexCount = renderMesh->GetVertexCount();
-                    item.indexCount = renderMesh->GetIndexCount();
-                    item.firstIndex = 0;
-                    item.firstVertex = 0;
-                    
-                    // Cache render mesh for reuse (optional - could be managed elsewhere)
-                    // For now, render mesh is created per frame - could be optimized with caching
-                }
-            }
-
-            // Compute sort key (pipeline ID, material ID, depth)
-            // This is a simplified version - real implementation would use actual IDs
-            uint64_t pipelineID = reinterpret_cast<uint64_t>(item.pipeline) & 0xFFFF;
-            uint64_t materialID = std::hash<std::string>{}(item.materialName) & 0xFFFF;
-            float depth = worldMatrix[3][2]; // Z component of translation
-            uint64_t depthKey = static_cast<uint64_t>((depth + 1000.0f) * 1000.0f) & 0xFFFFFFFF;
-            
-            item.sortKey = (pipelineID << 48) | (materialID << 32) | depthKey;
-
-            return item;
-        }
+        // CreateRenderItem is now handled by Components themselves
+        // No need for this method in SceneRenderer anymore
 
     } // namespace Renderer
 } // namespace FirstEngine

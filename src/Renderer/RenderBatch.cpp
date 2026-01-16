@@ -1,4 +1,5 @@
 #include "FirstEngine/Renderer/RenderBatch.h"
+#include "FirstEngine/Renderer/ShadingMaterial.h"
 #include "FirstEngine/Resources/Scene.h"
 #include <algorithm>
 #include <unordered_map>
@@ -23,13 +24,24 @@ namespace FirstEngine {
             // Sort by pipeline, then by material, then by depth (front to back for opaque, back to front for transparent)
             std::sort(m_Items.begin(), m_Items.end(),
                 [](const RenderItem& a, const RenderItem& b) {
-                    // First sort by pipeline
-                    if (a.pipeline != b.pipeline) {
-                        return a.pipeline < b.pipeline;
+                    // First sort by ShadingMaterial (if available)
+                    void* aShadingMaterial = a.materialData.shadingMaterial;
+                    void* bShadingMaterial = b.materialData.shadingMaterial;
+                    if (aShadingMaterial != bShadingMaterial) {
+                        if (aShadingMaterial && bShadingMaterial) {
+                            // Both have materials, compare by pointer
+                            return aShadingMaterial < bShadingMaterial;
+                        }
+                        // Items with materials come before items without
+                        return aShadingMaterial != nullptr;
+                    }
+                    // Fallback to pipeline if ShadingMaterial is not available
+                    if (a.materialData.pipeline != b.materialData.pipeline) {
+                        return a.materialData.pipeline < b.materialData.pipeline;
                     }
                     // Then by descriptor set (material)
-                    if (a.descriptorSet != b.descriptorSet) {
-                        return a.descriptorSet < b.descriptorSet;
+                    if (a.materialData.descriptorSet != b.materialData.descriptorSet) {
+                        return a.materialData.descriptorSet < b.materialData.descriptorSet;
                     }
                     // Then by sort key (which includes depth)
                     return a.sortKey < b.sortKey;
@@ -41,9 +53,23 @@ namespace FirstEngine {
             std::unordered_map<RHI::IPipeline*, bool> seen;
 
             for (const auto& item : m_Items) {
-                if (item.pipeline && seen.find(item.pipeline) == seen.end()) {
-                    pipelines.push_back(item.pipeline);
-                    seen[item.pipeline] = true;
+                RHI::IPipeline* pipeline = nullptr;
+                
+                // Prefer getting pipeline from ShadingMaterial if available
+                if (item.materialData.shadingMaterial) {
+                    auto* shadingMaterial = static_cast<ShadingMaterial*>(item.materialData.shadingMaterial);
+                    if (shadingMaterial && shadingMaterial->IsCreated()) {
+                        pipeline = shadingMaterial->GetShadingState().GetPipeline();
+                    }
+                }
+                if (!pipeline && item.materialData.pipeline) {
+                    // Fallback to direct pipeline pointer
+                    pipeline = static_cast<RHI::IPipeline*>(item.materialData.pipeline);
+                }
+                
+                if (pipeline && seen.find(pipeline) == seen.end()) {
+                    pipelines.push_back(pipeline);
+                    seen[pipeline] = true;
                 }
             }
 
@@ -90,13 +116,19 @@ namespace FirstEngine {
             std::unordered_map<uint64_t, RenderBatch> batchMap;
 
             for (const auto& item : m_Items) {
-                // Create a key from pipeline and descriptor set pointers
+                // Create a key from ShadingMaterial (preferred) or pipeline and descriptor set pointers
                 uint64_t key = 0;
-                if (item.pipeline) {
-                    key = reinterpret_cast<uint64_t>(item.pipeline);
-                }
-                if (item.descriptorSet) {
-                    key ^= (reinterpret_cast<uint64_t>(item.descriptorSet) << 16);
+                if (item.materialData.shadingMaterial) {
+                    // Use ShadingMaterial pointer as primary key
+                    key = reinterpret_cast<uint64_t>(item.materialData.shadingMaterial);
+                } else {
+                    // Fallback to pipeline and descriptor set
+                    if (item.materialData.pipeline) {
+                        key = reinterpret_cast<uint64_t>(item.materialData.pipeline);
+                    }
+                    if (item.materialData.descriptorSet) {
+                        key ^= (reinterpret_cast<uint64_t>(item.materialData.descriptorSet) << 16);
+                    }
                 }
 
                 batchMap[key].AddItem(item);

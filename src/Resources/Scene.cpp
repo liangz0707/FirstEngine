@@ -1,4 +1,4 @@
-#include "FirstEngine/Resources/Scene.h"
+﻿#include "FirstEngine/Resources/Scene.h"
 #include "FirstEngine/Resources/SceneLevel.h"
 #include "FirstEngine/Resources/LightComponent.h"
 #include "FirstEngine/Resources/EffectComponent.h"
@@ -11,7 +11,6 @@
 #include <sstream>
 #include <iomanip>
 #include <glm/gtc/matrix_transform.hpp>
-#include <algorithm>
 
 namespace FirstEngine {
     namespace Resources {
@@ -108,6 +107,44 @@ namespace FirstEngine {
             }
         }
 
+        void Entity::OnLoad() {
+            // Call OnLoad() on all components
+            // This is called when Entity is fully loaded (all components attached, resources ready)
+            for (auto& comp : m_Components) {
+                if (comp) {
+                    comp->OnLoad();
+                }
+            }
+            
+        }
+
+        const glm::mat4& Entity::GetWorldMatrix() const {
+            if (m_WorldMatrixDirty) {
+                UpdateWorldMatrix();
+            }
+            return m_WorldMatrix;
+        }
+
+        void Entity::UpdateWorldMatrix() {
+            if (m_Parent) {
+                // World matrix = parent's world matrix * local transform
+                m_WorldMatrix = m_Parent->GetWorldMatrix() * m_Transform.GetMatrix();
+            } else {
+                // Root entity: world matrix = local transform
+                m_WorldMatrix = m_Transform.GetMatrix();
+            }
+            m_WorldMatrixDirty = false;
+        }
+
+        void Entity::MarkChildrenWorldMatrixDirty() {
+            for (Entity* child : m_Children) {
+                if (child) {
+                    child->m_WorldMatrixDirty = true;
+                    child->MarkChildrenWorldMatrixDirty(); // Recursively mark all descendants
+                }
+            }
+        }
+
         void Entity::SetParent(Entity* parent) {
             if (m_Parent == parent) return;
 
@@ -120,6 +157,10 @@ namespace FirstEngine {
             if (m_Parent) {
                 m_Parent->m_Children.push_back(this);
             }
+            
+            // Mark world matrix as dirty when parent changes
+            m_WorldMatrixDirty = true;
+            MarkChildrenWorldMatrixDirty(); // Mark all children as dirty too
         }
 
         AABB Entity::GetBounds() const {
@@ -150,15 +191,8 @@ namespace FirstEngine {
 
         AABB Entity::GetWorldBounds() const {
             AABB localBounds = GetBounds();
-            glm::mat4 worldMatrix = m_Transform.GetMatrix();
-            
-            // Apply parent transforms
-            Entity* parent = m_Parent;
-            while (parent) {
-                worldMatrix = parent->m_Transform.GetMatrix() * worldMatrix;
-                parent = parent->m_Parent;
-            }
-
+            // Use cached world matrix (automatically updated when needed)
+            const glm::mat4& worldMatrix = GetWorldMatrix();
             return localBounds.Transform(worldMatrix);
         }
 
@@ -949,6 +983,7 @@ namespace FirstEngine {
                                             }
 
                                             Entity* entity = level->CreateEntity(entityName);
+                                            if (!entity) continue;
 
                                             // Parse transform
                                             if (transformPos != std::string::npos) {
@@ -1058,6 +1093,9 @@ namespace FirstEngine {
                                                     }
                                                 }
                                             }
+
+                                            // Entity is fully loaded (all components attached), call OnLoad()
+                                            entity->OnLoad();
 
                                             entityPos = entityEnd + 1;
                                             size_t nextEntity = levelStr.find('{', entityPos);

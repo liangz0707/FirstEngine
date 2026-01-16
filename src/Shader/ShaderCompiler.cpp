@@ -244,6 +244,23 @@ namespace FirstEngine {
                 sr.id = resource.id;
                 auto& type = compiler.get_type(resource.base_type_id);
                 sr.base_type_id = type.self;
+                
+                // Get location decoration
+                if (compiler.has_decoration(resource.id, spv::DecorationLocation)) {
+                    sr.location = compiler.get_decoration(resource.id, spv::DecorationLocation);
+                }
+                
+                // Get component decoration
+                if (compiler.has_decoration(resource.id, spv::DecorationComponent)) {
+                    sr.component = compiler.get_decoration(resource.id, spv::DecorationComponent);
+                }
+                
+                // Get type information
+                sr.basetype = static_cast<uint32_t>(type.basetype);
+                sr.width = type.width;
+                sr.vecsize = type.vecsize;
+                sr.columns = type.columns;
+                
                 reflection.stage_inputs.push_back(sr);
             }
             
@@ -253,6 +270,23 @@ namespace FirstEngine {
                 sr.id = resource.id;
                 auto& type = compiler.get_type(resource.base_type_id);
                 sr.base_type_id = type.self;
+                
+                // Get location decoration
+                if (compiler.has_decoration(resource.id, spv::DecorationLocation)) {
+                    sr.location = compiler.get_decoration(resource.id, spv::DecorationLocation);
+                }
+                
+                // Get component decoration
+                if (compiler.has_decoration(resource.id, spv::DecorationComponent)) {
+                    sr.component = compiler.get_decoration(resource.id, spv::DecorationComponent);
+                }
+                
+                // Get type information
+                sr.basetype = static_cast<uint32_t>(type.basetype);
+                sr.width = type.width;
+                sr.vecsize = type.vecsize;
+                sr.columns = type.columns;
+                
                 reflection.stage_outputs.push_back(sr);
             }
             

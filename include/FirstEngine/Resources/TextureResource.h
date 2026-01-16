@@ -6,6 +6,17 @@
 #include <vector>
 #include <cstdint>
 
+// Forward declarations
+namespace FirstEngine {
+    namespace Renderer {
+        class IRenderResource;
+    }
+    namespace RHI {
+        class IDevice;
+        class IImage;
+    }
+}
+
 namespace FirstEngine {
     namespace Resources {
 
@@ -14,6 +25,7 @@ namespace FirstEngine {
 
         // Texture resource implementation
         // Implements both ITexture (resource itself) and IResourceProvider (loading methods)
+        // GPU texture (IRenderResource) is stored in the Handle, not in Component
         class FE_RESOURCES_API TextureResource : public ITexture, public IResourceProvider {
         public:
             TextureResource();
@@ -47,6 +59,17 @@ namespace FirstEngine {
             void Release() override { m_Metadata.refCount--; }
             uint32_t GetRefCount() const override { return m_Metadata.refCount; }
 
+            // Render resource management (internal - creates GPU texture from texture data)
+            // Returns true if GPU texture was created or already exists
+            // GPU texture creation is handled internally via IRenderResource interface
+            bool CreateRenderTexture();
+            
+            // Check if GPU texture is ready for rendering
+            bool IsRenderTextureReady() const;
+            
+            // Get GPU texture for rendering (does not expose IRenderResource)
+            void* GetRenderTexture() const; // Returns RHI::IImage* cast to void*
+
         private:
             ResourceMetadata m_Metadata;
             std::vector<uint8_t> m_Data;
@@ -54,6 +77,10 @@ namespace FirstEngine {
             uint32_t m_Height = 0;
             uint32_t m_Channels = 0;
             bool m_HasAlpha = false;
+            
+            // GPU render resource (stored in Handle, not Component)
+            // Using void* to avoid including Renderer headers (breaks circular dependency)
+            void* m_RenderTexture = nullptr; // RenderTexture* cast to void*
         };
 
     } // namespace Resources

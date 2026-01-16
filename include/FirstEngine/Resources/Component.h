@@ -2,6 +2,17 @@
 
 #include "FirstEngine/Resources/Export.h"
 #include <cstdint>
+#include <memory>
+#include <vector>
+#include <glm/glm.hpp>
+
+// Forward declarations
+namespace FirstEngine {
+    namespace Renderer {
+        struct RenderItem;
+        enum class RenderObjectFlag : uint32_t;
+    }
+}
 
 namespace FirstEngine {
     namespace Resources {
@@ -32,7 +43,21 @@ namespace FirstEngine {
 
             virtual void OnAttach() {}
             virtual void OnDetach() {}
+            virtual void OnLoad() {} // Called when Entity is fully loaded (all components attached, resources ready)
             virtual AABB GetBounds() const;
+
+            // Render item creation - components that can render should override this
+            // Returns nullptr if component doesn't render or doesn't match render flags
+            // worldMatrix: The world transformation matrix for this entity
+            // renderFlags: The render flags to check against
+            virtual std::unique_ptr<Renderer::RenderItem> CreateRenderItem(
+                const glm::mat4& worldMatrix,
+                Renderer::RenderObjectFlag renderFlags
+            );
+
+            // Check if this component matches the render flags
+            // Returns true if the component should be rendered with the given flags
+            virtual bool MatchesRenderFlags(Renderer::RenderObjectFlag renderFlags) const;
 
         protected:
             ComponentType m_Type;

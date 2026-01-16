@@ -3,6 +3,8 @@
 #include "FirstEngine/Renderer/IRenderPass.h"
 #include "FirstEngine/Renderer/SceneRenderer.h"
 #include "FirstEngine/Resources/Scene.h"
+#include "FirstEngine/RHI/IDevice.h"
+#include "FirstEngine/RHI/IRenderPass.h"
 #include "FirstEngine/RHI/IBuffer.h"
 #include "FirstEngine/RHI/IImage.h"
 #include <algorithm>
@@ -68,8 +70,8 @@ namespace FirstEngine {
         FrameGraphResource::~FrameGraphResource() = default;
 
         // FrameGraphBuilder 实现
-        FrameGraphBuilder::FrameGraphBuilder(FrameGraph* graph)
-            : m_Graph(graph) {
+        FrameGraphBuilder::FrameGraphBuilder(FrameGraph* graph, RHI::IRenderPass* renderPass)
+            : m_Graph(graph), m_RenderPass(renderPass) {
         }
 
         RHI::IImage* FrameGraphBuilder::ReadTexture(const std::string& name) {
@@ -159,9 +161,11 @@ namespace FirstEngine {
             
             // If node is an IRenderPass, automatically set execute callback from OnDraw
             // This eliminates the need for Pass to manually call SetExecuteCallback
+
             IRenderPass* pass = dynamic_cast<IRenderPass*>(node);
             if (pass) {
                 // Create a lambda that calls OnDraw
+
                 ExecuteCallback callback = [pass](FrameGraphBuilder& builder, const RenderCommandList* sceneCommands) -> RenderCommandList {
                     return pass->OnDraw(builder, sceneCommands);
                 };
@@ -309,7 +313,7 @@ namespace FirstEngine {
             return AllocateResources();
         }
 
-        RenderCommandList FrameGraph::Execute(const FrameGraphExecutionPlan& plan, Resources::Scene* scene) {
+        RenderCommandList FrameGraph::Execute(const FrameGraphExecutionPlan& plan, Resources::Scene* scene, const RenderConfig& renderConfig) {
             RenderCommandList commandList;
 
             if (!plan.IsValid()) {
@@ -323,12 +327,77 @@ namespace FirstEngine {
             //   1. If it has a SceneRenderer, call Render() to generate SceneRenderCommands
             //   2. Get SceneRenderCommands from SceneRenderer
             //   3. Pass SceneRenderCommands to OnDraw() callback
+
             const auto& executionOrder = plan.GetExecutionOrder();
             for (uint32_t nodeIndex : executionOrder) {
                 auto* node = m_Nodes[nodeIndex].get();
                 if (!node || !node->GetExecuteCallback()) {
                     continue;
                 }
+
+                // Create render pass for this node based on its write resources
+                // This render pass will be used for pipeline creation
+                RHI::IRenderPass* nodeRenderPass = nullptr;
+                std::vector<RHI::AttachmentDescription> attachments;
+                bool hasDepth = false;
+                
+                // Collect attachments from write resources
+                for (const auto& writeResName : node->GetWriteResources()) {
+                    auto* resource = GetResource(writeResName);
+                    if (resource && resource->GetDescription().GetType() == ResourceType::Attachment) {
+                        const auto& desc = resource->GetDescription();
+                        RHI::AttachmentDescription attachment;
+                        attachment.format = desc.GetFormat();
+                        attachment.samples = 1;
+                        attachment.loadOpClear = true;
+                        attachment.storeOpStore = true;
+                        attachment.stencilLoadOpClear = false;
+                        attachment.stencilStoreOpStore = false;
+                        attachment.initialLayout = RHI::Format::Undefined;
+                        attachment.finalLayout = RHI::Format::Undefined;
+                        
+                        if (desc.HasDepth()) {
+                            hasDepth = true;
+                        } else {
+                            attachments.push_back(attachment);
+                        }
+                    }
+                }
+                
+                // Create render pass description
+                if (!attachments.empty() || hasDepth) {
+                    RHI::RenderPassDescription renderPassDesc;
+                    renderPassDesc.colorAttachments = attachments;
+                    if (hasDepth) {
+                        // Find depth attachment
+                        for (const auto& writeResName : node->GetWriteResources()) {
+                            auto* resource = GetResource(writeResName);
+                            if (resource && resource->GetDescription().GetType() == ResourceType::Attachment) {
+                                const auto& desc = resource->GetDescription();
+                                if (desc.HasDepth()) {
+                                    RHI::AttachmentDescription depthAttachment;
+                                    depthAttachment.format = desc.GetFormat();
+                                    depthAttachment.samples = 1;
+                                    depthAttachment.loadOpClear = true;
+                                    depthAttachment.storeOpStore = true;
+                                    depthAttachment.stencilLoadOpClear = false;
+                                    depthAttachment.stencilStoreOpStore = false;
+                                    depthAttachment.initialLayout = RHI::Format::Undefined;
+                                    depthAttachment.finalLayout = RHI::Format::Undefined;
+                                    renderPassDesc.depthAttachment = depthAttachment;
+                                    renderPassDesc.hasDepthAttachment = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Create render pass
+                    nodeRenderPass = m_Device->CreateRenderPass(renderPassDesc).release();
+                }
+
+                // Create FrameGraphBuilder with render pass
+                FrameGraphBuilder builder(this, nodeRenderPass);
 
                 // Check if node is an IRenderPass with SceneRenderer
                 IRenderPass* pass = dynamic_cast<IRenderPass*>(node);
@@ -338,27 +407,10 @@ namespace FirstEngine {
                     // Get SceneRenderer from pass
                     SceneRenderer* sceneRenderer = pass->GetSceneRenderer();
                     
-                    // Determine camera config (use custom camera if set, otherwise use global from RenderConfig)
-                    CameraConfig cameraConfig;
-                    if (pass->UsesCustomCamera()) {
-                        cameraConfig = pass->GetCameraConfig();
-                    } else {
-                        // TODO: Get global camera from RenderConfig (needs to be passed to Execute)
-                        // For now, use default camera
-                    }
-
-                    // Get resolution config (from RenderConfig, needs to be passed)
-                    ResolutionConfig resolutionConfig;
-                    resolutionConfig.width = 1280;
-                    resolutionConfig.height = 720;
-
-                    // Get render flags (from RenderConfig, needs to be passed)
-                    RenderFlags renderFlags;
-                    renderFlags.frustumCulling = true;
-                    renderFlags.occlusionCulling = false;
-
-                    // Render scene using SceneRenderer
-                    sceneRenderer->Render(scene, cameraConfig, resolutionConfig, renderFlags);
+                    // Render scene using SceneRenderer with render pass for pipeline creation
+                    // Camera config is automatically determined inside Render() from pass and renderConfig
+                    // Pass nodeRenderPass so pipelines can be created during SubmitRenderQueue
+                    sceneRenderer->Render(scene, pass, renderConfig, nodeRenderPass);
 
                     // Get generated commands from SceneRenderer
                     if (sceneRenderer->HasRenderCommands()) {
@@ -369,6 +421,12 @@ namespace FirstEngine {
                 // Get command list from node callback, passing scene commands
                 // Geometry and forward passes can merge scene commands into their pass
                 RenderCommandList nodeCommands = node->GetExecuteCallback()(builder, sceneCommands);
+                
+                // Clean up render pass (if we created it)
+                // Note: In a real implementation, render passes should be cached and reused
+                if (nodeRenderPass) {
+                    delete nodeRenderPass;
+                }
 
                 // Merge node commands into main command list
                 const auto& nodeCmdList = nodeCommands.GetCommands();

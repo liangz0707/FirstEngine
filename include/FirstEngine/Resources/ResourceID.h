@@ -10,12 +10,13 @@
 namespace FirstEngine {
     namespace Resources {
 
-        // Resource ID type - unique identifier for resources
+        // Resource ID type - unique identifier for resource
         using ResourceID = uint64_t;
         constexpr ResourceID InvalidResourceID = 0;
 
         // Resource ID Manager - manages mapping between resource IDs and file paths
         // Handles ID allocation, path resolution, and ID lookup
+
         class FE_RESOURCES_API ResourceIDManager {
         public:
             ResourceIDManager();
@@ -24,16 +25,20 @@ namespace FirstEngine {
             // Register a resource with a path and get/assign an ID
             // If the path is already registered, returns the existing ID
             // virtualPath: optional virtual path (logical path), if empty, uses filepath as virtual path
+
             ResourceID RegisterResource(const std::string& filepath, ResourceType type, const std::string& virtualPath = "");
 
             // Register a resource with a specific ID
             // virtualPath: optional virtual path (logical path), if empty, uses filepath as virtual path
+
             bool RegisterResourceWithID(ResourceID id, const std::string& filepath, ResourceType type, const std::string& virtualPath = "");
 
             // Get resource ID from file path (returns InvalidResourceID if not found)
+
             ResourceID GetIDFromPath(const std::string& filepath) const;
 
             // Get resource ID from virtual path (returns InvalidResourceID if not found)
+
             ResourceID GetIDFromVirtualPath(const std::string& virtualPath) const;
 
             // Get file path from resource ID (returns empty string if not found)

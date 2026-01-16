@@ -78,7 +78,16 @@ namespace FirstEngine {
             // Transform
             Transform& GetTransform() { return m_Transform; }
             const Transform& GetTransform() const { return m_Transform; }
-            void SetTransform(const Transform& transform) { m_Transform = transform; }
+            void SetTransform(const Transform& transform) { 
+                m_Transform = transform; 
+                m_WorldMatrixDirty = true; // Mark world matrix as dirty
+                MarkChildrenWorldMatrixDirty(); // Mark children as dirty too
+            }
+
+            // World matrix (cached, automatically updated when transform or parent changes)
+            const glm::mat4& GetWorldMatrix() const;
+            void UpdateWorldMatrix(); // Force update (called when parent changes)
+            bool IsWorldMatrixDirty() const { return m_WorldMatrixDirty; }
 
             // Component management
             template<typename T>
@@ -122,6 +131,13 @@ namespace FirstEngine {
             void SetParent(Entity* parent);
             Entity* GetParent() const { return m_Parent; }
             const std::vector<Entity*>& GetChildren() const { return m_Children; }
+            
+            // Mark world matrix as dirty (called when parent's world matrix changes)
+            void MarkWorldMatrixDirty() { m_WorldMatrixDirty = true; }
+
+            // Load notification - called when Entity is fully loaded (all components attached, resources ready)
+            // This will call OnLoad() on all components
+            void OnLoad();
 
             // Bounds
             AABB GetBounds() const;
@@ -140,6 +156,13 @@ namespace FirstEngine {
             Entity* m_Parent = nullptr;
             std::vector<Entity*> m_Children;
             bool m_Active = true;
+
+            // Cached world matrix (updated when transform or parent changes)
+            mutable glm::mat4 m_WorldMatrix = glm::mat4(1.0f);
+            mutable bool m_WorldMatrixDirty = true; // True if world matrix needs recalculation
+
+            // Mark all children's world matrix as dirty (cascade update)
+            void MarkChildrenWorldMatrixDirty();
         };
 
         // Octree node for spatial indexing

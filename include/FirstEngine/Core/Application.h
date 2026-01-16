@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "FirstEngine/Core/Window.h"
 #include <memory>
@@ -19,6 +19,7 @@ namespace FirstEngine {
         protected:
             virtual void OnUpdate(float deltaTime) {}
             virtual void OnPrepareFrameGraph() {} // Called before OnRender() to build FrameGraph execution plan
+            virtual void OnCreateResources() {} // Called before OnRender() to create GPU resources (part of OnSubmit phase)
             virtual void OnRender() {}
             virtual void OnSubmit() {} // Called after OnRender() to submit command buffers
             virtual void OnResize(int width, int height) {}

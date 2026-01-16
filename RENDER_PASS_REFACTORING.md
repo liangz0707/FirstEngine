@@ -1,4 +1,4 @@
-# Render Pass 重构说明
+﻿# Render Pass 重构说明
 
 本文档说明了对 RenderPipeline 中 Pass 管理的重构，将每个 Pass 抽象为独立的类，并使用枚举类型替代字符串。
 

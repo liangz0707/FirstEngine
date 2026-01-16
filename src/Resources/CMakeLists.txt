@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+﻿cmake_minimum_required(VERSION 3.20)
 
 project(FirstEngine_Resources VERSION 1.0.0 LANGUAGES CXX)
 
@@ -35,6 +35,7 @@ set(RESOURCES_SOURCES
     ModelResource.cpp
     ResourceProvider.cpp
     ModelComponent.cpp
+    EffectComponent.cpp
     ResourceDependency.cpp
     ResourceID.cpp
 )
@@ -68,8 +69,9 @@ set(RESOURCES_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MaterialParameter.h
 )
 
-# Create shared library
-add_library(FirstEngine_Resources SHARED
+# Create static library (changed from SHARED to allow circular dependency with FirstEngine_Renderer)
+# Both libraries need each other, and CMake allows circular dependencies between STATIC libraries
+add_library(FirstEngine_Resources STATIC
     ${RESOURCES_SOURCES}
     ${RESOURCES_HEADERS}
 )
@@ -124,6 +126,7 @@ source_group("Scene" FILES
     SceneLevel.cpp
     Component.cpp
     ModelComponent.cpp
+    EffectComponent.cpp
 )
 
 # Common headers
@@ -153,6 +156,7 @@ target_link_libraries(FirstEngine_Resources
         ${Vulkan_LIBRARIES}
         assimp::assimp
     PRIVATE
+        FirstEngine_Renderer  # Component needs RenderItem, RenderFlags, and ShadingMaterial (implementation only)
         glm::glm
 )
 
@@ -186,11 +190,5 @@ if(TARGET UpdateAssimpLibsDebugSymbolsAndDLLs)
     set_target_properties(UpdateAssimpLibsDebugSymbolsAndDLLs PROPERTIES FOLDER "ThirdPart/Assimp")
 endif()
 
-# Copy DLL to bin directory on Windows
-if(WIN32)
-    add_custom_command(TARGET FirstEngine_Resources POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:FirstEngine_Resources>
-        ${CMAKE_BINARY_DIR}/bin/$<CONFIG>/
-    )
-endif()
+# No need to copy DLL for static library
+# Static libraries are linked directly into the executable

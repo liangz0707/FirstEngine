@@ -7,6 +7,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <memory>
 
 namespace FirstEngine {
     namespace Resources {
@@ -75,9 +76,38 @@ namespace FirstEngine {
             void Release() override { m_Metadata.refCount--; }
             uint32_t GetRefCount() const override { return m_Metadata.refCount; }
 
+            // Render resource management (internal - creates ShadingMaterial from material data)
+            // Returns true if ShadingMaterial was created or already exists
+            bool CreateShadingMaterial();
+            
+            // Check if ShadingMaterial is ready for rendering
+            bool IsShadingMaterialReady() const;
+            
+            // Get render data for creating RenderItem (does not expose ShadingMaterial)
+            struct RenderData {
+                void* shadingMaterial = nullptr; // ShadingMaterial* cast to void*
+                void* pipeline = nullptr; // IPipeline* cast to void*
+                void* descriptorSet = nullptr; // Descriptor set
+                std::string materialName;
+            };
+            bool GetRenderData(RenderData& outData) const;
+
+            // Get ShaderCollection (for accessing shader modules)
+            // Returns nullptr if not set
+            void* GetShaderCollection() const { return m_ShaderCollection; }
+            
+            // Set ShaderCollection by ID (looks up from ShaderModuleTools)
+            void SetShaderCollectionID(uint64_t collectionID);
+
         private:
             ResourceMetadata m_Metadata;
-            std::string m_ShaderName;
+            std::string m_ShaderName; // Shader name (used to find ShaderCollection)
+            
+            // ShaderCollection (stored as void* to avoid circular dependency)
+            // Points to Renderer::ShaderCollection*
+            void* m_ShaderCollection = nullptr;
+            uint64_t m_ShaderCollectionID = 0;
+            
             std::unordered_map<std::string, TextureHandle> m_Textures; // Texture handles (loaded textures)
             std::unordered_map<std::string, ResourceID> m_TextureIDs; // Texture IDs (for dependencies)
             
@@ -87,6 +117,13 @@ namespace FirstEngine {
             // Serialized parameter data (for shader upload)
             std::vector<uint8_t> m_ParameterData;
             bool m_ParameterDataDirty = true; // Flag to indicate if parameter data needs rebuilding
+            
+            // GPU render resource (stored in Handle, not Component)
+            // Using void* to avoid including Renderer headers (breaks circular dependency)
+            void* m_ShadingMaterial = nullptr;
+            
+            // Helper: Set textures from m_Textures to ShadingMaterial
+            void SetTexturesToShadingMaterial();
         };
 
     } // namespace Resources

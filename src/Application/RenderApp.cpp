@@ -6,12 +6,16 @@
 #include "FirstEngine/Renderer/FrameGraphExecutionPlan.h"
 #include "FirstEngine/Renderer/IRenderPipeline.h"
 #include "FirstEngine/Renderer/DeferredRenderPipeline.h"
-#include "FirstEngine/Renderer/SceneRenderer.h"
+// SceneRenderer is now owned by Passes, no need to include here
 #include "FirstEngine/Renderer/RenderBatch.h"
 #include "FirstEngine/Renderer/RenderCommandList.h"
 #include "FirstEngine/Renderer/CommandRecorder.h"
 #include "FirstEngine/Renderer/RenderConfig.h"
+#include "FirstEngine/Renderer/IRenderResource.h"
+#include "FirstEngine/Renderer/RenderResourceManager.h"
+#include "FirstEngine/Renderer/ShaderModuleTools.h"
 #include "FirstEngine/Resources/Scene.h"
+#include "FirstEngine/Resources/Component.h"
 #include "FirstEngine/Resources/ResourceProvider.h"
 #include "FirstEngine/Resources/ResourceID.h"
 #include "FirstEngine/RHI/IDevice.h"
@@ -70,8 +74,6 @@ public:
           m_FrameGraph(nullptr),
           m_CommandBuffer(nullptr),
           m_Scene(nullptr),
-          m_SceneRenderer(nullptr),
-          m_RenderQueue(),
           m_RenderConfig(),
           m_CurrentImageIndex(0),
           m_LastTime(std::chrono::high_resolution_clock::now()) {
@@ -103,9 +105,7 @@ public:
 
         m_Swapchain.reset();
 
-        if (m_SceneRenderer) {
-            delete m_SceneRenderer;
-        }
+        // SceneRenderer is now owned by Passes, no need to delete here
         if (m_Scene) {
             delete m_Scene;
         }
@@ -119,12 +119,21 @@ public:
             m_Device->Shutdown();
             delete m_Device;
         }
+
+        // Shutdown RenderResourceManager singleton
+        FirstEngine::Renderer::RenderResourceManager::Shutdown();
+        
+        // Shutdown ShaderModuleTools singleton
+        FirstEngine::Renderer::ShaderModuleTools::Shutdown();
     }
 
     bool Initialize() override {
         // Initialize RenderDoc BEFORE creating Vulkan instance
         // This is critical - RenderDoc needs to intercept Vulkan calls from the start
         InitializeRenderDoc();
+
+        // Initialize RenderResourceManager singleton
+        FirstEngine::Renderer::RenderResourceManager::Initialize();
 
         // Create device (this will create Vulkan instance)
         m_Device = new FirstEngine::Device::VulkanDevice();
@@ -195,6 +204,16 @@ public:
         // Initialize ResourceManager
         FirstEngine::Resources::ResourceManager::Initialize();
         FirstEngine::Resources::ResourceManager& resourceManager = FirstEngine::Resources::ResourceManager::GetInstance();
+
+        // Initialize ShaderModuleTools (loads all shaders from Package/Shaders)
+        auto& shaderTools = FirstEngine::Renderer::ShaderModuleTools::GetInstance();
+        if (!shaderTools.Initialize("build/Package/Shaders", m_Device)) {
+            std::cerr << "Warning: Failed to initialize ShaderModuleTools, shaders may not be available." << std::endl;
+        } else {
+            // Set device for lazy shader module creation
+            shaderTools.SetDevice(m_Device);
+            std::cout << "ShaderModuleTools initialized successfully." << std::endl;
+        }
 
         // Helper function to resolve path (try multiple locations)
         auto resolvePath = [](const std::string& relativePath) -> std::string {
@@ -300,9 +319,8 @@ public:
             std::cerr << "Current working directory: " << fs::current_path().string() << std::endl;
         }
 
-        // Create scene renderer
-        m_SceneRenderer = new FirstEngine::Renderer::SceneRenderer(m_Device);
-        m_SceneRenderer->SetScene(m_Scene);
+        // SceneRenderer is now owned by each Pass (IRenderPass)
+        // No need to create a global SceneRenderer anymore
 
         std::cout << "RenderApp initialized successfully!" << std::endl;
         return true;
@@ -356,14 +374,27 @@ protected:
         }
     }
 
-    void OnRender() override {
-        if (!m_SceneRenderer || !m_Scene) {
+    void OnCreateResources() override {
+        if (!m_Device) {
             return;
         }
 
-        // Clear render queue and command lists from previous frame
-        m_RenderQueue.Clear();
-        m_SceneRenderCommands.Clear();
+        // ===== Resource Creation Phase (IRenderResource Processing) =====
+        // Process scheduled resources (create/update/destroy)
+        // Only processes IRenderResource* directly, no Entity/Component references
+        // Supports frame-by-frame processing for performance (maxResourcesPerFrame = 0 means unlimited)
+        // In production, you might want to limit this to avoid frame spikes
+        uint32_t maxResourcesPerFrame = 0; // 0 = unlimited, set to a number (e.g., 10) to limit per frame
+        FirstEngine::Renderer::RenderResourceManager::GetInstance().ProcessScheduledResources(m_Device, maxResourcesPerFrame);
+        // ===== End Resource Creation Phase =====
+    }
+
+    void OnRender() override {
+        if (!m_Scene || !m_FrameGraph) {
+            return;
+        }
+
+        // Clear command lists from previous frame
         m_FrameGraphRenderCommands.Clear();
 
         // Update render config with current window dimensions
@@ -374,20 +405,12 @@ protected:
             );
         }
 
-        // Only perform scene traversal and build render queue
-        // No CommandBuffer operations here - this allows for multi-threaded optimization
-        // Scene traversal can be done in parallel or on a different thread
-        // Use RenderConfig for camera and render settings
-        m_SceneRenderer->Render(m_RenderQueue, m_RenderConfig);
-
-        // Convert render queue to render command list (data structure, no CommandBuffer dependency)
-        // This happens after scene traversal, allowing for multi-threaded optimization
-        m_SceneRenderCommands = m_SceneRenderer->SubmitRenderQueue(m_RenderQueue);
-
         // Execute FrameGraph to get render command list (data structure, no CommandBuffer dependency)
-        // Pass scene commands to FrameGraph so they can be merged into geometry/forward passes
-        // FrameGraph will merge scene commands into appropriate passes (geometry, forward)
-        m_FrameGraphRenderCommands = m_FrameGraph->Execute(m_FrameGraphPlan, &m_SceneRenderCommands);
+        // FrameGraph::Execute will:
+        //   1. For each Pass with SceneRenderer, call Render() to generate SceneRenderCommands
+        //   2. Pass SceneRenderCommands to OnDraw() callback
+        // Scene and RenderConfig are passed to Execute, which will forward them to Passes with SceneRenderer
+        m_FrameGraphRenderCommands = m_FrameGraph->Execute(m_FrameGraphPlan, m_Scene, m_RenderConfig);
     }
 
     void OnSubmit() override {
@@ -403,6 +426,7 @@ protected:
         // Now that fence is signaled, it's safe to release the previous frame's command buffer
         // The command buffer from previous frame is no longer in use by GPU
         m_CommandBuffer.reset();
+
 
         // Begin RenderDoc frame capture
         // Note: For Vulkan, RenderDoc works as an implicit layer and automatically captures frames
@@ -653,10 +677,7 @@ private:
     FirstEngine::RHI::FenceHandle m_InFlightFence;
     std::unique_ptr<FirstEngine::RHI::ICommandBuffer> m_CommandBuffer; // Store command buffer to defer destruction
     FirstEngine::Resources::Scene* m_Scene;
-    FirstEngine::Renderer::SceneRenderer* m_SceneRenderer;
-    FirstEngine::Renderer::RenderQueue m_RenderQueue; // Global render queue for collecting render data
     FirstEngine::Renderer::RenderConfig m_RenderConfig; // Global render configuration (camera, resolution, flags)
-    FirstEngine::Renderer::RenderCommandList m_SceneRenderCommands; // Render commands from scene (CommandBuffer independent)
     FirstEngine::Renderer::RenderCommandList m_FrameGraphRenderCommands; // Render commands from FrameGraph (CommandBuffer independent)
     FirstEngine::Renderer::CommandRecorder m_CommandRecorder; // Converts RenderCommandList to CommandBuffer commands
     uint32_t m_CurrentImageIndex = 0; // Store current image index for OnSubmit

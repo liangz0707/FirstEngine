@@ -1,6 +1,8 @@
 #include "FirstEngine/Resources/TextureResource.h"
 #include "FirstEngine/Resources/TextureLoader.h"
 #include "FirstEngine/Resources/ImageLoader.h"
+#include "FirstEngine/Renderer/RenderTexture.h"
+#include "FirstEngine/RHI/IImage.h"
 #if __has_include(<filesystem>)
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -17,7 +19,13 @@ namespace FirstEngine {
             m_Metadata.isLoaded = false;
         }
 
-        TextureResource::~TextureResource() = default;
+        TextureResource::~TextureResource() {
+            // Clean up render texture
+            if (m_RenderTexture) {
+                delete static_cast<Renderer::RenderTexture*>(m_RenderTexture);
+                m_RenderTexture = nullptr;
+            }
+        }
 
         bool TextureResource::Initialize(const std::vector<uint8_t>& data, uint32_t width, uint32_t height, uint32_t channels, bool hasAlpha) {
             if (data.empty() || width == 0 || height == 0 || channels == 0) {
@@ -79,6 +87,10 @@ namespace FirstEngine {
             ImageLoader::FreeImageData(loadResult.imageData);
             m_Metadata.isLoaded = true;
 
+            // Create RenderTexture after texture data is loaded
+            // This will be scheduled for GPU creation
+            CreateRenderTexture();
+
             return ResourceLoadResult::Success;
         }
 
@@ -107,6 +119,10 @@ namespace FirstEngine {
             // Textures typically don't have dependencies
             LoadDependencies();
 
+            // Create RenderTexture after texture data is loaded
+            // This will be scheduled for GPU creation
+            CreateRenderTexture();
+
             return ResourceLoadResult::Success;
         }
 
@@ -122,6 +138,55 @@ namespace FirstEngine {
 
             return TextureLoader::Save(xmlFilePath, m_Metadata.name, m_Metadata.resourceID,
                                       imageFilePath, m_Width, m_Height, m_Channels, m_HasAlpha);
+        }
+
+        bool TextureResource::CreateRenderTexture() {
+            // Check if already created
+            if (m_RenderTexture) {
+                auto* renderTexture = static_cast<Renderer::RenderTexture*>(m_RenderTexture);
+                if (renderTexture) {
+                    return true; // Already exists
+                }
+            }
+
+            // Check if texture data is loaded
+            if (m_Data.empty() || m_Width == 0 || m_Height == 0) {
+                return false;
+            }
+
+            // Create RenderTexture from texture data
+            auto renderTexture = std::make_unique<Renderer::RenderTexture>();
+            if (!renderTexture->InitializeFromTexture(this)) {
+                return false; // Failed to initialize
+            }
+
+            // Schedule creation (will be processed in OnCreateResources)
+            renderTexture->ScheduleCreate();
+
+            // Store in TextureResource (takes ownership)
+            m_RenderTexture = renderTexture.release();
+            return true;
+        }
+
+        bool TextureResource::IsRenderTextureReady() const {
+            if (!m_RenderTexture) {
+                return false;
+            }
+            auto* renderTexture = static_cast<Renderer::RenderTexture*>(m_RenderTexture);
+            return renderTexture && renderTexture->IsCreated();
+        }
+
+        bool TextureResource::GetRenderData(RenderData& outData) const {
+            if (!m_RenderTexture) {
+                return false;
+            }
+            auto* renderTexture = static_cast<Renderer::RenderTexture*>(m_RenderTexture);
+            if (!renderTexture || !renderTexture->IsCreated()) {
+                return false;
+            }
+
+            outData.image = renderTexture->GetImage();
+            return true;
         }
 
     } // namespace Resources

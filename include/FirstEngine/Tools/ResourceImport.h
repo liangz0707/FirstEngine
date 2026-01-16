@@ -70,10 +70,11 @@ namespace FirstEngine {
             bool ImportMaterial(const std::string& inputPath, const ImportOptions& options);
 
             // Resource ID management
+
             bool LoadManifest(const std::string& manifestPath);
             bool SaveManifest(const std::string& manifestPath);
-            ResourceID GenerateResourceID(const std::string& path, FirstEngine::Resources::ResourceType type, const std::string& virtualPath);
-            bool RegisterResource(ResourceID id, const std::string& path, FirstEngine::Resources::ResourceType type, const std::string& virtualPath);
+            FirstEngine::Resources::ResourceID GenerateResourceID(const std::string& path, FirstEngine::Resources::ResourceType type, const std::string& virtualPath);
+            bool RegisterResource(FirstEngine::Resources::ResourceID id, const std::string& path, FirstEngine::Resources::ResourceType type, const std::string& virtualPath);
 
             // File operations
             bool CopyFileToPackage(const std::string& sourcePath, const std::string& destPath) const;

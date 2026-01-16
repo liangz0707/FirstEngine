@@ -1,9 +1,16 @@
 #include "FirstEngine/Resources/MaterialResource.h"
+#include "FirstEngine/Renderer/ShadingMaterial.h"
+#include "FirstEngine/Renderer/ShaderModuleTools.h"
+#include "FirstEngine/Renderer/ShaderCollection.h"
 #include "FirstEngine/Resources/ResourceTypes.h"
 #include "FirstEngine/Resources/ResourceProvider.h"
 #include "FirstEngine/Resources/ResourceDependency.h"
 #include "FirstEngine/Resources/MaterialParameter.h"
 #include "FirstEngine/Resources/MaterialLoader.h"
+#include "FirstEngine/Shader/ShaderLoader.h"
+#include "FirstEngine/Resources/TextureResource.h"
+#include "FirstEngine/RHI/IDevice.h"
+#include "FirstEngine/RHI/IImage.h"
 #include <glm/glm.hpp>
 #include <cstring>
 #include <fstream>
@@ -26,6 +33,7 @@ namespace FirstEngine {
             m_Metadata.isLoaded = false;
             m_ShaderName = "DefaultPBR";
             m_ParameterDataDirty = true;
+            m_ShadingMaterial = nullptr;
             
             // Set default parameters (optional - can be empty)
             // Example: SetParameter("Albedo", glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
@@ -78,6 +86,16 @@ namespace FirstEngine {
             // Load dependencies (textures) - this is handled by Resource::Load
             LoadDependencies();
             
+            // Load ShaderCollection by shader name
+            if (!m_ShaderName.empty()) {
+                auto& shaderTools = Renderer::ShaderModuleTools::GetInstance();
+                auto* collection = shaderTools.GetCollectionByName(m_ShaderName);
+                if (collection) {
+                    m_ShaderCollectionID = collection->GetID();
+                    m_ShaderCollection = collection;
+                }
+            }
+            
             m_Metadata.isLoaded = true;
             m_Metadata.fileSize = 0; // Material file size is not tracked
 
@@ -99,6 +117,12 @@ namespace FirstEngine {
                 }
             }
             m_Textures.clear();
+            
+            // Delete shading material if exists
+            if (m_ShadingMaterial) {
+                delete static_cast<Renderer::ShadingMaterial*>(m_ShadingMaterial);
+                m_ShadingMaterial = nullptr;
+            }
         }
 
         void MaterialResource::LoadDependencies() {
@@ -271,6 +295,161 @@ namespace FirstEngine {
         bool MaterialResource::Save(const std::string& xmlFilePath) const {
             return MaterialLoader::Save(xmlFilePath, m_Metadata.name, m_Metadata.resourceID,
                                        m_ShaderName, m_Parameters, m_TextureIDs, m_Metadata.dependencies);
+        }
+
+        // Render resource management implementation (internal)
+        bool MaterialResource::CreateShadingMaterial() {
+            // Check if already created
+            if (m_ShadingMaterial) {
+                auto* shadingMaterial = static_cast<Renderer::ShadingMaterial*>(m_ShadingMaterial);
+                if (shadingMaterial) {
+                    return true; // Already exists
+                }
+            }
+
+            // Only create if ShaderCollectionID is set
+            if (m_ShaderCollectionID == 0) {
+                return false;
+            }
+
+            // Create ShadingMaterial from material data
+            auto shadingMaterial = std::make_unique<Renderer::ShadingMaterial>();
+            
+            // Initialize from ShaderCollection by ID
+            if (!shadingMaterial->InitializeFromShaderCollection(m_ShaderCollectionID)) {
+                return false;
+            }
+
+            // Schedule creation (will be processed in OnCreateResources)
+            shadingMaterial->ScheduleCreate();
+
+            // Store in MaterialResource (takes ownership)
+            m_ShadingMaterial = shadingMaterial.release();
+            
+            // Note: Textures will be set after ShadingMaterial is created (in SetTexturesToShadingMaterial)
+            // This will be called when ShadingMaterial is ready and we have device
+            
+            return true;
+        }
+        
+        void MaterialResource::SetTexturesToShadingMaterial() {
+            if (!m_ShadingMaterial) {
+                return;
+            }
+            
+            auto* shadingMaterial = static_cast<Renderer::ShadingMaterial*>(m_ShadingMaterial);
+            if (!shadingMaterial) {
+                return;
+            }
+
+            // Get device from ShadingMaterial (if it's created)
+            // Note: We need device to create texture GPU resources
+            // For now, texture creation will be deferred until ShadingMaterial is created
+            // and we have device available
+            // This method will be called again after ShadingMaterial is created
+            
+            if (!shadingMaterial->IsCreated()) {
+                // ShadingMaterial not created yet, textures will be set after creation
+                return;
+            }
+
+            RHI::IDevice* device = shadingMaterial->GetDevice();
+            if (!device) {
+                return;
+            }
+
+            // For each texture in m_Textures, bind it to ShadingMaterial
+            // We need to map texture slot names to shader bindings
+            for (const auto& [slotName, textureHandle] : m_Textures) {
+                if (!textureHandle) {
+                    continue;
+                }
+                
+                // Cast to TextureResource to access CreateRenderTexture
+                auto* textureResource = dynamic_cast<TextureResource*>(textureHandle);
+                if (!textureResource) {
+                    continue;
+                }
+                
+                // Ensure texture GPU resource is created
+                textureResource->CreateRenderTexture();
+                
+                // Get GPU texture data
+                TextureResource::RenderData textureData;
+                if (!textureResource->GetRenderData(textureData)) {
+                    continue;
+                }
+                
+                if (!textureData.image) {
+                    continue;
+                }
+                
+                // Find texture binding in shader by slot name
+                // Search through shader reflection to find matching texture binding
+                const auto& reflection = shadingMaterial->GetShaderReflection();
+                RHI::IImage* gpuTexture = static_cast<RHI::IImage*>(textureData.image);
+                
+                // Search samplers first
+                for (const auto& sampler : reflection.samplers) {
+                    if (sampler.name == slotName || sampler.name.find(slotName) != std::string::npos) {
+                        shadingMaterial->SetTexture(sampler.set, sampler.binding, gpuTexture);
+                        break;
+                    }
+                }
+                
+                // Search images
+                for (const auto& image : reflection.images) {
+                    if (image.name == slotName || image.name.find(slotName) != std::string::npos) {
+                        shadingMaterial->SetTexture(image.set, image.binding, gpuTexture);
+                        break;
+                    }
+                }
+            }
+        }
+
+        bool MaterialResource::IsShadingMaterialReady() const {
+            if (!m_ShadingMaterial) {
+                return false;
+            }
+            auto* shadingMaterial = static_cast<Renderer::ShadingMaterial*>(m_ShadingMaterial);
+            return shadingMaterial && shadingMaterial->IsCreated();
+        }
+
+        bool MaterialResource::GetRenderData(RenderData& outData) const {
+            if (!m_ShadingMaterial) {
+                return false;
+            }
+            auto* shadingMaterial = static_cast<Renderer::ShadingMaterial*>(m_ShadingMaterial);
+            if (!shadingMaterial || !shadingMaterial->IsCreated()) {
+                return false;
+            }
+
+            // Set textures now that ShadingMaterial is created and we have device
+            // This is a const method, but we need to set textures
+            // We'll use const_cast to call SetTexturesToShadingMaterial
+            // In practice, this should be called from a non-const method or after creation
+            const_cast<MaterialResource*>(this)->SetTexturesToShadingMaterial();
+
+            outData.shadingMaterial = shadingMaterial;
+            auto& shadingState = shadingMaterial->GetShadingState();
+            outData.pipeline = shadingState.GetPipeline();
+            outData.descriptorSet = shadingMaterial->GetDescriptorSet(0);
+            outData.materialName = m_Metadata.name;
+            return true;
+        }
+
+        void MaterialResource::SetShaderCollectionID(uint64_t collectionID) {
+            m_ShaderCollectionID = collectionID;
+            
+            // Look up ShaderCollection from ShaderModuleTools
+            auto& shaderTools = Renderer::ShaderModuleTools::GetInstance();
+            auto* collection = shaderTools.GetCollection(collectionID);
+            
+            if (collection) {
+                m_ShaderCollection = collection;
+            } else {
+                m_ShaderCollection = nullptr;
+            }
         }
 
     } // namespace Resources

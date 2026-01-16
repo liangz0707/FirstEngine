@@ -27,6 +27,15 @@ set(RENDERER_SOURCES
     LightingPass.cpp
     PostProcessPass.cpp
     ResourceDescription.cpp
+    RenderGeometry.cpp
+    RenderTexture.cpp
+    IRenderResource.cpp
+    RenderResourceManager.cpp
+    PipelineState.cpp
+    ShadingState.cpp
+    ShadingMaterial.cpp
+    ShaderCollection.cpp
+    ShaderModuleTools.cpp
 )
 
 # Header files (add to project so they show up in Visual Studio)
@@ -49,10 +58,21 @@ set(RENDERER_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/GeometryPass.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/LightingPass.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/PostProcessPass.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/IRenderResource.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/RenderGeometry.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/RenderTexture.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/RenderResourceManager.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/PipelineState.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ShadingState.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ShadingMaterial.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ShaderCollection.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ShaderModuleTools.h
 )
 
-# Create shared library
-add_library(FirstEngine_Renderer SHARED
+# Create static library (changed from SHARED to break circular dependency with FirstEngine_Resources)
+# Both libraries need each other, and CMake doesn't allow circular dependencies between SHARED libraries
+# Making Renderer static allows the circular dependency (Resources is still SHARED)
+add_library(FirstEngine_Renderer STATIC
     ${RENDERER_SOURCES}
     ${RENDERER_HEADERS}
 )
@@ -70,8 +90,9 @@ target_include_directories(FirstEngine_Renderer
 target_link_libraries(FirstEngine_Renderer
     PUBLIC
         FirstEngine_RHI
-        FirstEngine_Resources
     PRIVATE
+        FirstEngine_Resources  # Only used in implementation files, not headers
+        FirstEngine_Shader  # For ShaderSourceCompiler
         glm::glm
 )
 
@@ -90,11 +111,5 @@ set_target_properties(FirstEngine_Renderer PROPERTIES
     FOLDER "FirstEngine"  # Organize in Visual Studio solution
 )
 
-# Copy DLL to bin directory on Windows
-if(WIN32)
-    add_custom_command(TARGET FirstEngine_Renderer POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:FirstEngine_Renderer>
-        ${CMAKE_BINARY_DIR}/bin/$<CONFIG>/
-    )
-endif()
+# No need to copy DLL for static library
+# Static libraries are linked directly into the executable

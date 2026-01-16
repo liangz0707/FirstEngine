@@ -29,6 +29,14 @@ namespace FirstEngine {
             // Buffer information
             uint32_t size;
             std::vector<uint32_t> array_size;
+            
+            // Type information (for vertex inputs)
+            uint32_t location = 0; // Location decoration for vertex inputs
+            uint32_t component = 0; // Component decoration
+            uint32_t basetype = 0; // SPIRType basetype (0 = Unknown, 1 = Void, 2 = Boolean, 3 = Int, 4 = UInt, 5 = Float, etc.)
+            uint32_t width = 0; // Type width (e.g., 32 for float32, 16 for float16)
+            uint32_t vecsize = 0; // Vector size (1 = scalar, 2 = vec2, 3 = vec3, 4 = vec4)
+            uint32_t columns = 0; // Matrix columns (0 = not a matrix, 2 = mat2, 3 = mat3, 4 = mat4)
         };
 
         // Uniform buffer information

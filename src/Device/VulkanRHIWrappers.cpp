@@ -266,21 +266,44 @@ namespace FirstEngine {
 
             // Convert Format to VkImageLayout (temporary solution - Format is being misused as Layout)
             // For swapchain images: undefined -> color attachment -> present src
+            // For texture upload: undefined -> transfer dst -> shader read only
             VkImageLayout oldVkLayout = VK_IMAGE_LAYOUT_UNDEFINED;
             VkImageLayout newVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
             // Heuristic: if oldLayout is Undefined and newLayout is a color format, transition to COLOR_ATTACHMENT
             // If newLayout is SRGB, it's likely for present (PRESENT_SRC_KHR)
+            // For texture upload: if oldLayout is Undefined and newLayout is same format, it's TRANSFER_DST_OPTIMAL
+            // If oldLayout is same format and newLayout is same format (second call), it's SHADER_READ_ONLY_OPTIMAL
             if (oldLayout == RHI::Format::Undefined) {
                 oldVkLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                // If newLayout is a color format (not SRGB), it could be TRANSFER_DST_OPTIMAL for texture upload
+                // We'll check if this is a texture upload scenario by checking if image has TRANSFER_DST usage
+                // For now, assume UNORM formats with same old/new could be texture upload
+                if (newLayout == RHI::Format::B8G8R8A8_SRGB || newLayout == RHI::Format::R8G8B8A8_SRGB) {
+                    newVkLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                } else if (newLayout == RHI::Format::B8G8R8A8_UNORM || newLayout == RHI::Format::R8G8B8A8_UNORM) {
+                    // Check if this is likely a texture upload (same format, not SRGB)
+                    // For texture upload: UNDEFINED -> TRANSFER_DST_OPTIMAL
+                    newVkLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                } else {
+                    newVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                }
             } else {
-                oldVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            }
-
-            if (newLayout == RHI::Format::B8G8R8A8_SRGB || newLayout == RHI::Format::R8G8B8A8_SRGB) {
-                newVkLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            } else if (newLayout == RHI::Format::B8G8R8A8_UNORM || newLayout == RHI::Format::R8G8B8A8_UNORM) {
-                newVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                // oldLayout is not Undefined
+                // If oldLayout and newLayout are the same format, it's likely a texture upload transition
+                // TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
+                if (oldLayout == newLayout) {
+                    oldVkLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                    newVkLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                } else {
+                    // Different formats, likely color attachment transitions
+                    oldVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                    if (newLayout == RHI::Format::B8G8R8A8_SRGB || newLayout == RHI::Format::R8G8B8A8_SRGB) {
+                        newVkLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                    } else {
+                        newVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                    }
+                }
             }
 
             VkImageMemoryBarrier barrier{};
@@ -300,6 +323,14 @@ namespace FirstEngine {
             if (oldVkLayout == VK_IMAGE_LAYOUT_UNDEFINED && newVkLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
                 barrier.srcAccessMask = 0;
                 barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            } else if (oldVkLayout == VK_IMAGE_LAYOUT_UNDEFINED && newVkLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+                // Texture upload: UNDEFINED -> TRANSFER_DST_OPTIMAL
+                barrier.srcAccessMask = 0;
+                barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            } else if (oldVkLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newVkLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                // Texture upload: TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
+                barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
             } else if (oldVkLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newVkLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
                 barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
                 barrier.dstAccessMask = 0;
@@ -316,6 +347,14 @@ namespace FirstEngine {
             if (oldVkLayout == VK_IMAGE_LAYOUT_UNDEFINED && newVkLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
                 sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
                 destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            } else if (oldVkLayout == VK_IMAGE_LAYOUT_UNDEFINED && newVkLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+                // Texture upload: UNDEFINED -> TRANSFER_DST_OPTIMAL
+                sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            } else if (oldVkLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newVkLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                // Texture upload: TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
+                sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             } else if (oldVkLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newVkLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
                 sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
                 destinationStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;

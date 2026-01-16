@@ -1,4 +1,4 @@
-# CommandBuffer 构造流程详解
+﻿# CommandBuffer 构造流程详解
 
 本文档详细说明从 FrameGraph 构造、Scene 数据收集到 CommandBuffer 提交的完整流程。
 

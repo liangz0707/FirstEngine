@@ -3,8 +3,14 @@
 #include "FirstEngine/Resources/Export.h"
 #include "FirstEngine/Resources/Component.h"
 #include <string>
+#include <memory>
 
+// Forward declarations
 namespace FirstEngine {
+    namespace Renderer {
+        struct RenderItem;
+        enum class RenderObjectFlag : uint32_t;
+    }
     namespace Resources {
 
         // Effect/Particle system component
@@ -24,6 +30,16 @@ namespace FirstEngine {
 
             void SetDuration(float duration) { m_Duration = duration; }
             float GetDuration() const { return m_Duration; }
+
+            // Component interface - render item creation
+            // EffectComponent can create render items for particle systems
+            std::unique_ptr<Renderer::RenderItem> CreateRenderItem(
+                const glm::mat4& worldMatrix,
+                Renderer::RenderObjectFlag renderFlags
+            ) override;
+
+            // Component interface - render flags matching
+            bool MatchesRenderFlags(Renderer::RenderObjectFlag renderFlags) const override;
 
         private:
             std::string m_EffectPath;

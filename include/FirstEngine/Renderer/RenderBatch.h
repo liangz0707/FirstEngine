@@ -5,7 +5,6 @@
 #include "FirstEngine/RHI/IPipeline.h"
 #include "FirstEngine/RHI/IBuffer.h"
 #include "FirstEngine/RHI/IImage.h"
-#include "FirstEngine/Resources/Scene.h"
 #include <glm/glm.hpp>
 #include <vector>
 #include <memory>
@@ -15,36 +14,42 @@ namespace FirstEngine {
     namespace Resources {
         class ModelComponent;
         class Entity;
+        struct AABB;
+        class MeshResource;
+        class MaterialResource;
+    }
+
+    namespace Renderer {
+        class ShadingMaterial; // Forward declaration
     }
 
     namespace Renderer {
 
         // Render item represents a single draw call
         struct FE_RENDERER_API RenderItem {
-            // Geometry
-            RHI::IBuffer* vertexBuffer = nullptr;
-            RHI::IBuffer* indexBuffer = nullptr;
-            uint32_t indexCount = 0;
-            uint32_t vertexCount = 0;
-            uint32_t firstIndex = 0;
-            uint32_t firstVertex = 0;
-            uint64_t vertexBufferOffset = 0;
-            uint64_t indexBufferOffset = 0;
+            // Geometry data (from MeshResource::RenderData)
+            struct GeometryData {
+                void* vertexBuffer = nullptr;
+                void* indexBuffer = nullptr;
+                uint32_t vertexCount = 0;
+                uint32_t indexCount = 0;
+                uint32_t firstIndex = 0;
+                uint32_t firstVertex = 0;
+                uint64_t vertexBufferOffset = 0;
+                uint64_t indexBufferOffset = 0;
+            } geometryData;
 
-            // Pipeline state
-            RHI::IPipeline* pipeline = nullptr;
-            void* descriptorSet = nullptr; // Material/descriptor set
+            // Material data (from MaterialResource::RenderData)
+            struct MaterialData {
+                void* shadingMaterial = nullptr; // ShadingMaterial* cast to void*
+                void* pipeline = nullptr; // IPipeline* cast to void*
+                void* descriptorSet = nullptr; // Descriptor set
+                std::string materialName;
+            } materialData;
 
             // Transform
             glm::mat4 worldMatrix = glm::mat4(1.0f);
             glm::mat4 normalMatrix = glm::mat4(1.0f);
-
-            // Material properties
-            std::string materialName;
-            RHI::IImage* albedoTexture = nullptr;
-            RHI::IImage* normalTexture = nullptr;
-            RHI::IImage* metallicRoughnessTexture = nullptr;
-            RHI::IImage* emissiveTexture = nullptr;
 
             // Sorting key (for batching)
             uint64_t sortKey = 0;
