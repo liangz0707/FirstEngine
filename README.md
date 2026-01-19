@@ -14,10 +14,26 @@ A modern 3D graphics engine built with C++, Vulkan, and GLFW.
 - C++17 compatible compiler
 - CMake 3.20 or higher
 - Vulkan SDK
-- GLFW3
-- GLM
+- Git（用于初始化子模块）
+
+> 说明：GLFW / GLM / glslang / SPIRV-Cross / stb / assimp / pybind11 等第三方库以 **Git 子模块**形式提供，位于 `third_party/`，无需你额外安装。
 
 ## Building
+
+### 获取源码（务必初始化子模块）
+
+首次克隆后先执行：
+
+```bash
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+如果你这里遇到“网络问题/超时/连接重置”，可以用带重试的脚本：
+
+```bash
+bash scripts/init_submodules.sh
+```
 
 ```bash
 mkdir build

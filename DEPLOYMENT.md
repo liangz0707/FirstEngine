@@ -12,6 +12,11 @@ cd FirstEngine
 git submodule update --init --recursive
 ```
 
+> 如果你在这一步遇到“网络问题”（超时、连接被重置、无法访问 GitHub），通常并不是引擎运行时联网，而是 **子模块拉取失败**。
+>
+> - Windows：多重试几次 `git submodule update --init --recursive`
+> - Linux/macOS：可使用 `scripts/init_submodules.sh`（带指数退避重试）
+
 ### 步骤2: 设置本地依赖
 
 运行设置脚本，自动复制 Vulkan SDK 和 Python 到项目目录：
