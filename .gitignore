@@ -56,3 +56,15 @@ Thumbs.db
 # External dependencies (copied locally, not in git)
 external/vulkan/
 external/python/
+
+# C# Editor build outputs
+Editor/bin/
+Editor/obj/
+Editor/*.user
+Editor/*.csproj.user
+Editor/*.csproj.user.absolute
+
+# Build output files
+build_output.txt
+Package/
+test_glslang/
