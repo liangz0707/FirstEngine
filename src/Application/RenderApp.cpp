@@ -483,9 +483,20 @@ int main(int argc, char* argv[]) {
             PROCESS_INFORMATION pi;
             std::string cmdLine = "\"" + foundEditorPath + "\"";
             if (CreateProcessA(nullptr, const_cast<char*>(cmdLine.c_str()), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
-                CloseHandle(pi.hProcess);
+                // Don't close handles immediately - wait for process to exit
+                // This prevents the debugger from detaching when the parent process exits
                 CloseHandle(pi.hThread);
-                return 0;
+                
+                // Wait for the editor process to exit
+                // This keeps the parent process alive so the debugger stays attached
+                WaitForSingleObject(pi.hProcess, INFINITE);
+                
+                // Get exit code
+                DWORD exitCode = 0;
+                GetExitCodeProcess(pi.hProcess, &exitCode);
+                CloseHandle(pi.hProcess);
+                
+                return static_cast<int>(exitCode);
             } else {
                 std::cerr << "Error: Failed to launch editor: " << foundEditorPath << std::endl;
                 std::cerr << "Error code: " << GetLastError() << std::endl;

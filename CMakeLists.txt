@@ -15,6 +15,16 @@ if(WIN32)
     set(CMAKE_DEBUG_POSTFIX "d")
 endif()
 
+# Ensure proper debug flags for MSVC
+if(MSVC)
+    # Set debug compilation flags
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Zi /Od /D_DEBUG")
+    # Set debug linker flags
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} /DEBUG")
+    set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} /DEBUG")
+    set(CMAKE_STATIC_LINKER_FLAGS_DEBUG "${CMAKE_STATIC_LINKER_FLAGS_DEBUG} /DEBUG")
+endif()
+
 # Find required packages
 # Try to find GLFW3 - support multiple methods
 find_package(glfw3 QUIET)

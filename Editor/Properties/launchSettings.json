@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "FirstEngineEditor": {
+      "commandName": "Executable",
+      "executablePath": "G:\\AIHUMAN\\WorkSpace\\FirstEngine\\Editor\\bin\\Debug\\net8.0-windows\\FirstEngineEditor.exe",
+      "workingDirectory": "G:\\AIHUMAN\\WorkSpace\\FirstEngine\\Editor\\bin\\Debug\\net8.0-windows",
+      "nativeDebugging": true
+    }
+  }
+}

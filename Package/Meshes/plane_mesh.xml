@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Mesh>
+    <Name>Plane Mesh</Name>
+    <ResourceID>3003</ResourceID>
+    <MeshFile>plane.obj</MeshFile>
+    <VertexStride>32</VertexStride>
+</Mesh>

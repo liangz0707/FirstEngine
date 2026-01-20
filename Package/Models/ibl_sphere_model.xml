@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Model>
+    <Name>IBL Sphere Model</Name>
+    <ResourceID>4003</ResourceID>
+    <Meshes>
+        <Mesh index="0" resourceID="3002"/>
+    </Meshes>
+    <Materials>
+        <Material index="0" resourceID="2003"/>
+    </Materials>
+    <Dependencies>
+        <Dependency type="Mesh" resourceID="3002" slot="0" required="true"/>
+        <Dependency type="Material" resourceID="2003" slot="0" required="true"/>
+    </Dependencies>
+</Model>

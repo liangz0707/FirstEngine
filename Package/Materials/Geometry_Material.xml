@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Material>
+    <Name>Geometry Material</Name>
+    <ResourceID>2002</ResourceID>
+    <Shader>GeometryShader</Shader>
+    <Parameters>
+        <Parameter name="baseColor" type="float4">1.0 1.0 1.0 1.0</Parameter>
+        <Parameter name="metallic" type="float">0.0</Parameter>
+        <Parameter name="roughness" type="float">0.5</Parameter>
+        <Parameter name="ao" type="float">1.0</Parameter>
+        <Parameter name="emission" type="float3">0.0 0.0 0.0</Parameter>
+        <Parameter name="useAlbedoMap" type="int">1</Parameter>
+        <Parameter name="useNormalMap" type="int">1</Parameter>
+        <Parameter name="useMetallicRoughnessMap" type="int">1</Parameter>
+        <Parameter name="useAoMap" type="int">1</Parameter>
+        <Parameter name="useEmissionMap" type="int">0</Parameter>
+    </Parameters>
+    <Textures>
+        <Texture slot="albedoMap" resourceID="1001"/>
+        <Texture slot="normalMap" resourceID="1002"/>
+        <Texture slot="metallicRoughnessMap" resourceID="1003"/>
+        <Texture slot="aoMap" resourceID="1004"/>
+        <Texture slot="emissionMap" resourceID="1005"/>
+    </Textures>
+    <Dependencies>
+        <Dependency type="Texture" resourceID="1001" slot="albedoMap" required="true"/>
+        <Dependency type="Texture" resourceID="1002" slot="normalMap" required="false"/>
+        <Dependency type="Texture" resourceID="1003" slot="metallicRoughnessMap" required="false"/>
+        <Dependency type="Texture" resourceID="1004" slot="aoMap" required="false"/>
+        <Dependency type="Texture" resourceID="1005" slot="emissionMap" required="false"/>
+    </Dependencies>
+</Material>

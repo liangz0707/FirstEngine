@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Material>
+    <Name>PostProcess Material</Name>
+    <ResourceID>2005</ResourceID>
+    <Shader>PostProcess</Shader>
+    <Parameters>
+        <Parameter name="intensity" type="float">1.0</Parameter>
+    </Parameters>
+    <Textures>
+        <Texture slot="inputTexture" resourceID="1008"/>
+    </Textures>
+    <Dependencies>
+        <Dependency type="Texture" resourceID="1008" slot="inputTexture" required="true"/>
+    </Dependencies>
+</Material>

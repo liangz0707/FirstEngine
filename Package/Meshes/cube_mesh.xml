@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Mesh>
+    <Name>Cube Mesh</Name>
+    <ResourceID>3001</ResourceID>
+    <MeshFile>cube.obj</MeshFile>
+    <VertexStride>32</VertexStride>
+</Mesh>

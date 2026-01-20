@@ -6,6 +6,10 @@ namespace FirstEngineEditor
     {
         protected override void OnStartup(StartupEventArgs e)
         {
+            // Debug test - 在这里设置断点
+            var debugTest = 123;
+            System.Diagnostics.Debug.WriteLine("OnStartup called!");
+            
             base.OnStartup(e);
             
             // Initialize services

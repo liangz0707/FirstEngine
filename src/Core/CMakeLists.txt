@@ -2,11 +2,6 @@ cmake_minimum_required(VERSION 3.20)
 
 project(FirstEngine_Core VERSION 1.0.0 LANGUAGES CXX)
 
-# Set export macro for this module
-if(WIN32)
-    add_definitions(-DFirstEngine_Core_EXPORTS)
-endif()
-
 # Source files
 set(CORE_SOURCES
     # Window.cpp - removed, implementation is now in header file (Window.h)
@@ -41,6 +36,22 @@ add_library(FirstEngine_Core SHARED
     ${CORE_SOURCES}
     ${CORE_HEADERS}
 )
+
+# Set export macro for this module (must be after add_library)
+if(WIN32)
+    target_compile_definitions(FirstEngine_Core PRIVATE FirstEngine_Core_EXPORTS)
+    
+    # Use .def file to explicitly export EditorAPI functions
+    # This is more reliable than relying on __declspec(dllexport)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/src/Editor/EditorAPI.def")
+        set_target_properties(FirstEngine_Core PROPERTIES
+            LINK_FLAGS "/DEF:${CMAKE_SOURCE_DIR}/src/Editor/EditorAPI.def"
+        )
+        message(STATUS "Using EditorAPI.def for explicit function export")
+    else()
+        message(WARNING "EditorAPI.def not found at ${CMAKE_SOURCE_DIR}/src/Editor/EditorAPI.def")
+    endif()
+endif()
 
 # Include directories
 target_include_directories(FirstEngine_Core
@@ -90,7 +101,6 @@ target_link_libraries(FirstEngine_Core
 # Compiler-specific options
 if(MSVC)
     target_compile_options(FirstEngine_Core PRIVATE /W4)
-    target_compile_definitions(FirstEngine_Core PUBLIC FirstEngine_Core_EXPORTS)
 else()
     target_compile_options(FirstEngine_Core PRIVATE -Wall -Wextra -Wpedantic)
 endif()

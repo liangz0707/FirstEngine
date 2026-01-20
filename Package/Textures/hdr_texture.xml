@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Texture>
+    <Name>HDR Texture</Name>
+    <ResourceID>1007</ResourceID>
+    <ImageFile>lightmap.hdr</ImageFile>
+    <Width>2048</Width>
+    <Height>1024</Height>
+    <Channels>3</Channels>
+    <HasAlpha>false</HasAlpha>
+</Texture>

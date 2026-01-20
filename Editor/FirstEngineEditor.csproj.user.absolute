@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- 备用配置：使用绝对路径（如果 $(SolutionDir) 不工作，可以重命名此文件为 .csproj.user） -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <StartAction>Program</StartAction>
+    <StartProgram>G:\AIHUMAN\WorkSpace\FirstEngine\Editor\bin\Debug\net8.0-windows\FirstEngineEditor.exe</StartProgram>
+    <StartWorkingDirectory>G:\AIHUMAN\WorkSpace\FirstEngine\Editor\bin\Debug\net8.0-windows</StartWorkingDirectory>
+    <EnableUnmanagedDebugging>true</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <StartAction>Program</StartAction>
+    <StartProgram>G:\AIHUMAN\WorkSpace\FirstEngine\Editor\bin\Release\net8.0-windows\FirstEngineEditor.exe</StartProgram>
+    <StartWorkingDirectory>G:\AIHUMAN\WorkSpace\FirstEngine\Editor\bin\Release\net8.0-windows</StartWorkingDirectory>
+    <EnableUnmanagedDebugging>true</EnableUnmanagedDebugging>
+  </PropertyGroup>
+</Project>

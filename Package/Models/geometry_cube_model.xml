@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Model>
+    <Name>Geometry Cube Model</Name>
+    <ResourceID>4002</ResourceID>
+    <Meshes>
+        <Mesh index="0" resourceID="3001"/>
+    </Meshes>
+    <Materials>
+        <Material index="0" resourceID="2002"/>
+    </Materials>
+    <Dependencies>
+        <Dependency type="Mesh" resourceID="3001" slot="0" required="true"/>
+        <Dependency type="Material" resourceID="2002" slot="0" required="true"/>
+    </Dependencies>
+</Model>

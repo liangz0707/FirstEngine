@@ -65,23 +65,47 @@ if(WIN32 AND MSVC)
         set(EDITOR_OUTPUT_DIR "${EDITOR_PROJECT_DIR}/bin/${DOTNET_CONFIG}/net8.0-windows")
         
         # Copy DLLs to editor output directory after build
+        # Note: FirstEngine_Device is STATIC, so no DLL to copy
+        # In Debug configuration, CMake adds 'd' suffix (FirstEngine_Cored.dll)
+        # but C# P/Invoke expects FirstEngine_Core.dll, so we create both copies
         add_custom_command(TARGET FirstEngineEditor POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E echo "Copying C++ DLLs to Editor output directory..."
             COMMAND ${CMAKE_COMMAND} -E make_directory "${EDITOR_OUTPUT_DIR}"
+            # Copy FirstEngine_Core.dll (with 'd' suffix in Debug)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 $<TARGET_FILE:FirstEngine_Core>
                 "${EDITOR_OUTPUT_DIR}/"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:FirstEngine_Device>
-                "${EDITOR_OUTPUT_DIR}/"
+            # Copy FirstEngine_RHI.dll
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 $<TARGET_FILE:FirstEngine_RHI>
                 "${EDITOR_OUTPUT_DIR}/"
+            # Copy FirstEngine_Shader.dll
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 $<TARGET_FILE:FirstEngine_Shader>
                 "${EDITOR_OUTPUT_DIR}/"
             COMMENT "Copying C++ DLLs to Editor output directory"
         )
+        
+        # In Debug configuration, create copies without 'd' suffix for C# P/Invoke
+        # This is done in a separate command to avoid generator expression issues
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_CONFIGURATION_TYPES)
+            add_custom_command(TARGET FirstEngineEditor POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E echo "Creating DLL copies without 'd' suffix for C# P/Invoke..."
+                # Copy FirstEngine_Cored.dll to FirstEngine_Core.dll
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${CMAKE_BINARY_DIR}/bin/Debug/FirstEngine_Cored.dll"
+                    "${EDITOR_OUTPUT_DIR}/FirstEngine_Core.dll"
+                # Copy FirstEngine_RHId.dll to FirstEngine_RHI.dll
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${CMAKE_BINARY_DIR}/bin/Debug/FirstEngine_RHId.dll"
+                    "${EDITOR_OUTPUT_DIR}/FirstEngine_RHI.dll"
+                # Copy FirstEngine_Shaderd.dll to FirstEngine_Shader.dll
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${CMAKE_BINARY_DIR}/bin/Debug/FirstEngine_Shaderd.dll"
+                    "${EDITOR_OUTPUT_DIR}/FirstEngine_Shader.dll"
+                COMMENT "Creating DLL copies without 'd' suffix"
+            )
+        endif()
         
         # Copy vulkan-1.dll if found
         if(VULKAN_DLL_FOUND AND EXISTS "${VULKAN_DLL_PATH}")

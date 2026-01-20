@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Mesh>
+    <Name>Sphere Mesh</Name>
+    <ResourceID>3002</ResourceID>
+    <MeshFile>sphere.obj</MeshFile>
+    <VertexStride>32</VertexStride>
+</Mesh>

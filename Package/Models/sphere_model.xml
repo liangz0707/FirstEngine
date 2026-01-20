@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Model>
+    <Name>Sphere Model</Name>
+    <ResourceID>2</ResourceID>
+    <Meshes>
+        <Mesh index="0" resourceID="9" />
+    </Meshes>
+    <Materials>
+        <Material index="0" resourceID="5" />
+    </Materials>
+    <Dependencies>
+        <Dependency type="Material" resourceID="5" slot="0" required="true" />
+        <Dependency type="Mesh" resourceID="9" slot="0" required="true" />
+    </Dependencies>
+</Model>

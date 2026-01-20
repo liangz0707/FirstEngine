@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Material>
+    <Name>PBR Material</Name>
+    <ResourceID>2001</ResourceID>
+    <Shader>PBR</Shader>
+    <Parameters>
+        <Parameter name="baseColor" type="float4">1.0 1.0 1.0 1.0</Parameter>
+        <Parameter name="metallic" type="float">0.0</Parameter>
+        <Parameter name="roughness" type="float">0.5</Parameter>
+        <Parameter name="ao" type="float">1.0</Parameter>
+        <Parameter name="useAlbedoMap" type="int">1</Parameter>
+        <Parameter name="useNormalMap" type="int">1</Parameter>
+        <Parameter name="useMetallicRoughnessMap" type="int">1</Parameter>
+        <Parameter name="useAoMap" type="int">1</Parameter>
+    </Parameters>
+    <Textures>
+        <Texture slot="albedoMap" resourceID="1001"/>
+        <Texture slot="normalMap" resourceID="1002"/>
+        <Texture slot="metallicRoughnessMap" resourceID="1003"/>
+        <Texture slot="aoMap" resourceID="1004"/>
+    </Textures>
+    <Dependencies>
+        <Dependency type="Texture" resourceID="1001" slot="albedoMap" required="true"/>
+        <Dependency type="Texture" resourceID="1002" slot="normalMap" required="false"/>
+        <Dependency type="Texture" resourceID="1003" slot="metallicRoughnessMap" required="false"/>
+        <Dependency type="Texture" resourceID="1004" slot="aoMap" required="false"/>
+    </Dependencies>
+</Material>

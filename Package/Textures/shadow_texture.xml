@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Texture>
+    <Name>Shadow Texture</Name>
+    <ResourceID>1006</ResourceID>
+    <ImageFile>example_texture.png</ImageFile>
+    <Width>2048</Width>
+    <Height>2048</Height>
+    <Channels>1</Channels>
+    <HasAlpha>false</HasAlpha>
+</Texture>

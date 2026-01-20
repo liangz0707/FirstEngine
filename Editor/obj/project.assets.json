@@ -1,0 +1,306 @@
+{
+  "version": 3,
+  "targets": {
+    "net8.0-windows7.0": {
+      "Microsoft.Toolkit.Mvvm/7.1.2": {
+        "type": "package",
+        "compile": {
+          "lib/net5.0/Microsoft.Toolkit.Mvvm.dll": {
+            "related": ".pdb;.xml"
+          }
+        },
+        "runtime": {
+          "lib/net5.0/Microsoft.Toolkit.Mvvm.dll": {
+            "related": ".pdb;.xml"
+          }
+        }
+      },
+      "Newtonsoft.Json/13.0.3": {
+        "type": "package",
+        "compile": {
+          "lib/net6.0/Newtonsoft.Json.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0/Newtonsoft.Json.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "System.IO.Abstractions/19.2.69": {
+        "type": "package",
+        "dependencies": {
+          "TestableIO.System.IO.Abstractions": "19.2.69",
+          "TestableIO.System.IO.Abstractions.Wrappers": "19.2.69"
+        },
+        "compile": {
+          "lib/net7.0/System.IO.Abstractions.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net7.0/System.IO.Abstractions.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "TestableIO.System.IO.Abstractions/19.2.69": {
+        "type": "package",
+        "compile": {
+          "lib/net7.0/TestableIO.System.IO.Abstractions.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net7.0/TestableIO.System.IO.Abstractions.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "TestableIO.System.IO.Abstractions.Wrappers/19.2.69": {
+        "type": "package",
+        "dependencies": {
+          "TestableIO.System.IO.Abstractions": "19.2.69"
+        },
+        "compile": {
+          "lib/net7.0/TestableIO.System.IO.Abstractions.Wrappers.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net7.0/TestableIO.System.IO.Abstractions.Wrappers.dll": {
+            "related": ".xml"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Microsoft.Toolkit.Mvvm/7.1.2": {
+      "sha512": "tUQn6ar9oP7kmYaZ6pWabxpQaqw95Bsf+GG7prEL0y5MV5F60z76lI/Ppps9zcTqwd7e5CrdZBcdfor9WuvohA==",
+      "type": "package",
+      "path": "microsoft.toolkit.mvvm/7.1.2",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "License.md",
+        "ThirdPartyNotices.txt",
+        "analyzers/dotnet/cs/Microsoft.Toolkit.Mvvm.SourceGenerators.dll",
+        "analyzers/dotnet/cs/Microsoft.Toolkit.Mvvm.SourceGenerators.pdb",
+        "analyzers/dotnet/cs/Microsoft.Toolkit.Mvvm.SourceGenerators.xml",
+        "lib/net5.0/Microsoft.Toolkit.Mvvm.dll",
+        "lib/net5.0/Microsoft.Toolkit.Mvvm.pdb",
+        "lib/net5.0/Microsoft.Toolkit.Mvvm.xml",
+        "lib/netstandard2.0/Microsoft.Toolkit.Mvvm.dll",
+        "lib/netstandard2.0/Microsoft.Toolkit.Mvvm.pdb",
+        "lib/netstandard2.0/Microsoft.Toolkit.Mvvm.xml",
+        "lib/netstandard2.1/Microsoft.Toolkit.Mvvm.dll",
+        "lib/netstandard2.1/Microsoft.Toolkit.Mvvm.pdb",
+        "lib/netstandard2.1/Microsoft.Toolkit.Mvvm.xml",
+        "microsoft.toolkit.mvvm.7.1.2.nupkg.sha512",
+        "microsoft.toolkit.mvvm.nuspec"
+      ]
+    },
+    "Newtonsoft.Json/13.0.3": {
+      "sha512": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ==",
+      "type": "package",
+      "path": "newtonsoft.json/13.0.3",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "LICENSE.md",
+        "README.md",
+        "lib/net20/Newtonsoft.Json.dll",
+        "lib/net20/Newtonsoft.Json.xml",
+        "lib/net35/Newtonsoft.Json.dll",
+        "lib/net35/Newtonsoft.Json.xml",
+        "lib/net40/Newtonsoft.Json.dll",
+        "lib/net40/Newtonsoft.Json.xml",
+        "lib/net45/Newtonsoft.Json.dll",
+        "lib/net45/Newtonsoft.Json.xml",
+        "lib/net6.0/Newtonsoft.Json.dll",
+        "lib/net6.0/Newtonsoft.Json.xml",
+        "lib/netstandard1.0/Newtonsoft.Json.dll",
+        "lib/netstandard1.0/Newtonsoft.Json.xml",
+        "lib/netstandard1.3/Newtonsoft.Json.dll",
+        "lib/netstandard1.3/Newtonsoft.Json.xml",
+        "lib/netstandard2.0/Newtonsoft.Json.dll",
+        "lib/netstandard2.0/Newtonsoft.Json.xml",
+        "newtonsoft.json.13.0.3.nupkg.sha512",
+        "newtonsoft.json.nuspec",
+        "packageIcon.png"
+      ]
+    },
+    "System.IO.Abstractions/19.2.69": {
+      "sha512": "VNc0GMVJ7df9IOupFyUrsLVwOvnba6W+lKJPeR/sDx+agPkd6LmdZkXbcURWNN1ue//uLTwP6145agO61c9gNg==",
+      "type": "package",
+      "path": "system.io.abstractions/19.2.69",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "README.md",
+        "icon_256x256.png",
+        "lib/net461/System.IO.Abstractions.dll",
+        "lib/net461/System.IO.Abstractions.xml",
+        "lib/net5.0/System.IO.Abstractions.dll",
+        "lib/net5.0/System.IO.Abstractions.xml",
+        "lib/net6.0/System.IO.Abstractions.dll",
+        "lib/net6.0/System.IO.Abstractions.xml",
+        "lib/net7.0/System.IO.Abstractions.dll",
+        "lib/net7.0/System.IO.Abstractions.xml",
+        "lib/netstandard2.0/System.IO.Abstractions.dll",
+        "lib/netstandard2.0/System.IO.Abstractions.xml",
+        "lib/netstandard2.1/System.IO.Abstractions.dll",
+        "lib/netstandard2.1/System.IO.Abstractions.xml",
+        "system.io.abstractions.19.2.69.nupkg.sha512",
+        "system.io.abstractions.nuspec"
+      ]
+    },
+    "TestableIO.System.IO.Abstractions/19.2.69": {
+      "sha512": "BHZ9uqMAPG7TId4dwJPEuofR6NjIu8AycwH8qSWTSLYUKpQzJKFMIgo7Igp37BW3oURRdIs5Dx4+W86BqvEXrg==",
+      "type": "package",
+      "path": "testableio.system.io.abstractions/19.2.69",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "README.md",
+        "icon_256x256.png",
+        "lib/net461/TestableIO.System.IO.Abstractions.dll",
+        "lib/net461/TestableIO.System.IO.Abstractions.xml",
+        "lib/net5.0/TestableIO.System.IO.Abstractions.dll",
+        "lib/net5.0/TestableIO.System.IO.Abstractions.xml",
+        "lib/net6.0/TestableIO.System.IO.Abstractions.dll",
+        "lib/net6.0/TestableIO.System.IO.Abstractions.xml",
+        "lib/net7.0/TestableIO.System.IO.Abstractions.dll",
+        "lib/net7.0/TestableIO.System.IO.Abstractions.xml",
+        "lib/netstandard2.0/TestableIO.System.IO.Abstractions.dll",
+        "lib/netstandard2.0/TestableIO.System.IO.Abstractions.xml",
+        "lib/netstandard2.1/TestableIO.System.IO.Abstractions.dll",
+        "lib/netstandard2.1/TestableIO.System.IO.Abstractions.xml",
+        "testableio.system.io.abstractions.19.2.69.nupkg.sha512",
+        "testableio.system.io.abstractions.nuspec"
+      ]
+    },
+    "TestableIO.System.IO.Abstractions.Wrappers/19.2.69": {
+      "sha512": "yHPZKCrsaVoA/LuZRqarYhecFJ+hUnQFXXfTvFfFaGdfKhCUYN7oo1CPgtMcr2TqLA2usGpSPZ2R7ybDWotY/g==",
+      "type": "package",
+      "path": "testableio.system.io.abstractions.wrappers/19.2.69",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "README.md",
+        "icon_256x256.png",
+        "lib/net461/TestableIO.System.IO.Abstractions.Wrappers.dll",
+        "lib/net461/TestableIO.System.IO.Abstractions.Wrappers.xml",
+        "lib/net5.0/TestableIO.System.IO.Abstractions.Wrappers.dll",
+        "lib/net5.0/TestableIO.System.IO.Abstractions.Wrappers.xml",
+        "lib/net6.0/TestableIO.System.IO.Abstractions.Wrappers.dll",
+        "lib/net6.0/TestableIO.System.IO.Abstractions.Wrappers.xml",
+        "lib/net7.0/TestableIO.System.IO.Abstractions.Wrappers.dll",
+        "lib/net7.0/TestableIO.System.IO.Abstractions.Wrappers.xml",
+        "lib/netstandard2.0/TestableIO.System.IO.Abstractions.Wrappers.dll",
+        "lib/netstandard2.0/TestableIO.System.IO.Abstractions.Wrappers.xml",
+        "lib/netstandard2.1/TestableIO.System.IO.Abstractions.Wrappers.dll",
+        "lib/netstandard2.1/TestableIO.System.IO.Abstractions.Wrappers.xml",
+        "testableio.system.io.abstractions.wrappers.19.2.69.nupkg.sha512",
+        "testableio.system.io.abstractions.wrappers.nuspec"
+      ]
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net8.0-windows7.0": [
+      "Microsoft.Toolkit.Mvvm >= 7.1.2",
+      "Newtonsoft.Json >= 13.0.3",
+      "System.IO.Abstractions >= 19.2.69"
+    ]
+  },
+  "packageFolders": {
+    "C:\\Users\\liangzhe\\.nuget\\packages\\": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "G:\\AIHUMAN\\WorkSpace\\FirstEngine\\Editor\\FirstEngineEditor.csproj",
+      "projectName": "FirstEngineEditor",
+      "projectPath": "G:\\AIHUMAN\\WorkSpace\\FirstEngine\\Editor\\FirstEngineEditor.csproj",
+      "packagesPath": "C:\\Users\\liangzhe\\.nuget\\packages\\",
+      "outputPath": "G:\\AIHUMAN\\WorkSpace\\FirstEngine\\Editor\\obj\\",
+      "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+      ],
+      "configFilePaths": [
+        "C:\\Users\\liangzhe\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+      ],
+      "originalTargetFrameworks": [
+        "net8.0-windows"
+      ],
+      "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "C:\\Program Files\\dotnet\\library-packs": {},
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net8.0-windows7.0": {
+          "targetAlias": "net8.0-windows",
+          "projectReferences": {}
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      },
+      "SdkAnalysisLevel": "10.0.100"
+    },
+    "frameworks": {
+      "net8.0-windows7.0": {
+        "targetAlias": "net8.0-windows",
+        "dependencies": {
+          "Microsoft.Toolkit.Mvvm": {
+            "target": "Package",
+            "version": "[7.1.2, )"
+          },
+          "Newtonsoft.Json": {
+            "target": "Package",
+            "version": "[13.0.3, )"
+          },
+          "System.IO.Abstractions": {
+            "target": "Package",
+            "version": "[19.2.69, )"
+          }
+        },
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          },
+          "Microsoft.WindowsDesktop.App": {
+            "privateAssets": "none"
+          }
+        },
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.101/PortableRuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}

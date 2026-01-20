@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "nextID": 5000,
+  "resources": [
+    {
+      "id": 1001,
+      "path": "Textures/albedo_texture.xml",
+      "virtualPath": "textures/albedo",
+      "type": "Texture"
+    },
+    {
+      "id": 1002,
+      "path": "Textures/normal_texture.xml",
+      "virtualPath": "textures/normal",
+      "type": "Texture"
+    },
+    {
+      "id": 1003,
+      "path": "Textures/metallic_roughness_texture.xml",
+      "virtualPath": "textures/metallic_roughness",
+      "type": "Texture"
+    },
+    {
+      "id": 1004,
+      "path": "Textures/ao_texture.xml",
+      "virtualPath": "textures/ao",
+      "type": "Texture"
+    },
+    {
+      "id": 1005,
+      "path": "Textures/emission_texture.xml",
+      "virtualPath": "textures/emission",
+      "type": "Texture"
+    },
+    {
+      "id": 1006,
+      "path": "Textures/shadow_texture.xml",
+      "virtualPath": "textures/shadow",
+      "type": "Texture"
+    },
+    {
+      "id": 1007,
+      "path": "Textures/hdr_texture.xml",
+      "virtualPath": "textures/hdr",
+      "type": "Texture"
+    },
+    {
+      "id": 1008,
+      "path": "Textures/render_texture.xml",
+      "virtualPath": "textures/render",
+      "type": "Texture"
+    },
+    {
+      "id": 2001,
+      "path": "Materials/PBR_Material.xml",
+      "virtualPath": "materials/pbr",
+      "type": "Material"
+    },
+    {
+      "id": 2002,
+      "path": "Materials/Geometry_Material.xml",
+      "virtualPath": "materials/geometry",
+      "type": "Material"
+    },
+    {
+      "id": 2003,
+      "path": "Materials/IBL_Material.xml",
+      "virtualPath": "materials/ibl",
+      "type": "Material"
+    },
+    {
+      "id": 2004,
+      "path": "Materials/SunLight_Material.xml",
+      "virtualPath": "materials/sunlight",
+      "type": "Material"
+    },
+    {
+      "id": 2005,
+      "path": "Materials/PostProcess_Material.xml",
+      "virtualPath": "materials/postprocess",
+      "type": "Material"
+    },
+    {
+      "id": 2006,
+      "path": "Materials/Tonemapping_Material.xml",
+      "virtualPath": "materials/tonemapping",
+      "type": "Material"
+    },
+    {
+      "id": 2007,
+      "path": "Materials/Light_Material.xml",
+      "virtualPath": "materials/light",
+      "type": "Material"
+    },
+    {
+      "id": 3001,
+      "path": "Meshes/cube_mesh.xml",
+      "virtualPath": "meshes/cube",
+      "type": "Mesh"
+    },
+    {
+      "id": 3002,
+      "path": "Meshes/sphere_mesh.xml",
+      "virtualPath": "meshes/sphere",
+      "type": "Mesh"
+    },
+    {
+      "id": 3003,
+      "path": "Meshes/plane_mesh.xml",
+      "virtualPath": "meshes/plane",
+      "type": "Mesh"
+    },
+    {
+      "id": 4001,
+      "path": "Models/pbr_cube_model.xml",
+      "virtualPath": "models/pbr_cube",
+      "type": "Model"
+    },
+    {
+      "id": 4002,
+      "path": "Models/geometry_cube_model.xml",
+      "virtualPath": "models/geometry_cube",
+      "type": "Model"
+    },
+    {
+      "id": 4003,
+      "path": "Models/ibl_sphere_model.xml",
+      "virtualPath": "models/ibl_sphere",
+      "type": "Model"
+    },
+    {
+      "id": 4004,
+      "path": "Models/sunlight_plane_model.xml",
+      "virtualPath": "models/sunlight_plane",
+      "type": "Model"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Material>
+    <Name>Light Material</Name>
+    <ResourceID>2007</ResourceID>
+    <Shader>Light</Shader>
+    <Parameters>
+        <Parameter name="lightIntensity" type="float">1.0</Parameter>
+        <Parameter name="lightRadius" type="float">10.0</Parameter>
+        <Parameter name="lightType" type="int">0</Parameter>
+    </Parameters>
+    <Textures>
+        <!-- Light shader uses G-Buffer textures which are provided by the renderer -->
+    </Textures>
+    <Dependencies>
+    </Dependencies>
+</Material>

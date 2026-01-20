@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Model>
+    <Name>Plane Model</Name>
+    <ResourceID>3</ResourceID>
+    <Meshes>
+        <Mesh index="0" resourceID="10" />
+    </Meshes>
+    <Materials>
+        <Material index="0" resourceID="4" />
+    </Materials>
+    <Dependencies>
+        <Dependency type="Material" resourceID="4" slot="0" required="true" />
+        <Dependency type="Mesh" resourceID="10" slot="0" required="true" />
+    </Dependencies>
+</Model>

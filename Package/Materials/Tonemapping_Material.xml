@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Material>
+    <Name>Tonemapping Material</Name>
+    <ResourceID>2006</ResourceID>
+    <Shader>Tonemapping</Shader>
+    <Parameters>
+        <Parameter name="exposure" type="float">1.0</Parameter>
+        <Parameter name="gamma" type="float">2.2</Parameter>
+        <Parameter name="tonemapMode" type="int">1</Parameter>
+    </Parameters>
+    <Textures>
+        <Texture slot="hdrTexture" resourceID="1007"/>
+    </Textures>
+    <Dependencies>
+        <Dependency type="Texture" resourceID="1007" slot="hdrTexture" required="true"/>
+    </Dependencies>
+</Material>

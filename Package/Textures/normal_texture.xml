@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Texture>
+    <Name>Normal Texture</Name>
+    <ResourceID>1002</ResourceID>
+    <ImageFile>normal_map.png</ImageFile>
+    <Width>512</Width>
+    <Height>512</Height>
+    <Channels>4</Channels>
+    <HasAlpha>false</HasAlpha>
+</Texture>

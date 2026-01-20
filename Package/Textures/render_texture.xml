@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Texture>
+    <Name>Render Texture</Name>
+    <ResourceID>1008</ResourceID>
+    <ImageFile>example_texture.png</ImageFile>
+    <Width>1920</Width>
+    <Height>1080</Height>
+    <Channels>4</Channels>
+    <HasAlpha>true</HasAlpha>
+</Texture>

@@ -331,14 +331,19 @@ void EditorAPI_SetViewportActive(RenderViewport* viewport, bool active) {
 // Frame rendering
 // 对应 RenderApp::OnPrepareFrameGraph() - 构建 FrameGraph
 void EditorAPI_PrepareFrameGraph(void* engine) {
+    // Debug: 添加输出以验证函数被调用
+    std::cout << "[EditorAPI] EditorAPI_PrepareFrameGraph called" << std::endl;
+    
     std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
     if (!engine || g_GlobalRenderContext != engine) {
+        std::cerr << "[EditorAPI] EditorAPI_PrepareFrameGraph: Invalid engine handle" << std::endl;
         return;
     }
     
     auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
     if (!context->IsEngineInitialized()) {
+        std::cerr << "[EditorAPI] EditorAPI_PrepareFrameGraph: Engine not initialized" << std::endl;
         return;
     }
     
@@ -347,11 +352,16 @@ void EditorAPI_PrepareFrameGraph(void* engine) {
     FirstEngine::Core::RenderDocHelper::BeginFrame();
 #endif
     
+    // Debug: 添加输出以验证执行路径
+    std::cout << "[EditorAPI] EditorAPI_PrepareFrameGraph: Calling BeginFrame" << std::endl;
+    
     // 使用 RenderContext 构建 FrameGraph（所有参数都从内部获取）
     if (!context->BeginFrame()) {
         std::cerr << "Failed to prepare FrameGraph in RenderContext (editor)!" << std::endl;
         return;
     }
+    
+    std::cout << "[EditorAPI] EditorAPI_PrepareFrameGraph: BeginFrame completed" << std::endl;
 }
 
 // 对应 RenderApp::OnCreateResources() - 处理资源
@@ -373,36 +383,59 @@ void EditorAPI_CreateResources(void* engine) {
 
 // 对应 RenderApp::OnRender() - 执行 FrameGraph 生成渲染命令
 void EditorAPI_Render(void* engine) {
+    // Debug: 添加输出以验证函数被调用
+    std::cout << "[EditorAPI] EditorAPI_Render called" << std::endl;
+    
     std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
     if (!engine || g_GlobalRenderContext != engine) {
+        std::cerr << "[EditorAPI] EditorAPI_Render: Invalid engine handle" << std::endl;
         return;
     }
     
     auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
     if (!context->IsEngineInitialized()) {
+        std::cerr << "[EditorAPI] EditorAPI_Render: Engine not initialized" << std::endl;
         return;
     }
 
+    // Debug: 添加输出以验证执行路径
+    std::cout << "[EditorAPI] EditorAPI_Render: Calling ExecuteFrameGraph" << std::endl;
+    
     // 使用 RenderContext 执行 FrameGraph（所有参数都从内部获取）
     if (!context->ExecuteFrameGraph()) {
         std::cerr << "Failed to execute FrameGraph in RenderContext (editor)!" << std::endl;
         return;
     }
+    
+    std::cout << "[EditorAPI] EditorAPI_Render: ExecuteFrameGraph completed" << std::endl;
 }
 
 // 对应 RenderApp::OnSubmit() - 提交渲染
 void EditorAPI_SubmitFrame(RenderViewport* viewport) {
-    if (!viewport || !viewport->active || !viewport->ready) return;
-    if (!viewport->swapchain) return;
+    // Debug: 添加输出以验证函数被调用
+    std::cout << "[EditorAPI] EditorAPI_SubmitFrame called" << std::endl;
+    
+    if (!viewport || !viewport->active || !viewport->ready) {
+        std::cerr << "[EditorAPI] EditorAPI_SubmitFrame: Viewport invalid or not ready" << std::endl;
+        return;
+    }
+    if (!viewport->swapchain) {
+        std::cerr << "[EditorAPI] EditorAPI_SubmitFrame: No swapchain" << std::endl;
+        return;
+    }
     
     std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
     if (!g_GlobalRenderContext || !g_GlobalRenderContext->IsEngineInitialized()) {
+        std::cerr << "[EditorAPI] EditorAPI_SubmitFrame: Global context not initialized" << std::endl;
         return;
     }
     
     auto* context = g_GlobalRenderContext;
+    
+    // Debug: 添加输出以验证执行路径
+    std::cout << "[EditorAPI] EditorAPI_SubmitFrame: Calling SubmitFrame" << std::endl;
     
     // 使用 RenderContext 提交渲染（只需要提供 swapchain，其他都从内部获取）
     FirstEngine::Renderer::RenderContext::RenderParams params;
@@ -410,8 +443,11 @@ void EditorAPI_SubmitFrame(RenderViewport* viewport) {
     
     if (!context->SubmitFrame(params)) {
         // 提交失败（可能是图像获取失败或需要重建 swapchain）
+        std::cerr << "[EditorAPI] EditorAPI_SubmitFrame: SubmitFrame failed" << std::endl;
         return;
     }
+    
+    std::cout << "[EditorAPI] EditorAPI_SubmitFrame: SubmitFrame completed" << std::endl;
     
     // End RenderDoc frame capture (after frame is submitted)
 #ifdef _WIN32

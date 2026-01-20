@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Material>
+    <Name>SunLight Material</Name>
+    <ResourceID>2004</ResourceID>
+    <Shader>SunLight</Shader>
+    <Parameters>
+        <Parameter name="baseColor" type="float4">1.0 1.0 1.0 1.0</Parameter>
+        <Parameter name="metallic" type="float">0.0</Parameter>
+        <Parameter name="roughness" type="float">0.5</Parameter>
+        <Parameter name="ao" type="float">1.0</Parameter>
+        <Parameter name="useAlbedoMap" type="int">1</Parameter>
+        <Parameter name="useNormalMap" type="int">1</Parameter>
+        <Parameter name="useMetallicRoughnessMap" type="int">1</Parameter>
+    </Parameters>
+    <Textures>
+        <Texture slot="albedoMap" resourceID="1001"/>
+        <Texture slot="normalMap" resourceID="1002"/>
+        <Texture slot="metallicRoughnessMap" resourceID="1003"/>
+        <Texture slot="shadowMap" resourceID="1006"/>
+    </Textures>
+    <Dependencies>
+        <Dependency type="Texture" resourceID="1001" slot="albedoMap" required="true"/>
+        <Dependency type="Texture" resourceID="1002" slot="normalMap" required="false"/>
+        <Dependency type="Texture" resourceID="1003" slot="metallicRoughnessMap" required="false"/>
+        <Dependency type="Texture" resourceID="1006" slot="shadowMap" required="false"/>
+    </Dependencies>
+</Material>

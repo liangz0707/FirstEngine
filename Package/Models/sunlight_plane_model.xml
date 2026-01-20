@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Model>
+    <Name>SunLight Plane Model</Name>
+    <ResourceID>4004</ResourceID>
+    <Meshes>
+        <Mesh index="0" resourceID="3003"/>
+    </Meshes>
+    <Materials>
+        <Material index="0" resourceID="2004"/>
+    </Materials>
+    <Dependencies>
+        <Dependency type="Mesh" resourceID="3003" slot="0" required="true"/>
+        <Dependency type="Material" resourceID="2004" slot="0" required="true"/>
+    </Dependencies>
+</Model>

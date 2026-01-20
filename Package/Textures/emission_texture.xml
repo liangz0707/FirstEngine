@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Texture>
+    <Name>Emission Texture</Name>
+    <ResourceID>1005</ResourceID>
+    <ImageFile>example_texture.png</ImageFile>
+    <Width>512</Width>
+    <Height>512</Height>
+    <Channels>3</Channels>
+    <HasAlpha>false</HasAlpha>
+</Texture>
