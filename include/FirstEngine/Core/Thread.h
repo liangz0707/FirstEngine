@@ -57,7 +57,7 @@ namespace FirstEngine {
             void Join();
 
             // Invoke a task on this thread (thread-safe, can be called from any thread)
-            Future Invoke(std::function<void()> task, TaskPriority priority = TaskPriority::Normal);
+            Future<void> Invoke(std::function<void()> task, TaskPriority priority = TaskPriority::Normal);
 
             // Invoke a task with return value
             template<typename T>

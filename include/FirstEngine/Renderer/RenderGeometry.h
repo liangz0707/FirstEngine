@@ -9,9 +9,12 @@
 namespace FirstEngine {
     namespace Resources {
         class MeshResource;
-        using MeshHandle = MeshResource*;
+        // MeshHandle is defined in ResourceTypes.h as IMesh*
+        // MeshResource* is compatible with IMesh*
     }
 }
+
+#include "FirstEngine/Resources/ResourceTypes.h"  // For MeshHandle definition
 
 namespace FirstEngine {
     namespace Renderer {

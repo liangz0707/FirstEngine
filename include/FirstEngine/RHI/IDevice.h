@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifdef _WIN32
 // Push and undefine Windows API macros that conflict with our method names
@@ -33,6 +33,7 @@ namespace FirstEngine {
         class IPipeline;
         class IBuffer;
         class IImage;
+        class IImageView;
         class ISwapchain;
         class IShaderModule;
 
@@ -104,6 +105,30 @@ namespace FirstEngine {
 
             // Get device information
             virtual const DeviceInfo& GetDeviceInfo() const = 0;
+
+            // Descriptor set operations
+            // Create descriptor set layout
+            virtual DescriptorSetLayoutHandle CreateDescriptorSetLayout(
+                const DescriptorSetLayoutDescription& desc) = 0;
+            virtual void DestroyDescriptorSetLayout(DescriptorSetLayoutHandle layout) = 0;
+
+            // Create descriptor pool
+            virtual DescriptorPoolHandle CreateDescriptorPool(
+                uint32_t maxSets,
+                const std::vector<std::pair<DescriptorType, uint32_t>>& poolSizes) = 0;
+            virtual void DestroyDescriptorPool(DescriptorPoolHandle pool) = 0;
+
+            // Allocate descriptor sets from pool
+            virtual std::vector<DescriptorSetHandle> AllocateDescriptorSets(
+                DescriptorPoolHandle pool,
+                const std::vector<DescriptorSetLayoutHandle>& layouts) = 0;
+            virtual void FreeDescriptorSets(
+                DescriptorPoolHandle pool,
+                const std::vector<DescriptorSetHandle>& sets) = 0;
+
+            // Update descriptor sets
+            virtual void UpdateDescriptorSets(
+                const std::vector<DescriptorWrite>& writes) = 0;
         };
 
     } // namespace RHI

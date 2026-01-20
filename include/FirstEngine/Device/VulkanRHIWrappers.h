@@ -26,10 +26,12 @@ namespace FirstEngine {
         VkMemoryPropertyFlags ConvertMemoryProperties(RHI::MemoryPropertyFlags properties);
         VkImageUsageFlags ConvertImageUsage(RHI::ImageUsageFlags usage);
         VkShaderStageFlagBits ConvertShaderStage(RHI::ShaderStage stage);
+        VkShaderStageFlags ConvertShaderStageFlags(RHI::ShaderStage stage);
         VkPrimitiveTopology ConvertPrimitiveTopology(RHI::PrimitiveTopology topology);
         VkCullModeFlags ConvertCullMode(RHI::CullMode cullMode);
         VkCompareOp ConvertCompareOp(RHI::CompareOp compareOp);
         VkImageLayout ConvertImageLayout(RHI::Format format); // Temporary: should use dedicated Layout enum later
+        VkDescriptorType ConvertDescriptorType(RHI::DescriptorType type);
 
         // Vulkan implementation of RHI interface wrapper classes
         class FE_DEVICE_API VulkanCommandBuffer : public RHI::ICommandBuffer {
@@ -63,6 +65,7 @@ namespace FirstEngine {
             DeviceContext* m_Context;
             VkCommandBuffer m_VkCommandBuffer;
             bool m_IsRecording;
+            VkPipelineLayout m_CurrentPipelineLayout; // Track current pipeline layout for descriptor set binding
         };
 
         class FE_DEVICE_API VulkanRenderPass : public RHI::IRenderPass {
@@ -150,6 +153,10 @@ namespace FirstEngine {
             void DestroyImageView(RHI::IImageView* imageView) override;
 
             VkImage GetVkImage() const;
+            
+            // Layout tracking
+            VkImageLayout GetCurrentLayout() const { return m_CurrentLayout; }
+            void SetCurrentLayout(VkImageLayout layout) { m_CurrentLayout = layout; }
 
         private:
             DeviceContext* m_Context;
@@ -157,6 +164,7 @@ namespace FirstEngine {
             VkImage m_VkImage;  // For swapchain images (when m_Image is nullptr)
             VkFormat m_VkFormat; // For swapchain images
             std::vector<std::unique_ptr<VulkanImageView>> m_ImageViews;
+            VkImageLayout m_CurrentLayout = VK_IMAGE_LAYOUT_UNDEFINED; // Track current image layout
         };
 
         class FE_DEVICE_API VulkanSwapchain : public RHI::ISwapchain {

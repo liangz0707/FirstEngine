@@ -10,7 +10,7 @@ This directory contains third-party libraries integrated as Git submodules.
 
 - **glslang**: GLSL/HLSL to SPIR-V compiler
   - Repository: https://github.com/KhronosGroup/glslang
-  - Version: 13.0.0
+  - Version: 13.1.1
 
 - **GLFW**: Window and input management
   - Repository: https://github.com/glfw/glfw

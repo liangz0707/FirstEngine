@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
 
 project(FirstEngine_Core VERSION 1.0.0 LANGUAGES CXX)
 
@@ -26,6 +26,7 @@ set(CORE_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/ThreadManager.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Task.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Barrier.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/MathTypes.h
 )
 
 # Create shared library
@@ -55,6 +56,12 @@ elseif(glfw_FOUND)
     target_link_libraries(FirstEngine_Core PUBLIC ${GLFW_LIBRARIES})
     target_include_directories(FirstEngine_Core PUBLIC ${GLFW_INCLUDE_DIRS})
 endif()
+
+# Add Vulkan include directory (needed for Window.cpp)
+target_include_directories(FirstEngine_Core PRIVATE ${Vulkan_INCLUDE_DIRS})
+
+# Link GLM for MathTypes
+target_link_libraries(FirstEngine_Core PUBLIC glm::glm)
 
 # Compiler-specific options
 if(MSVC)

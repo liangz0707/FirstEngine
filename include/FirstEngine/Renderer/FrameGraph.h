@@ -22,6 +22,7 @@ namespace FirstEngine {
     }
     namespace Renderer {
         class FrameGraphExecutionPlan;
+        class RenderConfig;
     }
 }
 
@@ -124,6 +125,13 @@ namespace FirstEngine {
             void AddWriteResource(const std::string& resourceName, const ResourceDescription* resourceDesc = nullptr);
             const std::vector<std::string>& GetReadResources() const { return m_ReadResources; }
             const std::vector<std::string>& GetWriteResources() const { return m_WriteResources; }
+            
+            // Clear resource lists (called at the start of each frame's OnBuild)
+            void ClearResources() {
+                m_ReadResources.clear();
+                m_WriteResources.clear();
+                m_Dependencies.clear();
+            }
 
             // Dependencies
             void AddDependency(uint32_t nodeIndex);
@@ -276,8 +284,11 @@ namespace FirstEngine {
             // Topological sort
             std::vector<uint32_t> TopologicalSort();
 
+            // Type alias for node storage with custom deleter support
+            using NodePtr = std::unique_ptr<FrameGraphNode, std::function<void(FrameGraphNode*)>>;
+            
             RHI::IDevice* m_Device;
-            std::vector<std::unique_ptr<FrameGraphNode>> m_Nodes;
+            std::vector<NodePtr> m_Nodes;
             std::unordered_map<std::string, std::unique_ptr<FrameGraphResource>> m_Resources;
             std::unordered_map<std::string, uint32_t> m_ResourceNameToIndex;
             std::unordered_map<std::string, uint32_t> m_NodeNameToIndex;

@@ -1,8 +1,10 @@
 #pragma once
 
 #include "FirstEngine/Renderer/Export.h"
-#include "FirstEngine/Renderer/ShaderCollection.h"
 #include "FirstEngine/RHI/IDevice.h"
+#include "FirstEngine/RHI/IShaderModule.h"
+#include "FirstEngine/RHI/Types.h"
+#include "FirstEngine/Renderer/ShaderCollection.h"
 #include <string>
 #include <unordered_map>
 #include <memory>
@@ -11,53 +13,50 @@
 namespace FirstEngine {
     namespace RHI {
         class IDevice;
+        class IShaderModule;
     }
 
     namespace Renderer {
 
-        // ShaderModuleTools - utility class for managing shader collections
-        // Loads all shaders from Package/Shaders directory, compiles HLSL to SPIR-V,
-        // and stores them in ShaderCollections
+        // ShaderModuleTools - utility class for managing GPU shader modules
+        // Manages Device and creates ShaderModules from SPIR-V code
+        // Uses shaderID + MD5 hash as cache key to avoid duplicate module creation
         class FE_RENDERER_API ShaderModuleTools {
         public:
             // Get singleton instance
             static ShaderModuleTools& GetInstance();
             static void Shutdown();
 
-            // Initialize shader tools (loads all shaders from directory)
-            // shaderDirectory: path to shaders directory (e.g., "build/Package/Shaders")
-            // device: RHI device for creating shader modules (can be nullptr for lazy creation)
-            bool Initialize(const std::string& shaderDirectory, RHI::IDevice* device = nullptr);
+            // Initialize with device (required for creating shader modules)
+            void Initialize(RHI::IDevice* device);
 
             // Shutdown and cleanup
             void Cleanup();
 
-            // Get shader collection by ID
-            ShaderCollection* GetCollection(uint64_t id) const;
+            // Get or create shader module by shaderID and MD5 hash
+            // shaderID: Collection ID
+            // md5Hash: MD5 hash of the SPIR-V code for this stage
+            // spirvCode: SPIR-V code (used if module doesn't exist in cache)
+            // stage: Shader stage
+            // Returns the shader module, or nullptr on failure
+            RHI::IShaderModule* GetOrCreateShaderModule(
+                uint64_t shaderID,
+                const std::string& md5Hash,
+                const std::vector<uint32_t>& spirvCode,
+                ShaderStage stage
+            );
 
-            // Get shader collection by name
-            ShaderCollection* GetCollectionByName(const std::string& name) const;
+            // Get shader module from cache (returns nullptr if not found)
+            RHI::IShaderModule* GetShaderModule(uint64_t shaderID, const std::string& md5Hash, ShaderStage stage) const;
 
-            // Add a shader collection (returns the ID assigned)
-            uint64_t AddCollection(std::unique_ptr<ShaderCollection> collection);
+            // Check if shader module exists in cache
+            bool HasShaderModule(uint64_t shaderID, const std::string& md5Hash, ShaderStage stage) const;
 
-            // Create shader collection from shader files
-            // shaderName: base name of shader (e.g., "PBR" for PBR.vert.hlsl and PBR.frag.hlsl)
-            // Returns the ID of the created collection, or 0 on failure
-            uint64_t CreateCollectionFromFiles(const std::string& shaderName, const std::string& shaderDirectory);
-
-            // Load all shaders from directory
-            // Automatically detects shader pairs (e.g., PBR.vert.hlsl + PBR.frag.hlsl)
-            bool LoadAllShadersFromDirectory(const std::string& shaderDirectory);
-
-            // Get all collection IDs
-            std::vector<uint64_t> GetAllCollectionIDs() const;
+            // Clear cache (useful for device recreation)
+            void ClearCache();
 
             // Check if initialized
-            bool IsInitialized() const { return m_Initialized; }
-
-            // Set device (for lazy shader module creation)
-            void SetDevice(RHI::IDevice* device);
+            bool IsInitialized() const { return m_Device != nullptr; }
 
         private:
             ShaderModuleTools() = default;
@@ -67,27 +66,32 @@ namespace FirstEngine {
 
             static ShaderModuleTools* s_Instance;
 
-            bool m_Initialized = false;
             RHI::IDevice* m_Device = nullptr;
-            std::string m_ShaderDirectory;
 
-            // Shader collections by ID
-            std::unordered_map<uint64_t, std::unique_ptr<ShaderCollection>> m_Collections;
+            // Cache key: shaderID + stage + md5Hash -> ShaderModule
+            struct CacheKey {
+                uint64_t shaderID;
+                uint32_t stage;  // Renderer::ShaderStage as uint32_t
+                std::string md5Hash;
 
-            // Shader collections by name (for quick lookup)
-            std::unordered_map<std::string, uint64_t> m_NameToID;
+                bool operator==(const CacheKey& other) const {
+                    return shaderID == other.shaderID && stage == other.stage && md5Hash == other.md5Hash;
+                }
+            };
 
-            // Next available ID
-            uint64_t m_NextID = 1;
+            struct CacheKeyHash {
+                size_t operator()(const CacheKey& key) const {
+                    return std::hash<uint64_t>()(key.shaderID) ^
+                           (std::hash<uint32_t>()(key.stage) << 1) ^
+                           (std::hash<std::string>()(key.md5Hash) << 2);
+                }
+            };
 
-            // Helper: Detect shader stage from filename
-            ShaderStage DetectShaderStage(const std::string& filename) const;
+            // Shader module cache: (shaderID, stage, md5Hash) -> ShaderModule
+            std::unordered_map<CacheKey, std::unique_ptr<RHI::IShaderModule>, CacheKeyHash> m_ShaderCache;
 
-            // Helper: Compile HLSL to SPIR-V
-            std::vector<uint32_t> CompileHLSLToSPIRV(const std::string& filepath, ShaderStage stage) const;
-
-            // Helper: Load shader file content
-            std::string LoadShaderFile(const std::string& filepath) const;
+            // Helper: Map Renderer::ShaderStage (as uint32_t) to RHI::ShaderStage
+            RHI::ShaderStage MapShaderStage(uint32_t stage) const;
         };
 
     } // namespace Renderer

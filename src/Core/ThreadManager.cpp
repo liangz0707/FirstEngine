@@ -79,7 +79,7 @@ namespace FirstEngine {
             return (it != m_ThreadsByName.end()) ? it->second : nullptr;
         }
 
-        Future ThreadManager::InvokeOnThread(ThreadType type, std::function<void()> task, TaskPriority priority) {
+        Future<void> ThreadManager::InvokeOnThread(ThreadType type, std::function<void()> task, TaskPriority priority) {
             Thread* thread = GetThread(type);
             if (!thread) {
                 throw std::runtime_error("Thread not found: " + std::to_string(static_cast<int>(type)));

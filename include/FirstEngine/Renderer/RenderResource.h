@@ -7,8 +7,8 @@ namespace FirstEngine {
     namespace Resources {
         class MeshResource;
         class MaterialResource;
-        using MeshHandle = MeshResource*;
-        using MaterialHandle = MaterialResource*;
+        // MeshHandle and MaterialHandle are defined in ResourceTypes.h
+        // Don't redefine here to avoid conflicts
     }
 }
 

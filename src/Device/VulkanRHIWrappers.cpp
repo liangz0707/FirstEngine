@@ -125,9 +125,49 @@ namespace FirstEngine {
             return VK_IMAGE_LAYOUT_GENERAL;
         }
 
+        VkShaderStageFlags ConvertShaderStageFlags(RHI::ShaderStage stage) {
+            VkShaderStageFlags flags = 0;
+            if (static_cast<uint32_t>(stage) & static_cast<uint32_t>(RHI::ShaderStage::Vertex)) {
+                flags |= VK_SHADER_STAGE_VERTEX_BIT;
+            }
+            if (static_cast<uint32_t>(stage) & static_cast<uint32_t>(RHI::ShaderStage::Fragment)) {
+                flags |= VK_SHADER_STAGE_FRAGMENT_BIT;
+            }
+            if (static_cast<uint32_t>(stage) & static_cast<uint32_t>(RHI::ShaderStage::Geometry)) {
+                flags |= VK_SHADER_STAGE_GEOMETRY_BIT;
+            }
+            if (static_cast<uint32_t>(stage) & static_cast<uint32_t>(RHI::ShaderStage::Compute)) {
+                flags |= VK_SHADER_STAGE_COMPUTE_BIT;
+            }
+            if (static_cast<uint32_t>(stage) & static_cast<uint32_t>(RHI::ShaderStage::TessellationControl)) {
+                flags |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+            }
+            if (static_cast<uint32_t>(stage) & static_cast<uint32_t>(RHI::ShaderStage::TessellationEvaluation)) {
+                flags |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+            }
+            return flags;
+        }
+
+        VkDescriptorType ConvertDescriptorType(RHI::DescriptorType type) {
+            switch (type) {
+                case RHI::DescriptorType::UniformBuffer:
+                    return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                case RHI::DescriptorType::CombinedImageSampler:
+                    return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                case RHI::DescriptorType::SampledImage:
+                    return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+                case RHI::DescriptorType::StorageImage:
+                    return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                case RHI::DescriptorType::StorageBuffer:
+                    return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                default:
+                    return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            }
+        }
+
         // VulkanCommandBuffer implementation
         VulkanCommandBuffer::VulkanCommandBuffer(DeviceContext* context)
-            : m_Context(context), m_VkCommandBuffer(VK_NULL_HANDLE), m_IsRecording(false) {
+            : m_Context(context), m_VkCommandBuffer(VK_NULL_HANDLE), m_IsRecording(false), m_CurrentPipelineLayout(VK_NULL_HANDLE) {
             VkCommandBufferAllocateInfo allocInfo{};
             allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
             allocInfo.commandPool = context->GetCommandPool();
@@ -204,8 +244,13 @@ namespace FirstEngine {
         }
 
         void VulkanCommandBuffer::BindPipeline(RHI::IPipeline* pipeline) {
+            if (!pipeline) {
+                return;
+            }
             auto* vkPipeline = static_cast<VulkanPipeline*>(pipeline);
             vkCmdBindPipeline(m_VkCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkPipeline->GetVkPipeline());
+            // Store pipeline layout for descriptor set binding
+            m_CurrentPipelineLayout = vkPipeline->GetVkPipelineLayout();
         }
 
         void VulkanCommandBuffer::BindVertexBuffers(uint32_t firstBinding, const std::vector<RHI::IBuffer*>& buffers,
@@ -227,7 +272,37 @@ namespace FirstEngine {
 
         void VulkanCommandBuffer::BindDescriptorSets(uint32_t firstSet, const std::vector<void*>& descriptorSets,
                                                      const std::vector<uint32_t>& dynamicOffsets) {
-            // TODO: Implement descriptor set binding
+            if (descriptorSets.empty() || m_CurrentPipelineLayout == VK_NULL_HANDLE) {
+                return;
+            }
+
+            // Convert void* descriptor sets to VkDescriptorSet
+            std::vector<VkDescriptorSet> vkSets;
+            vkSets.reserve(descriptorSets.size());
+            for (void* set : descriptorSets) {
+                if (set) {
+                    vkSets.push_back(reinterpret_cast<VkDescriptorSet>(set));
+                }
+            }
+
+            if (vkSets.empty()) {
+                return;
+            }
+
+            // Convert dynamic offsets
+            std::vector<uint32_t> vkOffsets = dynamicOffsets;
+
+            // Bind descriptor sets
+            vkCmdBindDescriptorSets(
+                m_VkCommandBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                m_CurrentPipelineLayout,
+                firstSet,
+                static_cast<uint32_t>(vkSets.size()),
+                vkSets.data(),
+                static_cast<uint32_t>(vkOffsets.size()),
+                vkOffsets.empty() ? nullptr : vkOffsets.data()
+            );
         }
 
         void VulkanCommandBuffer::Draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) {
@@ -264,46 +339,52 @@ namespace FirstEngine {
             VkImage vkImg = vkImage->GetVkImage();
             if (vkImg == VK_NULL_HANDLE) return;
 
-            // Convert Format to VkImageLayout (temporary solution - Format is being misused as Layout)
-            // For swapchain images: undefined -> color attachment -> present src
-            // For texture upload: undefined -> transfer dst -> shader read only
-            VkImageLayout oldVkLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            // Use the actual current layout from the image (this is the correct way)
+            // The oldLayout parameter is ignored - we use the tracked layout instead
+            VkImageLayout oldVkLayout = vkImage->GetCurrentLayout();
             VkImageLayout newVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-            // Heuristic: if oldLayout is Undefined and newLayout is a color format, transition to COLOR_ATTACHMENT
-            // If newLayout is SRGB, it's likely for present (PRESENT_SRC_KHR)
-            // For texture upload: if oldLayout is Undefined and newLayout is same format, it's TRANSFER_DST_OPTIMAL
-            // If oldLayout is same format and newLayout is same format (second call), it's SHADER_READ_ONLY_OPTIMAL
-            if (oldLayout == RHI::Format::Undefined) {
-                oldVkLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                // If newLayout is a color format (not SRGB), it could be TRANSFER_DST_OPTIMAL for texture upload
-                // We'll check if this is a texture upload scenario by checking if image has TRANSFER_DST usage
-                // For now, assume UNORM formats with same old/new could be texture upload
-                if (newLayout == RHI::Format::B8G8R8A8_SRGB || newLayout == RHI::Format::R8G8B8A8_SRGB) {
-                    newVkLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-                } else if (newLayout == RHI::Format::B8G8R8A8_UNORM || newLayout == RHI::Format::R8G8B8A8_UNORM) {
-                    // Check if this is likely a texture upload (same format, not SRGB)
-                    // For texture upload: UNDEFINED -> TRANSFER_DST_OPTIMAL
+            // Determine new layout based on newLayout Format parameter
+            // This is a temporary solution until we have a dedicated Layout enum
+            if (newLayout == RHI::Format::B8G8R8A8_SRGB || newLayout == RHI::Format::R8G8B8A8_SRGB) {
+                // SRGB format typically means present source for swapchain
+                newVkLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            } else if (newLayout == RHI::Format::B8G8R8A8_UNORM || newLayout == RHI::Format::R8G8B8A8_UNORM) {
+                // UNORM format: could be COLOR_ATTACHMENT or TRANSFER_DST
+                // If current layout is UNDEFINED, assume TRANSFER_DST (texture upload)
+                // Otherwise, assume COLOR_ATTACHMENT
+                if (oldVkLayout == VK_IMAGE_LAYOUT_UNDEFINED) {
                     newVkLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-                } else {
-                    newVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                }
-            } else {
-                // oldLayout is not Undefined
-                // If oldLayout and newLayout are the same format, it's likely a texture upload transition
-                // TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
-                if (oldLayout == newLayout) {
-                    oldVkLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                } else if (oldVkLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+                    // Already in TRANSFER_DST, next step is SHADER_READ_ONLY
                     newVkLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                 } else {
-                    // Different formats, likely color attachment transitions
-                    oldVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                    if (newLayout == RHI::Format::B8G8R8A8_SRGB || newLayout == RHI::Format::R8G8B8A8_SRGB) {
-                        newVkLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-                    } else {
-                        newVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                    }
+                    // Default to COLOR_ATTACHMENT for render targets
+                    newVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                 }
+            } else if (newLayout == RHI::Format::D32_SFLOAT || newLayout == RHI::Format::D24_UNORM_S8_UINT) {
+                // Depth formats
+                if (oldVkLayout == VK_IMAGE_LAYOUT_UNDEFINED) {
+                    newVkLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                } else {
+                    newVkLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                }
+            } else {
+                // Default to COLOR_ATTACHMENT
+                newVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            }
+            
+            // If old and new layouts are the same, no transition needed
+            if (oldVkLayout == newVkLayout) {
+                return;
+            }
+
+            // Determine image aspect mask based on format
+            VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            if (newLayout == RHI::Format::D32_SFLOAT) {
+                aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            } else if (newLayout == RHI::Format::D24_UNORM_S8_UINT) {
+                aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
             }
 
             VkImageMemoryBarrier barrier{};
@@ -313,51 +394,109 @@ namespace FirstEngine {
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.image = vkImg;
-            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            barrier.subresourceRange.aspectMask = aspectMask;
             barrier.subresourceRange.baseMipLevel = 0;
             barrier.subresourceRange.levelCount = mipLevels;
             barrier.subresourceRange.baseArrayLayer = 0;
             barrier.subresourceRange.layerCount = 1;
 
             // Determine source and destination access masks based on layout transition
-            if (oldVkLayout == VK_IMAGE_LAYOUT_UNDEFINED && newVkLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
-                barrier.srcAccessMask = 0;
-                barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            } else if (oldVkLayout == VK_IMAGE_LAYOUT_UNDEFINED && newVkLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-                // Texture upload: UNDEFINED -> TRANSFER_DST_OPTIMAL
-                barrier.srcAccessMask = 0;
-                barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            } else if (oldVkLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newVkLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                // Texture upload: TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
-                barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            } else if (oldVkLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newVkLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
-                barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                barrier.dstAccessMask = 0;
-            } else {
-                // General case
-                barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-                barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+            VkAccessFlags srcAccessMask = 0;
+            VkAccessFlags dstAccessMask = 0;
+
+            // Source access mask based on old layout
+            switch (oldVkLayout) {
+                case VK_IMAGE_LAYOUT_UNDEFINED:
+                    srcAccessMask = 0;
+                    break;
+                case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+                    srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+                    srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+                    srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+                    srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                    break;
+                default:
+                    srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+                    break;
             }
+
+            // Destination access mask based on new layout
+            switch (newVkLayout) {
+                case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+                    dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+                    dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+                    dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+                    dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+                    dstAccessMask = 0; // Present doesn't need access mask
+                    break;
+                default:
+                    dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+                    break;
+            }
+
+            barrier.srcAccessMask = srcAccessMask;
+            barrier.dstAccessMask = dstAccessMask;
 
             // Determine pipeline stages
             VkPipelineStageFlags sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
             VkPipelineStageFlags destinationStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 
-            if (oldVkLayout == VK_IMAGE_LAYOUT_UNDEFINED && newVkLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
-                sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-                destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            } else if (oldVkLayout == VK_IMAGE_LAYOUT_UNDEFINED && newVkLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-                // Texture upload: UNDEFINED -> TRANSFER_DST_OPTIMAL
-                sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-                destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            } else if (oldVkLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newVkLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                // Texture upload: TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
-                sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-                destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            } else if (oldVkLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newVkLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
-                sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-                destinationStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+            // Source stage based on old layout
+            switch (oldVkLayout) {
+                case VK_IMAGE_LAYOUT_UNDEFINED:
+                    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+                    sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+                    sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+                    sourceStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+                    sourceStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                    break;
+                default:
+                    sourceStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                    break;
+            }
+
+            // Destination stage based on new layout
+            switch (newVkLayout) {
+                case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+                    destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+                    destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+                    destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+                    destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                    break;
+                case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+                    destinationStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+                    break;
+                default:
+                    destinationStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                    break;
             }
 
             vkCmdPipelineBarrier(
@@ -369,6 +508,9 @@ namespace FirstEngine {
                 0, nullptr,
                 1, &barrier
             );
+
+            // Update the tracked layout after transition
+            vkImage->SetCurrentLayout(newVkLayout);
         }
 
         void VulkanCommandBuffer::CopyBuffer(RHI::IBuffer* src, RHI::IBuffer* dst, uint64_t size) {
@@ -478,12 +620,13 @@ namespace FirstEngine {
 
         // VulkanImage implementation
         VulkanImage::VulkanImage(DeviceContext* context, Image* image)
-            : m_Context(context), m_Image(image) {
+            : m_Context(context), m_Image(image), m_CurrentLayout(VK_IMAGE_LAYOUT_UNDEFINED) {
         }
 
         VulkanImage::VulkanImage(DeviceContext* context, VkImage image, VkFormat format)
-            : m_Context(context), m_Image(nullptr), m_VkImage(image), m_VkFormat(format) {
+            : m_Context(context), m_Image(nullptr), m_VkImage(image), m_VkFormat(format), m_CurrentLayout(VK_IMAGE_LAYOUT_UNDEFINED) {
             // For swapchain images, we don't own the VkImage, just wrap it
+            // Swapchain images start as UNDEFINED layout
         }
 
         VulkanImage::~VulkanImage() = default;

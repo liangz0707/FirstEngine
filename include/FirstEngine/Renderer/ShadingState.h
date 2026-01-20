@@ -42,12 +42,14 @@ namespace FirstEngine {
             // This will create the actual GPU pipeline object
             // vertexBindings: Vertex input bindings (from ShadingMaterial)
             // vertexAttributes: Vertex input attributes (from ShadingMaterial)
+            // descriptorSetLayouts: Descriptor set layouts (from ShadingMaterial)
             // Returns true if successful, false otherwise
             bool CreatePipeline(
                 RHI::IDevice* device, 
                 RHI::IRenderPass* renderPass,
                 const std::vector<RHI::VertexInputBinding>& vertexBindings,
-                const std::vector<RHI::VertexInputAttribute>& vertexAttributes
+                const std::vector<RHI::VertexInputAttribute>& vertexAttributes,
+                const std::vector<RHI::DescriptorSetLayoutHandle>& descriptorSetLayouts = {}
             );
 
         private:

@@ -1,16 +1,7 @@
 #include "FirstEngine/Renderer/ShaderModuleTools.h"
-#include "FirstEngine/Shader/ShaderSourceCompiler.h"
-#include "FirstEngine/Shader/ShaderCompiler.h"
-#include <fstream>
-#include <sstream>
-#include <algorithm>
-#if __has_include(<filesystem>)
-#include <filesystem>
-namespace fs = std::filesystem;
-#else
-#include <experimental/filesystem>
-namespace fs = std::experimental::filesystem;
-#endif
+#include "FirstEngine/RHI/IDevice.h"
+#include "FirstEngine/RHI/IShaderModule.h"
+#include "FirstEngine/RHI/Types.h"
 
 namespace FirstEngine {
     namespace Renderer {
@@ -32,306 +23,95 @@ namespace FirstEngine {
             }
         }
 
-        bool ShaderModuleTools::Initialize(const std::string& shaderDirectory, RHI::IDevice* device) {
-            if (m_Initialized) {
-                return true; // Already initialized
-            }
-
-            m_ShaderDirectory = shaderDirectory;
+        void ShaderModuleTools::Initialize(RHI::IDevice* device) {
             m_Device = device;
-
-            // Load all shaders from directory
-            if (!LoadAllShadersFromDirectory(shaderDirectory)) {
-                return false;
-            }
-
-            m_Initialized = true;
-            return true;
         }
 
         void ShaderModuleTools::Cleanup() {
-            m_Collections.clear();
-            m_NameToID.clear();
+            ClearCache();
             m_Device = nullptr;
-            m_ShaderDirectory.clear();
-            m_Initialized = false;
         }
 
-        ShaderCollection* ShaderModuleTools::GetCollection(uint64_t id) const {
-            auto it = m_Collections.find(id);
-            if (it != m_Collections.end()) {
+        RHI::IShaderModule* ShaderModuleTools::GetOrCreateShaderModule(
+            uint64_t shaderID,
+            const std::string& md5Hash,
+            const std::vector<uint32_t>& spirvCode,
+            ShaderStage stage) {
+            
+            if (!m_Device || spirvCode.empty() || md5Hash.empty()) {
+                return nullptr;
+            }
+
+            // Check cache first
+            CacheKey key;
+            key.shaderID = shaderID;
+            key.stage = static_cast<uint32_t>(stage);
+            key.md5Hash = md5Hash;
+
+            auto it = m_ShaderCache.find(key);
+            if (it != m_ShaderCache.end()) {
+                return it->second.get();
+            }
+
+            // Create new shader module
+            RHI::ShaderStage rhiStage = MapShaderStage(static_cast<uint32_t>(stage));
+            auto shaderModule = m_Device->CreateShaderModule(spirvCode, rhiStage);
+            
+            if (!shaderModule) {
+                return nullptr;
+            }
+
+            // Store in cache
+            RHI::IShaderModule* modulePtr = shaderModule.get();
+            m_ShaderCache[key] = std::move(shaderModule);
+            
+            return modulePtr;
+        }
+
+        RHI::IShaderModule* ShaderModuleTools::GetShaderModule(uint64_t shaderID, const std::string& md5Hash, ShaderStage stage) const {
+            CacheKey key;
+            key.shaderID = shaderID;
+            key.stage = static_cast<uint32_t>(stage);
+            key.md5Hash = md5Hash;
+
+            auto it = m_ShaderCache.find(key);
+            if (it != m_ShaderCache.end()) {
                 return it->second.get();
             }
             return nullptr;
         }
 
-        ShaderCollection* ShaderModuleTools::GetCollectionByName(const std::string& name) const {
-            auto it = m_NameToID.find(name);
-            if (it != m_NameToID.end()) {
-                return GetCollection(it->second);
-            }
-            return nullptr;
+        bool ShaderModuleTools::HasShaderModule(uint64_t shaderID, const std::string& md5Hash, ShaderStage stage) const {
+            CacheKey key;
+            key.shaderID = shaderID;
+            key.stage = static_cast<uint32_t>(stage);
+            key.md5Hash = md5Hash;
+            return m_ShaderCache.find(key) != m_ShaderCache.end();
         }
 
-        uint64_t ShaderModuleTools::AddCollection(std::unique_ptr<ShaderCollection> collection) {
-            if (!collection) {
-                return 0;
-            }
-
-            uint64_t id = m_NextID++;
-            collection->SetID(id);
-            
-            std::string name = collection->GetName();
-            if (!name.empty()) {
-                m_NameToID[name] = id;
-            }
-
-            m_Collections[id] = std::move(collection);
-            return id;
+        void ShaderModuleTools::ClearCache() {
+            m_ShaderCache.clear();
         }
 
-        uint64_t ShaderModuleTools::CreateCollectionFromFiles(const std::string& shaderName, const std::string& shaderDirectory) {
-            auto collection = std::make_unique<ShaderCollection>(shaderName, 0);
-
-            std::vector<uint32_t> vertSPIRV;
-            std::vector<uint32_t> fragSPIRV;
-
-            // Try to find and compile vertex shader
-            std::string vertPath = shaderDirectory + "/" + shaderName + ".vert.hlsl";
-            if (fs::exists(vertPath)) {
-                vertSPIRV = CompileHLSLToSPIRV(vertPath, ShaderStage::Vertex);
-                if (!vertSPIRV.empty()) {
-                    collection->SetSPIRVCode(ShaderStage::Vertex, vertSPIRV);
-                    
-                    // Create shader module if device is available
-                    if (m_Device) {
-                        auto shaderModule = m_Device->CreateShaderModule(vertSPIRV, RHI::ShaderStage::Vertex);
-                        if (shaderModule) {
-                            collection->AddShader(ShaderStage::Vertex, std::move(shaderModule));
-                        }
-                    }
-                }
-            }
-
-            // Try to find and compile fragment shader
-            std::string fragPath = shaderDirectory + "/" + shaderName + ".frag.hlsl";
-            if (fs::exists(fragPath)) {
-                fragSPIRV = CompileHLSLToSPIRV(fragPath, ShaderStage::Fragment);
-                if (!fragSPIRV.empty()) {
-                    collection->SetSPIRVCode(ShaderStage::Fragment, fragSPIRV);
-                    
-                    // Create shader module if device is available
-                    if (m_Device) {
-                        auto shaderModule = m_Device->CreateShaderModule(fragSPIRV, RHI::ShaderStage::Fragment);
-                        if (shaderModule) {
-                            collection->AddShader(ShaderStage::Fragment, std::move(shaderModule));
-                        }
-                    }
-                }
-            }
-
-            // Only add if collection has at least one shader
-            if (collection->GetAvailableStages().empty()) {
-                return 0;
-            }
-
-            // Parse shader reflection (prefer vertex shader, fallback to fragment)
-            std::vector<uint32_t> reflectionCode = vertSPIRV.empty() ? fragSPIRV : vertSPIRV;
-            if (!reflectionCode.empty()) {
-                try {
-                    Shader::ShaderCompiler compiler(reflectionCode);
-                    auto reflection = compiler.GetReflection();
-                    // Store reflection in collection
-                    auto reflectionPtr = std::make_unique<Shader::ShaderReflection>(std::move(reflection));
-                    collection->SetShaderReflection(std::move(reflectionPtr));
-                } catch (...) {
-                    // Failed to parse reflection, but collection is still valid
-                    // Reflection will be parsed later if needed
-                }
-            }
-
-            return AddCollection(std::move(collection));
-        }
-
-        bool ShaderModuleTools::LoadAllShadersFromDirectory(const std::string& shaderDirectory) {
-            if (!fs::exists(shaderDirectory) || !fs::is_directory(shaderDirectory)) {
-                return false;
-            }
-
-            // Map to store shader names found
-            std::unordered_map<std::string, std::vector<std::string>> shaderFiles;
-
-            // Scan directory for HLSL files
-            for (const auto& entry : fs::directory_iterator(shaderDirectory)) {
-                if (entry.is_regular_file()) {
-                    std::string filename = entry.path().filename().string();
-                    std::string extension = entry.path().extension().string();
-                    
-                    if (extension == ".hlsl") {
-                        // Parse filename: {Name}.{stage}.hlsl
-                        size_t firstDot = filename.find('.');
-                        if (firstDot != std::string::npos) {
-                            std::string baseName = filename.substr(0, firstDot);
-                            size_t secondDot = filename.find('.', firstDot + 1);
-                            if (secondDot != std::string::npos) {
-                                std::string stageStr = filename.substr(firstDot + 1, secondDot - firstDot - 1);
-                                shaderFiles[baseName].push_back(entry.path().string());
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Create collections for each shader name
-            for (const auto& pair : shaderFiles) {
-                const std::string& shaderName = pair.first;
-                CreateCollectionFromFiles(shaderName, shaderDirectory);
-            }
-
-            return true;
-        }
-
-        std::vector<uint64_t> ShaderModuleTools::GetAllCollectionIDs() const {
-            std::vector<uint64_t> ids;
-            ids.reserve(m_Collections.size());
-            for (const auto& pair : m_Collections) {
-                ids.push_back(pair.first);
-            }
-            return ids;
-        }
-
-        void ShaderModuleTools::SetDevice(RHI::IDevice* device) {
-            m_Device = device;
-            
-            // Create shader modules for all collections that have SPIR-V but no modules
-            for (auto& pair : m_Collections) {
-                auto& collection = pair.second;
-                
-                // Check each stage
-                for (int stageInt = static_cast<int>(ShaderStage::Vertex); 
-                     stageInt <= static_cast<int>(ShaderStage::Compute); 
-                     stageInt++) {
-                    ShaderStage stage = static_cast<ShaderStage>(stageInt);
-                    
-                    // If has SPIR-V but no shader module, create it
-                    if (collection->GetSPIRVCode(stage) && !collection->HasShader(stage)) {
-                        const std::vector<uint32_t>* spirvCode = collection->GetSPIRVCode(stage);
-                        if (spirvCode && !spirvCode->empty() && m_Device) {
-                            // Map Renderer::ShaderStage to RHI::ShaderStage
-                            RHI::ShaderStage rhiStage = RHI::ShaderStage::Vertex;
-                            switch (stage) {
-                                case ShaderStage::Vertex:
-                                    rhiStage = RHI::ShaderStage::Vertex;
-                                    break;
-                                case ShaderStage::Fragment:
-                                    rhiStage = RHI::ShaderStage::Fragment;
-                                    break;
-                                case ShaderStage::Geometry:
-                                    rhiStage = RHI::ShaderStage::Geometry;
-                                    break;
-                                case ShaderStage::Compute:
-                                    rhiStage = RHI::ShaderStage::Compute;
-                                    break;
-                                case ShaderStage::TessellationControl:
-                                    rhiStage = RHI::ShaderStage::TessellationControl;
-                                    break;
-                                case ShaderStage::TessellationEvaluation:
-                                    rhiStage = RHI::ShaderStage::TessellationEvaluation;
-                                    break;
-                            }
-                            
-                            auto shaderModule = m_Device->CreateShaderModule(*spirvCode, rhiStage);
-                            if (shaderModule) {
-                                collection->AddShader(stage, std::move(shaderModule));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        ShaderStage ShaderModuleTools::DetectShaderStage(const std::string& filename) const {
-            std::string lowerFilename = filename;
-            std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(), ::tolower);
-
-            if (lowerFilename.find(".vert.") != std::string::npos) {
-                return ShaderStage::Vertex;
-            } else if (lowerFilename.find(".frag.") != std::string::npos) {
-                return ShaderStage::Fragment;
-            } else if (lowerFilename.find(".geom.") != std::string::npos) {
-                return ShaderStage::Geometry;
-            } else if (lowerFilename.find(".comp.") != std::string::npos) {
-                return ShaderStage::Compute;
-            } else if (lowerFilename.find(".tesc.") != std::string::npos) {
-                return ShaderStage::TessellationControl;
-            } else if (lowerFilename.find(".tese.") != std::string::npos) {
-                return ShaderStage::TessellationEvaluation;
-            }
-
-            return ShaderStage::Vertex; // Default
-        }
-
-        std::vector<uint32_t> ShaderModuleTools::CompileHLSLToSPIRV(const std::string& filepath, ShaderStage stage) const {
-            FirstEngine::Shader::ShaderSourceCompiler compiler;
-            
-            // Set compile options
-            FirstEngine::Shader::CompileOptions options;
-            options.language = FirstEngine::Shader::ShaderSourceLanguage::HLSL;
-            
-            // Map Renderer::ShaderStage to Shader::ShaderStage
+        RHI::ShaderStage ShaderModuleTools::MapShaderStage(uint32_t stage) const {
+            // Map Renderer::ShaderStage enum values to RHI::ShaderStage
+            // Renderer::ShaderStage: Vertex=0, Fragment=1, Geometry=2, TessellationControl=3, TessellationEvaluation=4, Compute=5
             switch (stage) {
-                case ShaderStage::Vertex:
-                    options.stage = FirstEngine::Shader::ShaderStage::Vertex;
-                    options.target_profile = "vs_6_0";
-                    break;
-                case ShaderStage::Fragment:
-                    options.stage = FirstEngine::Shader::ShaderStage::Fragment;
-                    options.target_profile = "ps_6_0";
-                    break;
-                case ShaderStage::Geometry:
-                    options.stage = FirstEngine::Shader::ShaderStage::Geometry;
-                    options.target_profile = "gs_6_0";
-                    break;
-                case ShaderStage::Compute:
-                    options.stage = FirstEngine::Shader::ShaderStage::Compute;
-                    options.target_profile = "cs_6_0";
-                    break;
-                case ShaderStage::TessellationControl:
-                    options.stage = FirstEngine::Shader::ShaderStage::TessellationControl;
-                    options.target_profile = "hs_6_0";
-                    break;
-                case ShaderStage::TessellationEvaluation:
-                    options.stage = FirstEngine::Shader::ShaderStage::TessellationEvaluation;
-                    options.target_profile = "ds_6_0";
-                    break;
+                case 0: // ShaderStage::Vertex
+                    return RHI::ShaderStage::Vertex;
+                case 1: // ShaderStage::Fragment
+                    return RHI::ShaderStage::Fragment;
+                case 2: // ShaderStage::Geometry
+                    return RHI::ShaderStage::Geometry;
+                case 3: // ShaderStage::TessellationControl
+                    return RHI::ShaderStage::TessellationControl;
+                case 4: // ShaderStage::TessellationEvaluation
+                    return RHI::ShaderStage::TessellationEvaluation;
+                case 5: // ShaderStage::Compute
+                    return RHI::ShaderStage::Compute;
+                default:
+                    return RHI::ShaderStage::Vertex;
             }
-            
-            options.entry_point = "main";
-            options.optimization_level = 1;
-
-            // Compile from file
-            auto result = compiler.CompileFromFileAuto(filepath, options);
-            
-            if (result.success) {
-                return result.spirv_code;
-            } else {
-                std::cerr << "Failed to compile shader: " << filepath << std::endl;
-                std::cerr << "Error: " << result.error_message << std::endl;
-                return std::vector<uint32_t>();
-            }
-        }
-
-        std::string ShaderModuleTools::LoadShaderFile(const std::string& filepath) const {
-            std::ifstream file(filepath);
-            if (!file.is_open()) {
-                return "";
-            }
-
-            std::stringstream buffer;
-            buffer << file.rdbuf();
-            file.close();
-
-            return buffer.str();
         }
 
     } // namespace Renderer

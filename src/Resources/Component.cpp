@@ -1,5 +1,7 @@
 #include "FirstEngine/Resources/Component.h"
+#include "FirstEngine/Resources/Scene.h"  // For AABB definition
 #include "FirstEngine/Renderer/RenderFlags.h"
+#include "FirstEngine/Renderer/RenderBatch.h"
 
 namespace FirstEngine {
     namespace Resources {
@@ -24,6 +26,7 @@ namespace FirstEngine {
             // Subclasses should override to check if they match the render flags
             return false;
         }
+
 
     } // namespace Resources
 } // namespace FirstEngine

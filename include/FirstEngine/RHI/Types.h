@@ -12,6 +12,8 @@ namespace FirstEngine {
         class IRenderPass;
         class IImageView;
         class IShaderModule;
+        class IBuffer;
+        class IImage;
 
         // Handle types (platform-independent)
         using QueueHandle = void*;
@@ -19,6 +21,9 @@ namespace FirstEngine {
         using FenceHandle = void*;
         using BufferHandle = void*;
         using ImageHandle = void*;
+        using DescriptorSetLayoutHandle = void*;
+        using DescriptorSetHandle = void*;
+        using DescriptorPoolHandle = void*;
 
         // Enum types
         enum class ShaderStage : uint32_t {
@@ -56,6 +61,15 @@ namespace FirstEngine {
             DepthStencilAttachment = 0x00000020,
             TransferSrc = 0x00000040,
             TransferDst = 0x00000080,
+        };
+
+        // Descriptor types
+        enum class DescriptorType : uint32_t {
+            UniformBuffer = 0,
+            CombinedImageSampler = 1,
+            SampledImage = 2,
+            StorageImage = 3,
+            StorageBuffer = 4,
         };
 
         enum class Format : uint32_t {
@@ -234,6 +248,41 @@ namespace FirstEngine {
             IShaderModule* computeShader = nullptr;
             std::vector<void*> descriptorSetLayouts;
             std::vector<GraphicsPipelineDescription::PushConstantRange> pushConstantRanges;
+        };
+
+        // Descriptor binding information
+        FE_RHI_API struct DescriptorBinding {
+            uint32_t binding = 0;           // Binding index
+            DescriptorType type = DescriptorType::UniformBuffer;
+            uint32_t count = 1;             // Array size (1 for non-array)
+            ShaderStage stageFlags = ShaderStage::Vertex; // Shader stages that use this binding
+        };
+
+        // Descriptor set layout description
+        FE_RHI_API struct DescriptorSetLayoutDescription {
+            std::vector<DescriptorBinding> bindings;
+        };
+
+        // Descriptor write information (for updating descriptor sets)
+        FE_RHI_API struct DescriptorBufferInfo {
+            IBuffer* buffer = nullptr;
+            uint64_t offset = 0;
+            uint64_t range = 0;  // 0 means entire buffer
+        };
+
+        FE_RHI_API struct DescriptorImageInfo {
+            IImage* image = nullptr;
+            IImageView* imageView = nullptr;
+            void* sampler = nullptr;  // Sampler handle (void* for now)
+        };
+
+        FE_RHI_API struct DescriptorWrite {
+            DescriptorSetHandle dstSet = nullptr;
+            uint32_t dstBinding = 0;
+            uint32_t dstArrayElement = 0;  // For array bindings
+            DescriptorType descriptorType = DescriptorType::UniformBuffer;
+            std::vector<DescriptorBufferInfo> bufferInfo;  // For uniform/storage buffers
+            std::vector<DescriptorImageInfo> imageInfo;     // For images/samplers
         };
 
         // Bitwise operators

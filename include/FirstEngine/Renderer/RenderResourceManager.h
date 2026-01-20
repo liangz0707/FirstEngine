@@ -55,7 +55,11 @@ namespace FirstEngine {
 
         private:
             RenderResourceManager() = default;
+            
+        public:
             ~RenderResourceManager() = default;
+            
+        private:
 
             // Delete copy constructor and assignment operator
             RenderResourceManager(const RenderResourceManager&) = delete;

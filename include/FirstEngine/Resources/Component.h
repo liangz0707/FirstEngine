@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <string>
 #include <glm/glm.hpp>
 
 // Forward declarations
@@ -11,6 +12,7 @@ namespace FirstEngine {
     namespace Renderer {
         struct RenderItem;
         enum class RenderObjectFlag : uint32_t;
+        class ShadingMaterial;
     }
 }
 
@@ -58,6 +60,15 @@ namespace FirstEngine {
             // Check if this component matches the render flags
             // Returns true if the component should be rendered with the given flags
             virtual bool MatchesRenderFlags(Renderer::RenderObjectFlag renderFlags) const;
+
+            // ============================================================================
+            // Render parameter interface (delegates to ShadingMaterial)
+            // ============================================================================
+
+            // Get ShadingMaterial for this component (to be overridden by subclasses)
+            // Returns nullptr if component doesn't have a ShadingMaterial
+            // This allows components to expose their ShadingMaterial for parameter updates
+            virtual class Renderer::ShadingMaterial* GetShadingMaterial() const { return nullptr; }
 
         protected:
             ComponentType m_Type;

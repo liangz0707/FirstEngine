@@ -1,5 +1,5 @@
 #include "FirstEngine/Renderer/IRenderPass.h"
-#include "FirstEngine/Renderer/FrameGraphBuilder.h"
+#include "FirstEngine/Renderer/FrameGraph.h"  // FrameGraphBuilder is defined in FrameGraph.h
 #include "FirstEngine/Renderer/SceneRenderer.h"
 
 namespace FirstEngine {

@@ -34,7 +34,7 @@ namespace FirstEngine {
             Thread* GetThread(const std::string& name);
 
             // Invoke task on a specific thread
-            Future InvokeOnThread(ThreadType type, std::function<void()> task, TaskPriority priority = TaskPriority::Normal);
+            Future<void> InvokeOnThread(ThreadType type, std::function<void()> task, TaskPriority priority = TaskPriority::Normal);
 
             // Invoke task on a specific thread with return value
             template<typename T>
@@ -65,7 +65,7 @@ namespace FirstEngine {
             ThreadManager();
             ~ThreadManager();
 
-            std::mutex m_Mutex;
+            mutable std::mutex m_Mutex;
             std::unordered_map<ThreadType, std::unique_ptr<Thread>> m_Threads;
             std::unordered_map<std::string, Thread*> m_ThreadsByName;
             bool m_Initialized;

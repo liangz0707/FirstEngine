@@ -93,9 +93,9 @@ namespace FirstEngine {
             }
         }
 
-        Future Thread::Invoke(std::function<void()> task, TaskPriority priority) {
+        Future<void> Thread::Invoke(std::function<void()> task, TaskPriority priority) {
             auto promise = std::make_shared<std::promise<void>>();
-            Future future = promise->get_future();
+            Future<void> future = promise->get_future();
 
             Task taskWrapper([task, promise]() {
                 try {

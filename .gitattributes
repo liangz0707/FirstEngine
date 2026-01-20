@@ -1,7 +1,12 @@
 # Auto detect text files and perform line ending normalization
 * text=auto
 
-# Source files - use CRLF for Windows compatibility
+# Exclude third_party directories from line ending normalization
+# Third-party libraries should keep their original line endings
+third_party/** -text
+external/** -text
+
+# Source files - use CRLF for Windows compatibility (only for our own code)
 *.cpp text eol=crlf
 *.h text eol=crlf
 *.hpp text eol=crlf

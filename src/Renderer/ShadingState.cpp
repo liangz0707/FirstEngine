@@ -18,7 +18,8 @@ namespace FirstEngine {
             RHI::IDevice* device, 
             RHI::IRenderPass* renderPass,
             const std::vector<RHI::VertexInputBinding>& vertexBindings,
-            const std::vector<RHI::VertexInputAttribute>& vertexAttributes
+            const std::vector<RHI::VertexInputAttribute>& vertexAttributes,
+            const std::vector<RHI::DescriptorSetLayoutHandle>& descriptorSetLayouts
         ) {
             if (!device || !renderPass) {
                 return false;
@@ -32,6 +33,12 @@ namespace FirstEngine {
             // Set vertex input bindings and attributes
             pipelineDesc.vertexBindings = vertexBindings;
             pipelineDesc.vertexAttributes = vertexAttributes;
+
+            // Set descriptor set layouts
+            pipelineDesc.descriptorSetLayouts.clear();
+            for (RHI::DescriptorSetLayoutHandle layout : descriptorSetLayouts) {
+                pipelineDesc.descriptorSetLayouts.push_back(layout);
+            }
 
             // Copy primitive topology
             pipelineDesc.primitiveTopology = pipelineState.primitiveTopology;

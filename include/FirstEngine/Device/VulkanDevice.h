@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifdef _WIN32
 // Push and undefine Windows API macros that conflict with our method names
@@ -78,6 +78,26 @@ namespace FirstEngine {
 
             // Get underlying VulkanRenderer (for advanced operations)
             VulkanRenderer* GetVulkanRenderer() const { return m_Renderer.get(); }
+
+            // Descriptor set operations
+            RHI::DescriptorSetLayoutHandle CreateDescriptorSetLayout(
+                const RHI::DescriptorSetLayoutDescription& desc) override;
+            void DestroyDescriptorSetLayout(RHI::DescriptorSetLayoutHandle layout) override;
+
+            RHI::DescriptorPoolHandle CreateDescriptorPool(
+                uint32_t maxSets,
+                const std::vector<std::pair<RHI::DescriptorType, uint32_t>>& poolSizes) override;
+            void DestroyDescriptorPool(RHI::DescriptorPoolHandle pool) override;
+
+            std::vector<RHI::DescriptorSetHandle> AllocateDescriptorSets(
+                RHI::DescriptorPoolHandle pool,
+                const std::vector<RHI::DescriptorSetLayoutHandle>& layouts) override;
+            void FreeDescriptorSets(
+                RHI::DescriptorPoolHandle pool,
+                const std::vector<RHI::DescriptorSetHandle>& sets) override;
+
+            void UpdateDescriptorSets(
+                const std::vector<RHI::DescriptorWrite>& writes) override;
 
         private:
             std::unique_ptr<VulkanRenderer> m_Renderer;

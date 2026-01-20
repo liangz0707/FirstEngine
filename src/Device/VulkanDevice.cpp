@@ -8,6 +8,7 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
 
 #ifdef _WIN32
 // Undefine Windows API macros that conflict with our method names
@@ -85,9 +86,20 @@ namespace FirstEngine {
                 return nullptr;
             }
 
+            // 限制颜色附件数量（Vulkan 规范要求最多 8 个）
+            const uint32_t maxColorAttachments = 8;
+            uint32_t colorAttachmentCount = static_cast<uint32_t>(desc.colorAttachments.size());
+            if (colorAttachmentCount > maxColorAttachments) {
+                std::cerr << "Warning: Color attachment count (" << colorAttachmentCount 
+                          << ") exceeds maximum (" << maxColorAttachments 
+                          << "). Clamping to maximum." << std::endl;
+                colorAttachmentCount = maxColorAttachments;
+            }
+
             // 转换附件描述
             std::vector<VkAttachmentDescription> attachments;
-            for (const auto& colorAttach : desc.colorAttachments) {
+            for (uint32_t i = 0; i < colorAttachmentCount; ++i) {
+                const auto& colorAttach = desc.colorAttachments[i];
                 VkAttachmentDescription attachment{};
                 attachment.format = ConvertFormat(colorAttach.format);
                 attachment.samples = static_cast<VkSampleCountFlagBits>(colorAttach.samples);
@@ -95,8 +107,21 @@ namespace FirstEngine {
                 attachment.storeOp = colorAttach.storeOpStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
                 attachment.stencilLoadOp = colorAttach.stencilLoadOpClear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
                 attachment.stencilStoreOp = colorAttach.stencilStoreOpStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                attachment.initialLayout = ConvertImageLayout(colorAttach.initialLayout);
-                attachment.finalLayout = ConvertImageLayout(colorAttach.finalLayout);
+                
+                // initialLayout: 如果未定义，使用 UNDEFINED（允许）
+                VkImageLayout initialLayout = ConvertImageLayout(colorAttach.initialLayout);
+                if (initialLayout == VK_IMAGE_LAYOUT_UNDEFINED && colorAttach.initialLayout != RHI::Format::Undefined) {
+                    initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // 保持 UNDEFINED
+                }
+                attachment.initialLayout = initialLayout;
+                
+                // finalLayout: 不能是 UNDEFINED，使用默认值 COLOR_ATTACHMENT_OPTIMAL
+                VkImageLayout finalLayout = ConvertImageLayout(colorAttach.finalLayout);
+                if (finalLayout == VK_IMAGE_LAYOUT_UNDEFINED || colorAttach.finalLayout == RHI::Format::Undefined) {
+                    finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                }
+                attachment.finalLayout = finalLayout;
+                
                 attachments.push_back(attachment);
             }
 
@@ -108,14 +133,27 @@ namespace FirstEngine {
                 depthAttachment.storeOp = desc.depthAttachment.storeOpStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
                 depthAttachment.stencilLoadOp = desc.depthAttachment.stencilLoadOpClear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
                 depthAttachment.stencilStoreOp = desc.depthAttachment.stencilStoreOpStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                depthAttachment.initialLayout = ConvertImageLayout(desc.depthAttachment.initialLayout);
-                depthAttachment.finalLayout = ConvertImageLayout(desc.depthAttachment.finalLayout);
+                
+                // initialLayout: 如果未定义，使用 UNDEFINED（允许）
+                VkImageLayout initialLayout = ConvertImageLayout(desc.depthAttachment.initialLayout);
+                if (initialLayout == VK_IMAGE_LAYOUT_UNDEFINED && desc.depthAttachment.initialLayout != RHI::Format::Undefined) {
+                    initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // 保持 UNDEFINED
+                }
+                depthAttachment.initialLayout = initialLayout;
+                
+                // finalLayout: 不能是 UNDEFINED，使用默认值 DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                VkImageLayout finalLayout = ConvertImageLayout(desc.depthAttachment.finalLayout);
+                if (finalLayout == VK_IMAGE_LAYOUT_UNDEFINED || desc.depthAttachment.finalLayout == RHI::Format::Undefined) {
+                    finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                }
+                depthAttachment.finalLayout = finalLayout;
+                
                 attachments.push_back(depthAttachment);
             }
 
             // 创建子通道
             std::vector<VkAttachmentReference> colorRefs;
-            for (uint32_t i = 0; i < desc.colorAttachments.size(); ++i) {
+            for (uint32_t i = 0; i < colorAttachmentCount; ++i) {
                 VkAttachmentReference ref{};
                 ref.attachment = i;
                 ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -124,28 +162,46 @@ namespace FirstEngine {
 
             VkAttachmentReference depthRef{};
             if (desc.hasDepthAttachment) {
-                depthRef.attachment = static_cast<uint32_t>(desc.colorAttachments.size());
+                depthRef.attachment = colorAttachmentCount; // 使用限制后的颜色附件数量
                 depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             }
 
             VkSubpassDescription subpass{};
             subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             subpass.colorAttachmentCount = static_cast<uint32_t>(colorRefs.size());
-            subpass.pColorAttachments = colorRefs.data();
+            subpass.pColorAttachments = colorRefs.empty() ? nullptr : colorRefs.data();
             if (desc.hasDepthAttachment) {
                 subpass.pDepthStencilAttachment = &depthRef;
+            } else {
+                subpass.pDepthStencilAttachment = nullptr;
             }
+
+            // 子通道依赖关系
+            VkSubpassDependency dependency{};
+            dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+            dependency.dstSubpass = 0;
+            dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            dependency.srcAccessMask = 0;
+            dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            dependency.dependencyFlags = 0;
 
             // 创建渲染通道
             VkRenderPassCreateInfo renderPassInfo{};
             renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+            renderPassInfo.pNext = nullptr;
+            renderPassInfo.flags = 0;
             renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-            renderPassInfo.pAttachments = attachments.data();
+            renderPassInfo.pAttachments = attachments.empty() ? nullptr : attachments.data();
             renderPassInfo.subpassCount = 1;
             renderPassInfo.pSubpasses = &subpass;
+            renderPassInfo.dependencyCount = 1;
+            renderPassInfo.pDependencies = &dependency;
 
-            VkRenderPass renderPass;
-            if (vkCreateRenderPass(context->GetDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+            VkRenderPass renderPass = VK_NULL_HANDLE;
+            VkResult result = vkCreateRenderPass(context->GetDevice(), &renderPassInfo, nullptr, &renderPass);
+            if (result != VK_SUCCESS) {
+                std::cerr << "Failed to create render pass: VkResult = " << result << std::endl;
                 return nullptr;
             }
 
@@ -643,6 +699,256 @@ namespace FirstEngine {
         const RHI::DeviceInfo& VulkanDevice::GetDeviceInfo() const {
             return m_DeviceInfo;
         }
+
+        // ============================================================================
+        // Descriptor set operations implementation
+        // ============================================================================
+
+        RHI::DescriptorSetLayoutHandle VulkanDevice::CreateDescriptorSetLayout(
+            const RHI::DescriptorSetLayoutDescription& desc) {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return nullptr;
+            }
+
+            VkDevice device = context->GetDevice();
+            std::vector<VkDescriptorSetLayoutBinding> bindings;
+
+            for (const auto& binding : desc.bindings) {
+                VkDescriptorSetLayoutBinding vkBinding{};
+                vkBinding.binding = binding.binding;
+                vkBinding.descriptorType = Device::ConvertDescriptorType(binding.type);
+                vkBinding.descriptorCount = binding.count;
+                vkBinding.stageFlags = Device::ConvertShaderStageFlags(binding.stageFlags);
+                vkBinding.pImmutableSamplers = nullptr; // No immutable samplers for now
+                bindings.push_back(vkBinding);
+            }
+
+            VkDescriptorSetLayoutCreateInfo layoutInfo{};
+            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+            layoutInfo.pBindings = bindings.data();
+
+            VkDescriptorSetLayout layout;
+            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &layout);
+            if (result != VK_SUCCESS) {
+                std::cerr << "Failed to create descriptor set layout!" << std::endl;
+                return nullptr;
+            }
+
+            return reinterpret_cast<RHI::DescriptorSetLayoutHandle>(layout);
+        }
+
+        void VulkanDevice::DestroyDescriptorSetLayout(RHI::DescriptorSetLayoutHandle layout) {
+            if (!layout) {
+                return;
+            }
+
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return;
+            }
+
+            VkDescriptorSetLayout vkLayout = reinterpret_cast<VkDescriptorSetLayout>(layout);
+            vkDestroyDescriptorSetLayout(context->GetDevice(), vkLayout, nullptr);
+        }
+
+        RHI::DescriptorPoolHandle VulkanDevice::CreateDescriptorPool(
+            uint32_t maxSets,
+            const std::vector<std::pair<RHI::DescriptorType, uint32_t>>& poolSizes) {
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return nullptr;
+            }
+
+            VkDevice device = context->GetDevice();
+            std::vector<VkDescriptorPoolSize> vkPoolSizes;
+
+            for (const auto& [type, count] : poolSizes) {
+                VkDescriptorPoolSize poolSize{};
+                poolSize.type = Device::ConvertDescriptorType(type);
+                poolSize.descriptorCount = count;
+                vkPoolSizes.push_back(poolSize);
+            }
+
+            VkDescriptorPoolCreateInfo poolInfo{};
+            poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            poolInfo.poolSizeCount = static_cast<uint32_t>(vkPoolSizes.size());
+            poolInfo.pPoolSizes = vkPoolSizes.data();
+            poolInfo.maxSets = maxSets;
+            poolInfo.flags = 0; // No flags for now
+
+            VkDescriptorPool pool;
+            VkResult result = vkCreateDescriptorPool(device, &poolInfo, nullptr, &pool);
+            if (result != VK_SUCCESS) {
+                std::cerr << "Failed to create descriptor pool!" << std::endl;
+                return nullptr;
+            }
+
+            return reinterpret_cast<RHI::DescriptorPoolHandle>(pool);
+        }
+
+        void VulkanDevice::DestroyDescriptorPool(RHI::DescriptorPoolHandle pool) {
+            if (!pool) {
+                return;
+            }
+
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return;
+            }
+
+            VkDescriptorPool vkPool = reinterpret_cast<VkDescriptorPool>(pool);
+            vkDestroyDescriptorPool(context->GetDevice(), vkPool, nullptr);
+        }
+
+        std::vector<RHI::DescriptorSetHandle> VulkanDevice::AllocateDescriptorSets(
+            RHI::DescriptorPoolHandle pool,
+            const std::vector<RHI::DescriptorSetLayoutHandle>& layouts) {
+            std::vector<RHI::DescriptorSetHandle> result;
+            if (!pool || layouts.empty()) {
+                return result;
+            }
+
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return result;
+            }
+
+            VkDevice device = context->GetDevice();
+            VkDescriptorPool vkPool = reinterpret_cast<VkDescriptorPool>(pool);
+
+            std::vector<VkDescriptorSetLayout> vkLayouts;
+            for (auto layout : layouts) {
+                vkLayouts.push_back(reinterpret_cast<VkDescriptorSetLayout>(layout));
+            }
+
+            std::vector<VkDescriptorSet> vkSets(layouts.size());
+            VkDescriptorSetAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            allocInfo.descriptorPool = vkPool;
+            allocInfo.descriptorSetCount = static_cast<uint32_t>(vkLayouts.size());
+            allocInfo.pSetLayouts = vkLayouts.data();
+
+            VkResult vkResult = vkAllocateDescriptorSets(device, &allocInfo, vkSets.data());
+            if (vkResult != VK_SUCCESS) {
+                std::cerr << "Failed to allocate descriptor sets!" << std::endl;
+                return result;
+            }
+
+            result.reserve(vkSets.size());
+            for (VkDescriptorSet set : vkSets) {
+                result.push_back(reinterpret_cast<RHI::DescriptorSetHandle>(set));
+            }
+
+            return result;
+        }
+
+        void VulkanDevice::FreeDescriptorSets(
+            RHI::DescriptorPoolHandle pool,
+            const std::vector<RHI::DescriptorSetHandle>& sets) {
+            if (!pool || sets.empty()) {
+                return;
+            }
+
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return;
+            }
+
+            VkDevice device = context->GetDevice();
+            VkDescriptorPool vkPool = reinterpret_cast<VkDescriptorPool>(pool);
+
+            std::vector<VkDescriptorSet> vkSets;
+            for (auto set : sets) {
+                vkSets.push_back(reinterpret_cast<VkDescriptorSet>(set));
+            }
+
+            vkFreeDescriptorSets(device, vkPool, static_cast<uint32_t>(vkSets.size()), vkSets.data());
+        }
+
+        void VulkanDevice::UpdateDescriptorSets(
+            const std::vector<RHI::DescriptorWrite>& writes) {
+            if (writes.empty()) {
+                return;
+            }
+
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return;
+            }
+
+            VkDevice device = context->GetDevice();
+            std::vector<VkWriteDescriptorSet> vkWrites;
+            std::vector<std::vector<VkDescriptorBufferInfo>> bufferInfos;
+            std::vector<std::vector<VkDescriptorImageInfo>> imageInfos;
+
+            for (const auto& write : writes) {
+                VkWriteDescriptorSet vkWrite{};
+                vkWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                vkWrite.dstSet = reinterpret_cast<VkDescriptorSet>(write.dstSet);
+                vkWrite.dstBinding = write.dstBinding;
+                vkWrite.dstArrayElement = write.dstArrayElement;
+                vkWrite.descriptorType = Device::ConvertDescriptorType(write.descriptorType);
+                vkWrite.descriptorCount = 0;
+
+                // Handle buffer info
+                if (!write.bufferInfo.empty()) {
+                    bufferInfos.emplace_back();
+                    for (const auto& bufInfo : write.bufferInfo) {
+                        VkDescriptorBufferInfo vkBufInfo{};
+                        if (bufInfo.buffer) {
+                            // Get VkBuffer from IBuffer
+                            auto* vkBuffer = static_cast<VulkanBuffer*>(bufInfo.buffer);
+                            vkBufInfo.buffer = vkBuffer->GetVkBuffer();
+                        }
+                        vkBufInfo.offset = bufInfo.offset;
+                        vkBufInfo.range = bufInfo.range;
+                        bufferInfos.back().push_back(vkBufInfo);
+                    }
+                    vkWrite.descriptorCount = static_cast<uint32_t>(bufferInfos.back().size());
+                    vkWrite.pBufferInfo = bufferInfos.back().data();
+                }
+
+                // Handle image info
+                if (!write.imageInfo.empty()) {
+                    imageInfos.emplace_back();
+                    for (const auto& imgInfo : write.imageInfo) {
+                        VkDescriptorImageInfo vkImgInfo{};
+                        if (imgInfo.image) {
+                            // Get VkImageView from IImageView
+                            if (imgInfo.imageView) {
+                                auto* vkImageView = static_cast<VulkanImageView*>(imgInfo.imageView);
+                                vkImgInfo.imageView = vkImageView->GetVkImageView();
+                            } else {
+                                // If no imageView provided, try to create one from image
+                                auto* vkImage = static_cast<VulkanImage*>(imgInfo.image);
+                                RHI::IImageView* defaultView = vkImage->CreateImageView();
+                                if (defaultView) {
+                                    auto* vkImageView = static_cast<VulkanImageView*>(defaultView);
+                                    vkImgInfo.imageView = vkImageView->GetVkImageView();
+                                } else {
+                                    vkImgInfo.imageView = VK_NULL_HANDLE;
+                                }
+                            }
+                            vkImgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        } else {
+                            vkImgInfo.imageView = VK_NULL_HANDLE;
+                            vkImgInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                        }
+                        vkImgInfo.sampler = reinterpret_cast<VkSampler>(imgInfo.sampler);
+                        imageInfos.back().push_back(vkImgInfo);
+                    }
+                    vkWrite.descriptorCount = static_cast<uint32_t>(imageInfos.back().size());
+                    vkWrite.pImageInfo = imageInfos.back().data();
+                }
+
+                vkWrites.push_back(vkWrite);
+            }
+
+            vkUpdateDescriptorSets(device, static_cast<uint32_t>(vkWrites.size()), vkWrites.data(), 0, nullptr);
+        }
+
 
     } // namespace Device
 } // namespace FirstEngine

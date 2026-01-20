@@ -35,7 +35,11 @@ set(RENDERER_SOURCES
     ShadingState.cpp
     ShadingMaterial.cpp
     ShaderCollection.cpp
+    ShaderCollectionsTools.cpp
     ShaderModuleTools.cpp
+    ShaderHash.cpp
+    RenderParameterCollector.cpp
+    MaterialDescriptorManager.cpp
 )
 
 # Header files (add to project so they show up in Visual Studio)
@@ -66,7 +70,11 @@ set(RENDERER_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ShadingState.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ShadingMaterial.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ShaderCollection.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ShaderCollectionsTools.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ShaderModuleTools.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ShaderHash.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/RenderParameterCollector.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/MaterialDescriptorManager.h
 )
 
 # Create static library (changed from SHARED to break circular dependency with FirstEngine_Resources)

@@ -4,6 +4,11 @@
 namespace FirstEngine {
     namespace Renderer {
 
+        IRenderResource::IRenderResource() 
+            : m_State(ResourceState::Uninitialized)
+            , m_Device(nullptr) {
+        }
+
         ResourceState IRenderResource::GetState() const {
             return m_State.load(std::memory_order_acquire);
         }

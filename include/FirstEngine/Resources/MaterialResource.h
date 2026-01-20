@@ -89,6 +89,7 @@ namespace FirstEngine {
                 void* pipeline = nullptr; // IPipeline* cast to void*
                 void* descriptorSet = nullptr; // Descriptor set
                 std::string materialName;
+                void* image = nullptr; // RHI::IImage* cast to void* (for texture resources)
             };
             bool GetRenderData(RenderData& outData) const;
 
@@ -96,7 +97,7 @@ namespace FirstEngine {
             // Returns nullptr if not set
             void* GetShaderCollection() const { return m_ShaderCollection; }
             
-            // Set ShaderCollection by ID (looks up from ShaderModuleTools)
+            // Set ShaderCollection by ID (looks up from ShaderCollectionsTools)
             void SetShaderCollectionID(uint64_t collectionID);
 
         private:

@@ -1,4 +1,4 @@
-﻿#include "FirstEngine/Renderer/GeometryPass.h"
+#include "FirstEngine/Renderer/GeometryPass.h"
 #include "FirstEngine/Renderer/FrameGraph.h"
 #include "FirstEngine/Renderer/RenderPassTypes.h"
 #include "FirstEngine/Renderer/IRenderPipeline.h"
@@ -19,6 +19,9 @@ namespace FirstEngine {
             if (!pipeline) {
                 return;
             }
+
+            // Clear resources from previous frame (important: nodes are reused across frames)
+            ClearResources();
 
             // Get RenderConfig from pipeline
             auto* deferredPipeline = dynamic_cast<DeferredRenderPipeline*>(pipeline);

@@ -1,9 +1,10 @@
-﻿#include "FirstEngine/Renderer/PipelineBuilder.h"
+#include "FirstEngine/Renderer/PipelineBuilder.h"
 #include "FirstEngine/Renderer/FrameGraph.h"
 #include "FirstEngine/Renderer/RenderCommandList.h"
 #include "FirstEngine/RHI/Types.h"
 #include <stdexcept>
 #include <memory>
+#include <iostream>
 
 namespace FirstEngine {
     namespace Renderer {
@@ -71,6 +72,18 @@ namespace FirstEngine {
                 for (const auto& readRes : passConfig.readResources) {
                     node->AddReadResource(readRes);
                 }
+                // Debug: Check for suspicious write resources
+                if (passConfig.writeResources.size() > 8) {
+                    std::cerr << "Warning: Pass '" << passConfig.name 
+                              << "' has " << passConfig.writeResources.size() 
+                              << " write resources (expected <= 8)." << std::endl;
+                    std::cerr << "First 10 write resources: ";
+                    for (size_t i = 0; i < std::min(size_t(10), passConfig.writeResources.size()); ++i) {
+                        std::cerr << "'" << passConfig.writeResources[i] << "' ";
+                    }
+                    std::cerr << std::endl;
+                }
+                
                 for (const auto& writeRes : passConfig.writeResources) {
                     node->AddWriteResource(writeRes);
                 }

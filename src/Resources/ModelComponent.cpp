@@ -9,6 +9,7 @@
 #include "FirstEngine/Renderer/RenderGeometry.h"
 #include "FirstEngine/Renderer/ShadingMaterial.h"
 #include "FirstEngine/RHI/Types.h"
+#include "FirstEngine/RHI/IImage.h"
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
@@ -232,11 +233,28 @@ namespace FirstEngine {
                 if (materialResource && materialResource->IsShadingMaterialReady()) {
                     MaterialResource::RenderData materialRenderData;
                     if (materialResource->GetRenderData(materialRenderData)) {
-                        // Store material data directly
-                        item->materialData.shadingMaterial = materialRenderData.shadingMaterial;
-                        item->materialData.pipeline = materialRenderData.pipeline;
-                        item->materialData.descriptorSet = materialRenderData.descriptorSet;
-                        item->materialData.materialName = materialRenderData.materialName;
+                        // Validate vertex inputs match geometry
+                        auto* shadingMaterial = static_cast<Renderer::ShadingMaterial*>(materialRenderData.shadingMaterial);
+                        if (shadingMaterial) {
+                            // Create a temporary RenderGeometry object for validation
+                            // We can validate using the vertex stride from geometry data
+                            Renderer::RenderGeometry tempGeometry;
+                            if (tempGeometry.InitializeFromMesh(mesh)) {
+                                // Validate vertex inputs match geometry
+                                if (!shadingMaterial->ValidateVertexInputs(&tempGeometry)) {
+                                    // Vertex inputs don't match geometry - skip this item
+                                    return nullptr;
+                                }
+                            }
+                            
+                            // Store material data directly
+                            item->materialData.shadingMaterial = materialRenderData.shadingMaterial;
+                            item->materialData.pipeline = materialRenderData.pipeline;
+                            item->materialData.descriptorSet = materialRenderData.descriptorSet;
+                            item->materialData.materialName = materialRenderData.materialName;
+                        } else {
+                            item->materialData.materialName = material->GetMetadata().name;
+                        }
                     } else {
                         item->materialData.materialName = material->GetMetadata().name;
                     }
@@ -257,6 +275,30 @@ namespace FirstEngine {
             return item;
         }
 
+        Renderer::ShadingMaterial* ModelComponent::GetShadingMaterial() const {
+            if (!m_Model || m_Model->GetMeshCount() == 0) {
+                return nullptr;
+            }
+
+            // Get material from model
+            auto* material = m_Model->GetMaterial(0);
+            if (!material) {
+                return nullptr;
+            }
+
+            auto* materialResource = dynamic_cast<MaterialResource*>(material);
+            if (!materialResource || !materialResource->IsShadingMaterialReady()) {
+                return nullptr;
+            }
+
+            // Get ShadingMaterial from MaterialResource
+            MaterialResource::RenderData materialRenderData;
+            if (!materialResource->GetRenderData(materialRenderData)) {
+                return nullptr;
+            }
+
+            return static_cast<Renderer::ShadingMaterial*>(materialRenderData.shadingMaterial);
+        }
 
     } // namespace Resources
 } // namespace FirstEngine

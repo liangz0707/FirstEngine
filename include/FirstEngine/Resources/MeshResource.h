@@ -64,6 +64,7 @@ namespace FirstEngine {
                 uint32_t indexCount = 0;
                 uint32_t firstIndex = 0;
                 uint32_t firstVertex = 0;
+                uint32_t vertexStride = 0; // Vertex stride for validation
             };
             bool GetRenderData(RenderData& outData) const;
 

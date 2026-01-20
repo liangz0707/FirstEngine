@@ -86,7 +86,7 @@ namespace FirstEngine {
 
             // World matrix (cached, automatically updated when transform or parent changes)
             const glm::mat4& GetWorldMatrix() const;
-            void UpdateWorldMatrix(); // Force update (called when parent changes)
+            void UpdateWorldMatrix() const; // Force update (called when parent changes) - made const to allow calling from const GetWorldMatrix
             bool IsWorldMatrixDirty() const { return m_WorldMatrixDirty; }
 
             // Component management

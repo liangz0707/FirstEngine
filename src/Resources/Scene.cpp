@@ -1,4 +1,4 @@
-﻿#include "FirstEngine/Resources/Scene.h"
+#include "FirstEngine/Resources/Scene.h"
 #include "FirstEngine/Resources/SceneLevel.h"
 #include "FirstEngine/Resources/LightComponent.h"
 #include "FirstEngine/Resources/EffectComponent.h"
@@ -76,9 +76,6 @@ namespace FirstEngine {
         // LightComponent implementation
         LightComponent::LightComponent() : Component(ComponentType::Light) {}
 
-        // EffectComponent implementation
-        EffectComponent::EffectComponent() : Component(ComponentType::Effect) {}
-
         // Entity implementation
         Entity::Entity(Scene* scene, uint64_t id, const std::string& name)
             : m_Scene(scene), m_ID(id), m_Name(name) {}
@@ -125,7 +122,7 @@ namespace FirstEngine {
             return m_WorldMatrix;
         }
 
-        void Entity::UpdateWorldMatrix() {
+        void Entity::UpdateWorldMatrix() const {
             if (m_Parent) {
                 // World matrix = parent's world matrix * local transform
                 m_WorldMatrix = m_Parent->GetWorldMatrix() * m_Transform.GetMatrix();

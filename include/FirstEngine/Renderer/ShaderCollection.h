@@ -44,14 +44,15 @@ namespace FirstEngine {
             uint64_t GetID() const { return m_ID; }
             void SetID(uint64_t id) { m_ID = id; }
 
-            // Add shader module for a specific stage
-            // Takes ownership of the shader module
+            // Note: Shader modules are now managed by ShaderModuleTools, not stored in ShaderCollection
+            // These methods are kept for backward compatibility but may be deprecated
+            // Add shader module for a specific stage (deprecated - use ShaderModuleTools instead)
             void AddShader(ShaderStage stage, std::unique_ptr<RHI::IShaderModule> shaderModule);
 
-            // Get shader module for a specific stage (returns nullptr if not found)
+            // Get shader module for a specific stage (deprecated - use ShaderModuleTools instead)
             RHI::IShaderModule* GetShader(ShaderStage stage) const;
 
-            // Check if shader exists for a stage
+            // Check if shader exists for a stage (checks SPIR-V code, not shader modules)
             bool HasShader(ShaderStage stage) const;
 
             // Get all stages that have shaders
@@ -61,11 +62,15 @@ namespace FirstEngine {
             const std::vector<uint32_t>* GetSPIRVCode(ShaderStage stage) const;
             void SetSPIRVCode(ShaderStage stage, const std::vector<uint32_t>& spirvCode);
 
+            // Get MD5 hash for a specific stage (computed from SPIR-V code)
+            const std::string& GetMD5Hash(ShaderStage stage) const;
+            void SetMD5Hash(ShaderStage stage, const std::string& hash);
+
             // Shader reflection (parsed during shader loading)
             const Shader::ShaderReflection* GetShaderReflection() const { return m_ShaderReflection.get(); }
             void SetShaderReflection(std::unique_ptr<Shader::ShaderReflection> reflection);
 
-            // Check if collection is valid (has at least vertex and fragment shaders)
+            // Check if collection is valid (has at least vertex and fragment shaders with SPIR-V code)
             bool IsValid() const;
 
         private:
@@ -77,6 +82,9 @@ namespace FirstEngine {
 
             // SPIR-V code by stage (stored separately for lazy module creation)
             std::unordered_map<ShaderStage, std::vector<uint32_t>> m_SPIRVCode;
+
+            // MD5 hash by stage (computed from SPIR-V code for cache lookup)
+            std::unordered_map<ShaderStage, std::string> m_MD5Hashes;
 
             // Shader reflection data (parsed once during loading, cached for reuse)
             std::unique_ptr<Shader::ShaderReflection> m_ShaderReflection;

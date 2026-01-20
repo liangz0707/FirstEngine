@@ -1,6 +1,6 @@
 #include "FirstEngine/Resources/MaterialResource.h"
 #include "FirstEngine/Renderer/ShadingMaterial.h"
-#include "FirstEngine/Renderer/ShaderModuleTools.h"
+#include "FirstEngine/Renderer/ShaderCollectionsTools.h"
 #include "FirstEngine/Renderer/ShaderCollection.h"
 #include "FirstEngine/Resources/ResourceTypes.h"
 #include "FirstEngine/Resources/ResourceProvider.h"
@@ -88,8 +88,8 @@ namespace FirstEngine {
             
             // Load ShaderCollection by shader name
             if (!m_ShaderName.empty()) {
-                auto& shaderTools = Renderer::ShaderModuleTools::GetInstance();
-                auto* collection = shaderTools.GetCollectionByName(m_ShaderName);
+                auto& collectionsTools = Renderer::ShaderCollectionsTools::GetInstance();
+                auto* collection = collectionsTools.GetCollectionByName(m_ShaderName);
                 if (collection) {
                     m_ShaderCollectionID = collection->GetID();
                     m_ShaderCollection = collection;
@@ -315,9 +315,14 @@ namespace FirstEngine {
             // Create ShadingMaterial from material data
             auto shadingMaterial = std::make_unique<Renderer::ShadingMaterial>();
             
-            // Initialize from ShaderCollection by ID
-            if (!shadingMaterial->InitializeFromShaderCollection(m_ShaderCollectionID)) {
-                return false;
+            // Initialize from MaterialResource (this will set shader collection, reflection, and parameters)
+            // This is the preferred method as it passes all material information including shader parameters
+            if (!shadingMaterial->InitializeFromMaterial(this)) {
+                // Fallback: If InitializeFromMaterial fails, try InitializeFromShaderCollection
+                // This can happen if MaterialResource doesn't have ShaderCollection set yet
+                if (!shadingMaterial->InitializeFromShaderCollection(m_ShaderCollectionID)) {
+                    return false;
+                }
             }
 
             // Schedule creation (will be processed in OnCreateResources)
@@ -441,9 +446,9 @@ namespace FirstEngine {
         void MaterialResource::SetShaderCollectionID(uint64_t collectionID) {
             m_ShaderCollectionID = collectionID;
             
-            // Look up ShaderCollection from ShaderModuleTools
-            auto& shaderTools = Renderer::ShaderModuleTools::GetInstance();
-            auto* collection = shaderTools.GetCollection(collectionID);
+            // Look up ShaderCollection from ShaderCollectionsTools
+            auto& collectionsTools = Renderer::ShaderCollectionsTools::GetInstance();
+            auto* collection = collectionsTools.GetCollection(collectionID);
             
             if (collection) {
                 m_ShaderCollection = collection;

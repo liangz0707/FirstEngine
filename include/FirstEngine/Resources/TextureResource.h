@@ -69,6 +69,12 @@ namespace FirstEngine {
             
             // Get GPU texture for rendering (does not expose IRenderResource)
             void* GetRenderTexture() const; // Returns RHI::IImage* cast to void*
+            
+            // Get render data for creating RenderItem (does not expose RenderTexture)
+            struct RenderData {
+                void* image = nullptr; // RHI::IImage* cast to void*
+            };
+            bool GetRenderData(RenderData& outData) const;
 
         private:
             ResourceMetadata m_Metadata;

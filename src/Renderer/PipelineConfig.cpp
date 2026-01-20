@@ -3,6 +3,7 @@
 #include <sstream>
 #include <algorithm>
 #include <stdexcept>
+#include <iostream>
 
 namespace FirstEngine {
     namespace Renderer {
@@ -143,7 +144,15 @@ namespace FirstEngine {
                 } else if (key == "read") {
                     pass.readResources.push_back(ReadString(content, pos));
                 } else if (key == "write") {
-                    pass.writeResources.push_back(ReadString(content, pos));
+                    std::string writeRes = ReadString(content, pos);
+                    // Debug: Check for suspicious resource names
+                    if (writeRes.length() == 1 && pass.writeResources.size() > 100) {
+                        std::cerr << "Warning: Suspicious write resource name in pass '" 
+                                  << pass.name << "': '" << writeRes 
+                                  << "' (single character). Current count: " 
+                                  << pass.writeResources.size() << std::endl;
+                    }
+                    pass.writeResources.push_back(writeRes);
                 } else {
                     std::string value = ReadString(content, pos);
                     pass.parameters[key] = value;

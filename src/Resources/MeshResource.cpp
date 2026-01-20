@@ -159,6 +159,7 @@ namespace FirstEngine {
             outData.indexCount = geometry->GetIndexCount();
             outData.firstIndex = geometry->GetFirstIndex();
             outData.firstVertex = geometry->GetFirstVertex();
+            outData.vertexStride = geometry->GetVertexStride(); // Include vertex stride for validation
             return true;
         }
 

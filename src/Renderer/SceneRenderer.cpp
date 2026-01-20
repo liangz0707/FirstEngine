@@ -1,6 +1,7 @@
-﻿#include "FirstEngine/Renderer/SceneRenderer.h"
+#include "FirstEngine/Renderer/SceneRenderer.h"
 #include "FirstEngine/Renderer/RenderConfig.h"
 #include "FirstEngine/Renderer/RenderFlags.h"
+#include "FirstEngine/Renderer/RenderParameterCollector.h"
 #include "FirstEngine/Renderer/IRenderPass.h"
 #include "FirstEngine/Renderer/ShadingMaterial.h"
 #include "FirstEngine/Resources/Scene.h"
@@ -162,6 +163,44 @@ namespace FirstEngine {
 
                 // Components are loaded via OnLoad() when Entity is fully loaded
                 // No need to manually trigger loading here
+
+                // Collect and apply render parameters per frame (before creating render item)
+                // Get ShadingMaterial from component
+                auto* shadingMaterial = component->GetShadingMaterial();
+                if (shadingMaterial) {
+                    // Create parameter collector and collect from various sources
+                    RenderParameterCollector collector;
+                    
+                    // Collect from component (per-object data)
+                    auto* modelComponent = dynamic_cast<Resources::ModelComponent*>(component.get());
+                    if (modelComponent) {
+                        collector.CollectFromComponent(modelComponent);
+                    }
+                    
+                    // Collect from render config (per-frame global data)
+                    // This would be passed from Render() method
+                    // collector.CollectFromRenderConfig(&renderConfig);
+                    
+                    // Collect from material resource
+                    auto* materialResource = shadingMaterial->GetMaterialResource();
+                    if (materialResource) {
+                        collector.CollectFromMaterialResource(materialResource);
+                    }
+                    
+                    // Collect from camera (view/projection matrices)
+                    // These would be passed from Render() method
+                    // collector.CollectFromCamera(viewMatrix, projMatrix, viewProjMatrix);
+                    
+                    // Apply collected parameters to ShadingMaterial (CPU-side storage)
+                    shadingMaterial->ApplyParameters(collector);
+                    
+                    // Update render parameters (applies to CPU-side uniform buffer data)
+                    shadingMaterial->UpdateRenderParameters();
+                    
+                    // Flush parameters to GPU buffers (transfers CPU data to GPU)
+                    // This should be called before rendering
+                    shadingMaterial->FlushParametersToGPU(m_Device);
+                }
 
                 // Component creates its own render item (returns nullptr if doesn't match flags)
                 auto renderItem = component->CreateRenderItem(worldMatrix, m_RenderFlags);

@@ -49,6 +49,10 @@ namespace FirstEngine {
             // Creates RenderGeometry in MeshResource handles and ShadingMaterial in MaterialResource handles
             void OnLoad() override;
 
+            // Component::GetShadingMaterial override
+            // Returns the ShadingMaterial for this component (from MaterialResource)
+            Renderer::ShadingMaterial* GetShadingMaterial() const override;
+
         private:
             ModelHandle m_Model = nullptr;
         };

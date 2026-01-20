@@ -27,13 +27,15 @@ namespace FirstEngine {
         }
 
         bool ShaderCollection::HasShader(ShaderStage stage) const {
-            return m_ShaderModules.find(stage) != m_ShaderModules.end();
+            // Check SPIR-V code (shader modules are now managed by ShaderModuleTools)
+            return m_SPIRVCode.find(stage) != m_SPIRVCode.end();
         }
 
         std::vector<ShaderStage> ShaderCollection::GetAvailableStages() const {
             std::vector<ShaderStage> stages;
-            stages.reserve(m_ShaderModules.size());
-            for (const auto& pair : m_ShaderModules) {
+            // Return stages based on SPIR-V code (not shader modules, which are now managed by ShaderModuleTools)
+            stages.reserve(m_SPIRVCode.size());
+            for (const auto& pair : m_SPIRVCode) {
                 stages.push_back(pair.first);
             }
             return stages;
@@ -51,12 +53,25 @@ namespace FirstEngine {
             m_SPIRVCode[stage] = spirvCode;
         }
 
+        const std::string& ShaderCollection::GetMD5Hash(ShaderStage stage) const {
+            static const std::string empty;
+            auto it = m_MD5Hashes.find(stage);
+            if (it != m_MD5Hashes.end()) {
+                return it->second;
+            }
+            return empty;
+        }
+
+        void ShaderCollection::SetMD5Hash(ShaderStage stage, const std::string& hash) {
+            m_MD5Hashes[stage] = hash;
+        }
+
         void ShaderCollection::SetShaderReflection(std::unique_ptr<Shader::ShaderReflection> reflection) {
             m_ShaderReflection = std::move(reflection);
         }
 
         bool ShaderCollection::IsValid() const {
-            // A valid collection should have at least vertex and fragment shaders
+            // A valid collection should have at least vertex and fragment shaders with SPIR-V code
             return HasShader(ShaderStage::Vertex) && HasShader(ShaderStage::Fragment);
         }
 

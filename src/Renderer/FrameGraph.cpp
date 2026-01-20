@@ -11,6 +11,7 @@
 #include <queue>
 #include <stdexcept>
 #include <memory>
+#include <iostream>
 
 namespace FirstEngine {
     namespace Renderer {
@@ -41,6 +42,12 @@ namespace FirstEngine {
         }
 
         void FrameGraphNode::AddWriteResource(const std::string& resourceName, const ResourceDescription* resourceDesc) {
+            // Debug: Check for suspicious resource names
+            if (resourceName.length() == 1 && m_WriteResources.size() > 100) {
+                std::cerr << "Warning: Suspicious write resource name detected: '" << resourceName 
+                          << "' (single character). Current writeResources size: " 
+                          << m_WriteResources.size() << std::endl;
+            }
             m_WriteResources.push_back(resourceName);
 
             // If FrameGraph is set and resource description is provided, automatically add and allocate resource
@@ -128,7 +135,10 @@ namespace FirstEngine {
             }
 
             uint32_t index = static_cast<uint32_t>(m_Nodes.size());
-            auto node = std::make_unique<FrameGraphNode>(name, index);
+            auto node = std::unique_ptr<FrameGraphNode, std::function<void(FrameGraphNode*)>>(
+                new FrameGraphNode(name, index),
+                [](FrameGraphNode* ptr) { delete ptr; }
+            );
             FrameGraphNode* nodePtr = node.get();
             
             // Set FrameGraph reference and index for automatic resource management
@@ -155,6 +165,10 @@ namespace FirstEngine {
 
             uint32_t index = static_cast<uint32_t>(m_Nodes.size());
             
+            // Clear node resources before adding (important: nodes are reused across frames)
+            // Resources will be re-added in OnBuild
+            node->ClearResources();
+            
             // Set FrameGraph reference and index for automatic resource management
             node->SetFrameGraph(this);
             node->SetIndex(index);
@@ -165,8 +179,7 @@ namespace FirstEngine {
             IRenderPass* pass = dynamic_cast<IRenderPass*>(node);
             if (pass) {
                 // Create a lambda that calls OnDraw
-
-                ExecuteCallback callback = [pass](FrameGraphBuilder& builder, const RenderCommandList* sceneCommands) -> RenderCommandList {
+                FrameGraphNode::ExecuteCallback callback = [pass](FrameGraphBuilder& builder, const RenderCommandList* sceneCommands) -> RenderCommandList {
                     return pass->OnDraw(builder, sceneCommands);
                 };
                 node->SetExecuteCallback(callback);
@@ -174,7 +187,10 @@ namespace FirstEngine {
             
             // Store as raw pointer (lifetime managed by caller)
             // We need to use a custom deleter that does nothing, since we don't own the node
-            m_Nodes.push_back(std::unique_ptr<FrameGraphNode>(node, [](FrameGraphNode*) {}));
+            // Use a no-op deleter function
+            auto noop_deleter = [](FrameGraphNode*) {};
+            std::unique_ptr<FrameGraphNode, std::function<void(FrameGraphNode*)>> nodePtr(node, noop_deleter);
+            m_Nodes.push_back(std::move(nodePtr));
             m_NodeNameToIndex[name] = index;
             return node;
         }
@@ -342,7 +358,19 @@ namespace FirstEngine {
                 bool hasDepth = false;
                 
                 // Collect attachments from write resources
-                for (const auto& writeResName : node->GetWriteResources()) {
+                const auto& writeResources = node->GetWriteResources();
+                if (writeResources.size() > 8) {
+                    std::cerr << "Warning: Node '" << node->GetName() 
+                              << "' has " << writeResources.size() 
+                              << " write resources. This is likely a bug." << std::endl;
+                    std::cerr << "First 10 write resources: ";
+                    for (size_t i = 0; i < std::min(size_t(10), writeResources.size()); ++i) {
+                        std::cerr << "'" << writeResources[i] << "' ";
+                    }
+                    std::cerr << std::endl;
+                }
+                
+                for (const auto& writeResName : writeResources) {
                     auto* resource = GetResource(writeResName);
                     if (resource && resource->GetDescription().GetType() == ResourceType::Attachment) {
                         const auto& desc = resource->GetDescription();
@@ -511,11 +539,12 @@ namespace FirstEngine {
                 uint32_t lastUse = 0;
 
                 for (uint32_t i = 0; i < m_Nodes.size(); ++i) {
-                    auto* node = m_Nodes[i].get();
+                    FrameGraphNode* node = m_Nodes[i].get();
                     bool used = false;
 
                     // 检查读取
-                    for (const auto& readRes : node->GetReadResources()) {
+                    const std::vector<std::string>& readResources = node->GetReadResources();
+                    for (const std::string& readRes : readResources) {
                         if (readRes == resourceName) {
                             used = true;
                             break;
@@ -524,7 +553,8 @@ namespace FirstEngine {
 
                     // 检查写入
                     if (!used) {
-                        for (const auto& writeRes : node->GetWriteResources()) {
+                        const std::vector<std::string>& writeResources = node->GetWriteResources();
+                        for (const std::string& writeRes : writeResources) {
                             if (writeRes == resourceName) {
                                 used = true;
                                 break;

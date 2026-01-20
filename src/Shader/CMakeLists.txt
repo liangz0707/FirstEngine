@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
 
 project(FirstEngine_Shader VERSION 1.0.0 LANGUAGES CXX)
 
@@ -13,6 +13,8 @@ set(SPIRV_CROSS_SKIP_EXAMPLES ON CACHE BOOL "" FORCE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/spirv-cross spirv_cross)
 
 # Use local glslang from third_party (GLSL/HLSL → SPIR-V)
+# Use static library mode (same as test_glslang project)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "" FORCE)
 set(ENABLE_GLSLANG_WEBMINIFIER OFF CACHE BOOL "" FORCE)
 set(ENABLE_OPT OFF CACHE BOOL "" FORCE)
@@ -136,4 +138,5 @@ if(WIN32)
         $<TARGET_FILE:FirstEngine_Shader>
         ${CMAKE_BINARY_DIR}/bin/$<CONFIG>/
     )
+    # Note: When BUILD_SHARED_LIBS=OFF, glslang and SPIRV are static libraries, no DLLs to copy
 endif()
