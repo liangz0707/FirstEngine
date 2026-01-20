@@ -54,20 +54,34 @@ namespace FirstEngineEditor.Views.Panels
                 _renderEngine = new RenderEngineService();
                 
                 // Get actual size of render surface
+                // Force layout update to get accurate size
                 RenderSurface.UpdateLayout();
+                RenderSurface.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+                RenderSurface.Arrange(new Rect(RenderSurface.DesiredSize));
+                
                 var width = (int)RenderSurface.ActualWidth;
                 var height = (int)RenderSurface.ActualHeight;
                 
+                // If size is still invalid, use DesiredSize or default
+                if (width <= 0 || height <= 0)
+                {
+                    width = (int)(RenderSurface.DesiredSize.Width > 0 ? RenderSurface.DesiredSize.Width : 800);
+                    height = (int)(RenderSurface.DesiredSize.Height > 0 ? RenderSurface.DesiredSize.Height : 600);
+                }
+                
+                // Ensure minimum size
                 if (width <= 0) width = 800;
                 if (height <= 0) height = 600;
 
                 // Initialize engine
                 if (_renderEngine.Initialize(windowHandle, width, height))
                 {
-                    // Wait for window to be fully loaded before creating viewport
-                    // This ensures the HwndHost parent is ready
+                    // Wait for window to be fully loaded and laid out before creating viewport
+                    // This ensures the HwndHost parent is ready and has correct size
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
+                        // Force another layout pass to ensure accurate size
+                        RenderSurface.UpdateLayout();
                         CreateViewportHost();
                     }), System.Windows.Threading.DispatcherPriority.Loaded);
                 }
@@ -110,9 +124,15 @@ namespace FirstEngineEditor.Views.Panels
         private void OnRenderHostLoaded(object sender, RoutedEventArgs e)
         {
             // Render host container is loaded
+            // Wait a bit to ensure layout is complete
             if (!_isInitialized && _renderEngine != null)
             {
-                CreateViewportHost();
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    // Force layout update to get accurate size
+                    RenderSurface.UpdateLayout();
+                    CreateViewportHost();
+                }), System.Windows.Threading.DispatcherPriority.Loaded);
             }
         }
         
@@ -133,10 +153,22 @@ namespace FirstEngineEditor.Views.Panels
                     return;
 
                 // Get actual size of render surface
+                // Force layout update to get accurate size
                 RenderSurface.UpdateLayout();
+                RenderSurface.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+                RenderSurface.Arrange(new Rect(RenderSurface.DesiredSize));
+                
                 var width = (int)RenderSurface.ActualWidth;
                 var height = (int)RenderSurface.ActualHeight;
                 
+                // If size is still invalid, use DesiredSize or default
+                if (width <= 0 || height <= 0)
+                {
+                    width = (int)(RenderSurface.DesiredSize.Width > 0 ? RenderSurface.DesiredSize.Width : 800);
+                    height = (int)(RenderSurface.DesiredSize.Height > 0 ? RenderSurface.DesiredSize.Height : 600);
+                }
+                
+                // Ensure minimum size
                 if (width <= 0) width = 800;
                 if (height <= 0) height = 600;
 
@@ -202,8 +234,18 @@ namespace FirstEngineEditor.Views.Panels
         {
             if (_renderEngine != null && _isInitialized)
             {
-                var newWidth = (int)e.NewSize.Width;
-                var newHeight = (int)e.NewSize.Height;
+                // Get actual size from the render surface
+                RenderSurface.UpdateLayout();
+                var newWidth = (int)RenderSurface.ActualWidth;
+                var newHeight = (int)RenderSurface.ActualHeight;
+                
+                // Fallback to event size if ActualWidth/Height is invalid
+                if (newWidth <= 0) newWidth = (int)e.NewSize.Width;
+                if (newHeight <= 0) newHeight = (int)e.NewSize.Height;
+                
+                // Ensure minimum size
+                if (newWidth <= 0) newWidth = 800;
+                if (newHeight <= 0) newHeight = 600;
                 
                 if (newWidth > 0 && newHeight > 0)
                 {
@@ -225,9 +267,20 @@ namespace FirstEngineEditor.Views.Panels
         {
             if (_renderEngine != null && _isInitialized && _viewportHost != null)
             {
+                // Force layout update to get accurate size
                 RenderSurface.UpdateLayout();
+                RenderSurface.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+                RenderSurface.Arrange(new Rect(RenderSurface.DesiredSize));
+                
                 var width = (int)RenderSurface.ActualWidth;
                 var height = (int)RenderSurface.ActualHeight;
+                
+                // If size is still invalid, use DesiredSize
+                if (width <= 0 || height <= 0)
+                {
+                    width = (int)(RenderSurface.DesiredSize.Width > 0 ? RenderSurface.DesiredSize.Width : 800);
+                    height = (int)(RenderSurface.DesiredSize.Height > 0 ? RenderSurface.DesiredSize.Height : 600);
+                }
                 
                 if (width > 0 && height > 0)
                 {

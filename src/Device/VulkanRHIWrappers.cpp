@@ -824,6 +824,12 @@ namespace FirstEngine {
                 std::cerr << "Failed to get surface capabilities: " << result << std::endl;
                 throw std::runtime_error("Failed to get surface capabilities!");
             }
+            
+            // Debug: Log surface capabilities
+            std::cout << "Surface capabilities:" << std::endl;
+            std::cout << "  minImageExtent: " << capabilities.minImageExtent.width << "x" << capabilities.minImageExtent.height << std::endl;
+            std::cout << "  maxImageExtent: " << capabilities.maxImageExtent.width << "x" << capabilities.maxImageExtent.height << std::endl;
+            std::cout << "  currentExtent: " << capabilities.currentExtent.width << "x" << capabilities.currentExtent.height << std::endl;
 
             // Check if surface is valid and not lost
             if (capabilities.maxImageExtent.width == 0 || capabilities.maxImageExtent.height == 0) {

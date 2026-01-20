@@ -187,6 +187,10 @@ RenderViewport* EditorAPI_CreateViewport(void* engine, void* parentWindowHandle,
         }
     }
     
+    // Ensure minimum size
+    if (width <= 0) width = 800;
+    if (height <= 0) height = 600;
+    
     // Create child window
     HWND hwndChild = CreateWindowExW(
         WS_EX_CLIENTEDGE,
@@ -210,13 +214,49 @@ RenderViewport* EditorAPI_CreateViewport(void* engine, void* parentWindowHandle,
     SetWindowLongPtr(hwndChild, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(viewport));
     viewport->childWindowHandle = hwndChild;
     
-    // Create swapchain for viewport
-    // Note: Currently CreateSwapchain uses the main window's surface
-    // For proper viewport embedding, we would need to create a separate surface for the child window
-    // This is a limitation that can be addressed later by refactoring swapchain creation
+    // Ensure window is properly sized and visible before creating surface
+    // This is critical for vkGetPhysicalDeviceSurfaceCapabilitiesKHR to return correct size
+    ShowWindow(hwndChild, SW_SHOW);
+    UpdateWindow(hwndChild);
+    
+    // Force a layout update to ensure window has correct client area size
+    RECT clientRect;
+    GetClientRect(hwndChild, &clientRect);
+    int actualWidth = clientRect.right - clientRect.left;
+    int actualHeight = clientRect.bottom - clientRect.top;
+    
+    // If client area size doesn't match, adjust window size
+    if (actualWidth != width || actualHeight != height) {
+        RECT windowRect;
+        GetWindowRect(hwndChild, &windowRect);
+        int windowWidth = windowRect.right - windowRect.left;
+        int windowHeight = windowRect.bottom - windowRect.top;
+        
+        // Calculate border size
+        int borderWidth = windowWidth - actualWidth;
+        int borderHeight = windowHeight - actualHeight;
+        
+        // Resize window to get correct client area
+        SetWindowPos(hwndChild, nullptr, x, y, width + borderWidth, height + borderHeight,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+        
+        // Verify again
+        GetClientRect(hwndChild, &clientRect);
+        actualWidth = clientRect.right - clientRect.left;
+        actualHeight = clientRect.bottom - clientRect.top;
+        
+        std::cout << "Viewport window size adjusted: " << actualWidth << "x" << actualHeight << std::endl;
+    }
+    
+    // Update viewport size to match actual window size
+    viewport->width = actualWidth;
+    viewport->height = actualHeight;
+    
+    // Create swapchain for viewport using child window handle
+    // This will create a new surface for the child window with correct size
     FirstEngine::RHI::SwapchainDescription swapchainDesc;
-    swapchainDesc.width = width;
-    swapchainDesc.height = height;
+    swapchainDesc.width = viewport->width;  // Use actual window size
+    swapchainDesc.height = viewport->height;
     
     // Get device from global RenderContext
     auto* device = context->GetDevice();
@@ -226,9 +266,9 @@ RenderViewport* EditorAPI_CreateViewport(void* engine, void* parentWindowHandle,
         return nullptr;
     }
     
-    // For now, use parent window handle (swapchain will render to main window)
-    // TODO: Create separate surface and swapchain for child window
-    auto swapchainPtr = device->CreateSwapchain(hwndParent, swapchainDesc);
+    // Use child window handle to create swapchain (this will create a surface for the child window)
+    // This ensures the swapchain is created with the correct window size
+    auto swapchainPtr = device->CreateSwapchain(hwndChild, swapchainDesc);
     viewport->swapchain = swapchainPtr.release();
     
     if (viewport->swapchain) {

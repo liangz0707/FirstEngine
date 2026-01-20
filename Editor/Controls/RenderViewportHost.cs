@@ -88,8 +88,13 @@ namespace FirstEngineEditor.Controls
             const uint SWP_NOZORDER = 0x0004;
             const uint SWP_NOACTIVATE = 0x0010;
             
-            var width = (int)(ActualWidth > 0 ? ActualWidth : 100);
-            var height = (int)(ActualHeight > 0 ? ActualHeight : 100);
+            // Get actual size from parent or use explicit width/height properties
+            int width = (int)(Width > 0 ? Width : (ActualWidth > 0 ? ActualWidth : 800));
+            int height = (int)(Height > 0 ? Height : (ActualHeight > 0 ? ActualHeight : 600));
+            
+            // Ensure minimum size
+            if (width <= 0) width = 800;
+            if (height <= 0) height = 600;
             
             SetWindowPos(viewportHandle, IntPtr.Zero, 0, 0, 
                         width, height,
@@ -134,8 +139,13 @@ namespace FirstEngineEditor.Controls
                 const uint SWP_NOZORDER = 0x0004;
                 const uint SWP_NOACTIVATE = 0x0010;
 
-                var width = (int)sizeInfo.NewSize.Width;
-                var height = (int)sizeInfo.NewSize.Height;
+                // Use explicit Width/Height properties if set, otherwise use new size
+                int width = (int)(Width > 0 ? Width : sizeInfo.NewSize.Width);
+                int height = (int)(Height > 0 ? Height : sizeInfo.NewSize.Height);
+                
+                // Ensure minimum size
+                if (width <= 0) width = (int)sizeInfo.NewSize.Width;
+                if (height <= 0) height = (int)sizeInfo.NewSize.Height;
                 
                 if (width > 0 && height > 0)
                 {
