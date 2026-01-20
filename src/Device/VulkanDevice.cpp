@@ -529,98 +529,124 @@ namespace FirstEngine {
             VkSurfaceKHR surface = VK_NULL_HANDLE;
             Core::Window* window = nullptr;
 
-            // If windowHandle is provided and different from main window, create a new surface
-            if (windowHandle) {
-#ifdef _WIN32
-                HWND hwnd = reinterpret_cast<HWND>(windowHandle);
-                
-                // Check if this is the main window or a different window
-                Core::Window* mainWindow = m_Renderer->GetWindow();
-                if (mainWindow) {
-                    GLFWwindow* glfwWindow = mainWindow->GetHandle();
-                    if (glfwWindow) {
-                        HWND mainHwnd = glfwGetWin32Window(glfwWindow);
-                        if (hwnd != mainHwnd) {
-                            // This is a different window (e.g., editor viewport child window)
-                            // Create a new surface for this window
-                            VkInstance instance = m_Renderer->GetInstance();
-                            if (instance != VK_NULL_HANDLE) {
-                                VkWin32SurfaceCreateInfoKHR createInfo{};
-                                createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-                                createInfo.hwnd = hwnd;
-                                createInfo.hinstance = GetModuleHandle(nullptr);
-                                
-                                // Get function pointer
-                                auto vkCreateWin32SurfaceKHR = (PFN_vkCreateWin32SurfaceKHR)
-                                    vkGetInstanceProcAddr(instance, "vkCreateWin32SurfaceKHR");
-                                
-                                if (vkCreateWin32SurfaceKHR) {
-                                    // Verify window size before creating surface
-                                    RECT rect;
-                                    if (GetClientRect(hwnd, &rect)) {
-                                        int winWidth = rect.right - rect.left;
-                                        int winHeight = rect.bottom - rect.top;
-                                        std::cout << "Creating surface for child window (HWND: " << hwnd 
-                                                  << "), window size: " << winWidth << "x" << winHeight 
-                                                  << ", requested: " << desc.width << "x" << desc.height << std::endl;
-                                    }
-                                    
-                                    VkResult result = vkCreateWin32SurfaceKHR(instance, &createInfo, nullptr, &surface);
-                                    if (result != VK_SUCCESS) {
-                                        std::cerr << "Failed to create surface for child window: " << result << std::endl;
-                                        return nullptr;
-                                    }
-                                    std::cout << "Successfully created new surface for child window" << std::endl;
-                                } else {
-                                    std::cerr << "vkCreateWin32SurfaceKHR not available" << std::endl;
-                                    return nullptr;
-                                }
-                            }
-                        } else {
-                            // Same as main window, use existing surface
-                            surface = m_Renderer->GetSurface();
-                            window = mainWindow;
-                        }
-                    }
-                }
-                
-                // If surface is still null, try to create one
-                if (surface == VK_NULL_HANDLE) {
-                    VkInstance instance = m_Renderer->GetInstance();
-                    if (instance != VK_NULL_HANDLE) {
-                        VkWin32SurfaceCreateInfoKHR createInfo{};
-                        createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-                        createInfo.hwnd = hwnd;
-                        createInfo.hinstance = GetModuleHandle(nullptr);
-                        
-                        auto vkCreateWin32SurfaceKHR = (PFN_vkCreateWin32SurfaceKHR)
-                            vkGetInstanceProcAddr(instance, "vkCreateWin32SurfaceKHR");
-                        
-                        if (vkCreateWin32SurfaceKHR) {
-                            VkResult result = vkCreateWin32SurfaceKHR(instance, &createInfo, nullptr, &surface);
-                            if (result != VK_SUCCESS) {
-                                std::cerr << "Failed to create surface: " << result << std::endl;
-                                return nullptr;
-                            }
-                            std::cout << "Created surface for window: " << desc.width << "x" << desc.height << std::endl;
-                        }
-                    }
-                }
-#else
-                // Non-Windows: use main window surface
-                window = m_Renderer->GetWindow();
-                surface = m_Renderer->GetSurface();
-#endif
-            } else {
-                // No window handle provided, use main window
-                window = m_Renderer->GetWindow();
-                surface = m_Renderer->GetSurface();
-            }
-
-            if (surface == VK_NULL_HANDLE) {
-                std::cerr << "Failed to get or create surface for swapchain" << std::endl;
+            // Get main window for comparison
+            Core::Window* mainWindow = m_Renderer->GetWindow();
+            if (!mainWindow) {
+                std::cerr << "No main window available" << std::endl;
                 return nullptr;
             }
+            
+            GLFWwindow* mainGlfwWindow = mainWindow->GetHandle();
+            if (!mainGlfwWindow) {
+                std::cerr << "Main window has no GLFW handle" << std::endl;
+                return nullptr;
+            }
+            
+            // Check if windowHandle is the main GLFW window (standalone mode)
+            // or a different HWND (editor mode child window)
+            if (windowHandle) {
+                // First, check if it's the main GLFW window (standalone mode)
+                GLFWwindow* glfwWindow = reinterpret_cast<GLFWwindow*>(windowHandle);
+                if (glfwWindow == mainGlfwWindow) {
+                    // This is the main GLFW window (standalone mode)
+                    // Use existing surface
+                    surface = m_Renderer->GetSurface();
+                    window = mainWindow;
+                    
+                    // Verify surface is valid
+                    if (surface == VK_NULL_HANDLE) {
+                        std::cerr << "Error: Main window surface is null! Surface may not have been created." << std::endl;
+                        return nullptr;
+                    }
+                    
+                    std::cout << "Using main window surface for standalone mode (surface: " << surface << ")" << std::endl;
+                } else {
+                    // Not the main GLFW window, check if it's a HWND (editor mode)
+#ifdef _WIN32
+                    HWND hwnd = reinterpret_cast<HWND>(windowHandle);
+                    HWND mainHwnd = glfwGetWin32Window(mainGlfwWindow);
+                    
+                    // Validate if this is a valid HWND by checking if it's different from main window
+                    // and if GetWindowThreadProcessId works (only works for valid HWND)
+                    DWORD processId = 0;
+                    DWORD threadId = GetWindowThreadProcessId(hwnd, &processId);
+                    
+                    if (threadId != 0 && hwnd != mainHwnd) {
+                        // This is a valid HWND and different from main window (editor child window)
+                        // Create a new surface for this window
+                        VkInstance instance = m_Renderer->GetInstance();
+                        if (instance != VK_NULL_HANDLE) {
+                            VkWin32SurfaceCreateInfoKHR createInfo{};
+                            createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+                            createInfo.hwnd = hwnd;
+                            createInfo.hinstance = GetModuleHandle(nullptr);
+                            
+                            // Get function pointer
+                            auto vkCreateWin32SurfaceKHR = (PFN_vkCreateWin32SurfaceKHR)
+                                vkGetInstanceProcAddr(instance, "vkCreateWin32SurfaceKHR");
+                            
+                            if (vkCreateWin32SurfaceKHR) {
+                                // Verify window size before creating surface
+                                RECT rect;
+                                if (GetClientRect(hwnd, &rect)) {
+                                    int winWidth = rect.right - rect.left;
+                                    int winHeight = rect.bottom - rect.top;
+                                    std::cout << "Creating surface for child window (HWND: " << hwnd 
+                                              << "), window size: " << winWidth << "x" << winHeight 
+                                              << ", requested: " << desc.width << "x" << desc.height << std::endl;
+                                }
+                                
+                                VkResult result = vkCreateWin32SurfaceKHR(instance, &createInfo, nullptr, &surface);
+                                if (result != VK_SUCCESS) {
+                                    std::cerr << "Failed to create surface for child window: " << result << std::endl;
+                                    return nullptr;
+                                }
+                                std::cout << "Successfully created new surface for child window" << std::endl;
+                            } else {
+                                std::cerr << "vkCreateWin32SurfaceKHR not available" << std::endl;
+                                return nullptr;
+                            }
+                        }
+                    } else {
+                        // Invalid HWND or same as main window, use main window surface
+                        std::cout << "Using main window surface (windowHandle is main window or invalid)" << std::endl;
+                        surface = m_Renderer->GetSurface();
+                        window = mainWindow;
+                    }
+#else
+                    // Non-Windows: windowHandle should be GLFWwindow*
+                    // If it's not the main window, something is wrong
+                    std::cerr << "Warning: Different GLFW window provided, using main window surface" << std::endl;
+                    surface = m_Renderer->GetSurface();
+                    window = mainWindow;
+#endif
+                }
+            } else {
+                // No window handle provided, use main window surface
+                surface = m_Renderer->GetSurface();
+                window = mainWindow;
+                
+                if (surface == VK_NULL_HANDLE) {
+                    std::cerr << "Error: No window handle provided and main window surface is null!" << std::endl;
+                    return nullptr;
+                }
+                
+                std::cout << "Using main window surface (no window handle provided)" << std::endl;
+            }
+            
+            // Final check: ensure we have a valid surface
+            if (surface == VK_NULL_HANDLE) {
+                std::cerr << "Failed to get or create surface for swapchain" << std::endl;
+                std::cerr << "windowHandle: " << windowHandle << std::endl;
+                std::cerr << "mainWindow: " << (mainWindow ? "valid" : "null") << std::endl;
+                if (mainWindow) {
+                    std::cerr << "mainWindow->GetHandle(): " << mainWindow->GetHandle() << std::endl;
+                    std::cerr << "m_Renderer->GetSurface(): " << m_Renderer->GetSurface() << std::endl;
+                }
+                return nullptr;
+            }
+            
+            std::cout << "Swapchain will use surface: " << surface << " for size: " << desc.width << "x" << desc.height << std::endl;
 
             // Create VulkanSwapchain with the surface (window can be null for child windows)
             auto swapchain = std::make_unique<VulkanSwapchain>(context, window, surface);

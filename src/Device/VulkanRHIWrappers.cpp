@@ -818,10 +818,17 @@ namespace FirstEngine {
         }
 
         void VulkanSwapchain::CreateSwapchain() {
+            // Verify surface is valid
+            if (m_Surface == VK_NULL_HANDLE) {
+                std::cerr << "Cannot create swapchain: surface is null!" << std::endl;
+                throw std::runtime_error("Surface is null!");
+            }
+            
             VkSurfaceCapabilitiesKHR capabilities;
             VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_Context->GetPhysicalDevice(), m_Surface, &capabilities);
             if (result != VK_SUCCESS) {
                 std::cerr << "Failed to get surface capabilities: " << result << std::endl;
+                std::cerr << "Surface handle: " << m_Surface << std::endl;
                 throw std::runtime_error("Failed to get surface capabilities!");
             }
             
