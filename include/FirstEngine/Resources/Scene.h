@@ -1,5 +1,13 @@
 #pragma once
 
+// Disable Windows min/max macros before including headers that might use them
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+
 #include "FirstEngine/Resources/Export.h"
 #include "FirstEngine/Resources/Component.h"
 #include "FirstEngine/Resources/ModelComponent.h"
@@ -37,14 +45,14 @@ namespace FirstEngine {
 
         // Bounding box for spatial queries
         struct FE_RESOURCES_API AABB {
-            glm::vec3 min = glm::vec3(0.0f);
-            glm::vec3 max = glm::vec3(0.0f);
+            glm::vec3 minBounds = glm::vec3(0.0f);
+            glm::vec3 maxBounds = glm::vec3(0.0f);
 
             AABB() = default;
-            AABB(const glm::vec3& min, const glm::vec3& max) : min(min), max(max) {}
+            AABB(const glm::vec3& mi, const glm::vec3& ma) : minBounds(mi), maxBounds(ma) {}
 
-            glm::vec3 GetCenter() const { return (min + max) * 0.5f; }
-            glm::vec3 GetSize() const { return max - min; }
+            glm::vec3 GetCenter() const { return (minBounds + maxBounds) * 0.5f; }
+            glm::vec3 GetSize() const { return maxBounds - minBounds; }
             glm::vec3 GetHalfSize() const { return GetSize() * 0.5f; }
             bool Contains(const glm::vec3& point) const;
             bool Intersects(const AABB& other) const;

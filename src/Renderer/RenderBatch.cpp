@@ -230,9 +230,9 @@ namespace FirstEngine {
 
                 // Find the vertex of AABB that is farthest in the negative direction of the plane normal
                 glm::vec3 p;
-                p.x = (normal.x > 0.0f) ? aabb.min.x : aabb.max.x;
-                p.y = (normal.y > 0.0f) ? aabb.min.y : aabb.max.y;
-                p.z = (normal.z > 0.0f) ? aabb.min.z : aabb.max.z;
+                p.x = (normal.x > 0.0f) ? aabb.minBounds.x : aabb.maxBounds.x;
+                p.y = (normal.y > 0.0f) ? aabb.minBounds.y : aabb.maxBounds.y;
+                p.z = (normal.z > 0.0f) ? aabb.minBounds.z : aabb.maxBounds.z;
 
                 float distance = glm::dot(normal, p) + planeD;
                 if (distance < 0.0f) {

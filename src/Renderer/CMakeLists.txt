@@ -40,6 +40,7 @@ set(RENDERER_SOURCES
     ShaderHash.cpp
     RenderParameterCollector.cpp
     MaterialDescriptorManager.cpp
+    RenderContext.cpp
 )
 
 # Header files (add to project so they show up in Visual Studio)
@@ -75,6 +76,7 @@ set(RENDERER_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/ShaderHash.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/RenderParameterCollector.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/MaterialDescriptorManager.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/RenderContext.h
 )
 
 # Create static library (changed from SHARED to break circular dependency with FirstEngine_Resources)
@@ -103,6 +105,19 @@ target_link_libraries(FirstEngine_Renderer
         FirstEngine_Shader  # For ShaderSourceCompiler
         glm::glm
 )
+
+# Link GLFW (needed for RenderContext.cpp which uses GLFW)
+if(TARGET glfw)
+    target_link_libraries(FirstEngine_Renderer PUBLIC glfw)
+elseif(TARGET glfw3)
+    target_link_libraries(FirstEngine_Renderer PUBLIC glfw3)
+elseif(glfw3_FOUND)
+    target_link_libraries(FirstEngine_Renderer PUBLIC ${GLFW3_LIBRARY})
+    target_include_directories(FirstEngine_Renderer PUBLIC ${GLFW3_INCLUDE_DIR})
+elseif(glfw_FOUND)
+    target_link_libraries(FirstEngine_Renderer PUBLIC ${GLFW_LIBRARIES})
+    target_include_directories(FirstEngine_Renderer PUBLIC ${GLFW_INCLUDE_DIRS})
+endif()
 
 # Compiler-specific options
 if(MSVC)

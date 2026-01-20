@@ -1,6 +1,7 @@
 #include "FirstEngine/Core/Application.h"
 #include "FirstEngine/Core/Window.h"
 #include "FirstEngine/Core/CommandLine.h"
+#include "FirstEngine/Core/RenderDoc.h"
 #include "FirstEngine/Device/VulkanDevice.h"
 #include "FirstEngine/Renderer/FrameGraph.h"
 #include "FirstEngine/Renderer/FrameGraphExecutionPlan.h"
@@ -11,6 +12,7 @@
 #include "FirstEngine/Renderer/RenderCommandList.h"
 #include "FirstEngine/Renderer/CommandRecorder.h"
 #include "FirstEngine/Renderer/RenderConfig.h"
+#include "FirstEngine/Renderer/RenderContext.h"
 #include "FirstEngine/Renderer/IRenderResource.h"
 #include "FirstEngine/Renderer/RenderResourceManager.h"
 #include "FirstEngine/Renderer/ShaderCollectionsTools.h"
@@ -36,191 +38,74 @@ namespace fs = std::filesystem;
 namespace fs = std::experimental::filesystem;
 #endif
 
-#ifdef _WIN32
-// RenderDoc integration
-#define WIN32_LEAN_AND_MEAN  // Exclude rarely-used stuff from Windows headers
-#include <windows.h>
-#include <processthreadsapi.h>
-#undef CreateSemaphore  // Undefine Windows API macro to avoid conflict with our method
-
-// RenderDoc API structure (simplified - only the functions we need)
-// Note: This structure must match RenderDoc's actual API structure layout
-// The function pointers must be in the correct order
-typedef struct RENDERDOC_API_1_4_2 {
-    void (*StartFrameCapture)(void* device, void* wndHandle);
-    void (*EndFrameCapture)(void* device, void* wndHandle);
-    void (*SetCaptureOptionU32)(uint32_t opt, uint32_t val);
-    void (*SetCaptureOptionF32)(uint32_t opt, float val);
-    uint32_t (*GetCapture)(uint32_t idx, char* logfile, uint32_t* pathlength, uint64_t* timestamp);
-    void (*TriggerCapture)(void);
-    uint32_t (*IsTargetControlConnected)(void);
-    uint32_t (*LaunchReplayUI)(uint32_t connectRemote, const char* cmdline);
-    void (*SetActiveWindow)(void* device, void* wndHandle);
-    uint32_t (*IsFrameCapturing)(void);
-    void (*SetCaptureFileTemplate)(const char* pathtemplate);
-    const char* (*GetCaptureFileTemplate)(void);
-    uint32_t (*GetNumCaptures)(void);
-    void (*ShowReplayUI)(void);
-    void (*SetLogFile)(const char* logfile);
-    void (*LogMessage)(uint32_t severity, const char* message);
-} RENDERDOC_API_1_4_2;
-
-typedef int (*pRENDERDOC_GetAPI)(int, void*);
-#define eRENDERDOC_API_Version_1_4_2 10402
-#endif
-
 class RenderApp : public FirstEngine::Core::Application {
 public:
     RenderApp(int width, int height, const std::string& title, bool headless)
         : Application(width, height, title, headless),
-          m_Device(nullptr),
-          m_FrameGraph(nullptr),
-          m_CommandBuffer(nullptr),
-          m_Scene(nullptr),
-          m_RenderConfig(),
-          m_CurrentImageIndex(0),
+          m_pRenderContext(nullptr),
           m_LastTime(std::chrono::high_resolution_clock::now()) {
-        // Initialize render config with window dimensions
-        m_RenderConfig.SetResolution(width, height);
     }
 
     ~RenderApp() override {
-        // Wait for GPU to finish before destroying resources
-        if (m_Device) {
-            m_Device->WaitIdle();
+        // 等待 GPU 完成
+        if (m_pRenderContext && m_pRenderContext->GetDevice()) {
+            m_pRenderContext->GetDevice()->WaitIdle();
         }
 
-        // Release command buffer (GPU has finished, safe to destroy)
-        m_CommandBuffer.reset();
-
-        // Destroy synchronization objects
-        if (m_Device) {
-            if (m_InFlightFence) {
-                m_Device->DestroyFence(m_InFlightFence);
-            }
-            if (m_RenderFinishedSemaphore) {
-                m_Device->DestroySemaphore(m_RenderFinishedSemaphore);
-            }
-            if (m_ImageAvailableSemaphore) {
-                m_Device->DestroySemaphore(m_ImageAvailableSemaphore);
-            }
-        }
-
+        // 销毁 swapchain（窗口相关，RenderApp 管理）
         m_Swapchain.reset();
 
-        // SceneRenderer is now owned by Passes, no need to delete here
-        if (m_Scene) {
-            delete m_Scene;
+        // 关闭并销毁 RenderContext（它会清理所有内部管理的资源）
+        if (m_pRenderContext) {
+            m_pRenderContext->ShutdownEngine();
+            delete m_pRenderContext;
+            m_pRenderContext = nullptr;
         }
-        if (m_FrameGraph) {
-            delete m_FrameGraph;
-        }
-        if (m_RenderPipeline) {
-            delete m_RenderPipeline;
-        }
-        if (m_Device) {
-            m_Device->Shutdown();
-            delete m_Device;
-        }
-
-        // Shutdown RenderResourceManager singleton
-        FirstEngine::Renderer::RenderResourceManager::Shutdown();
-        
-        // Shutdown ShaderCollectionsTools and ShaderModuleTools singletons
-        FirstEngine::Renderer::ShaderCollectionsTools::Shutdown();
-        FirstEngine::Renderer::ShaderModuleTools::Shutdown();
     }
 
     bool Initialize() override {
         // Initialize RenderDoc BEFORE creating Vulkan instance
         // This is critical - RenderDoc needs to intercept Vulkan calls from the start
-        InitializeRenderDoc();
+#ifdef _WIN32
+        FirstEngine::Core::RenderDocHelper::Initialize();
+#endif
 
-        // Initialize RenderResourceManager singleton
-        FirstEngine::Renderer::RenderResourceManager::Initialize();
+        // 创建 RenderContext 实例
+        m_pRenderContext = new FirstEngine::Renderer::RenderContext();
 
-        // Create device (this will create Vulkan instance)
-        m_Device = new FirstEngine::Device::VulkanDevice();
+        // 获取窗口句柄
         void* windowHandle = GetWindow() ? GetWindow()->GetHandle() : nullptr;
         if (!windowHandle) {
             std::cerr << "Error: No window handle available!" << std::endl;
             return false;
         }
-        
-        if (!m_Device->Initialize(windowHandle)) {
-            std::cerr << "Failed to initialize Vulkan device!" << std::endl;
+
+        // 获取窗口尺寸
+        int width = GetWindow() ? GetWindow()->GetWidth() : 1280;
+        int height = GetWindow() ? GetWindow()->GetHeight() : 720;
+
+        // 使用 RenderContext::InitializeForWindow 初始化渲染引擎
+        // 这会创建 device、pipeline、frameGraph、同步对象、scene 等
+        if (!m_pRenderContext->InitializeForWindow(windowHandle, width, height)) {
+            std::cerr << "Failed to initialize RenderContext!" << std::endl;
             return false;
         }
 
-        // Create render pipeline based on RenderConfig
-        const auto& pipelineConfig = m_RenderConfig.GetPipelineConfig();
-        
-        // Create pipeline instance based on type
-        switch (pipelineConfig.type) {
-            case FirstEngine::Renderer::RenderPipelineType::Deferred: {
-                m_RenderPipeline = new FirstEngine::Renderer::DeferredRenderPipeline(m_Device);
-                break;
-            }
-            case FirstEngine::Renderer::RenderPipelineType::Forward: {
-                // TODO: Implement ForwardRenderPipeline
-                std::cerr << "Forward rendering pipeline not yet implemented, falling back to deferred." << std::endl;
-                m_RenderPipeline = new FirstEngine::Renderer::DeferredRenderPipeline(m_Device);
-                break;
-            }
-            default: {
-                std::cerr << "Unknown pipeline type, using default deferred rendering." << std::endl;
-                m_RenderPipeline = new FirstEngine::Renderer::DeferredRenderPipeline(m_Device);
-                break;
-            }
-        }
-
-        // Create FrameGraph
-        m_FrameGraph = new FirstEngine::Renderer::FrameGraph(m_Device);
-        
-        // Note: FrameGraph will be rebuilt every frame in OnPrepareFrameGraph()
-        // This allows per-frame adjustments to the rendering pipeline configuration
-        // Initial build is not needed here as it will be done in the first OnPrepareFrameGraph() call
-
-        // Create swapchain
+        // 创建 swapchain（窗口相关，RenderApp 管理）
         if (GetWindow()) {
-            // Use RenderConfig for resolution
-            const auto& resolution = m_RenderConfig.GetResolution();
+            const auto& resolution = m_pRenderContext->GetRenderConfig().GetResolution();
             FirstEngine::RHI::SwapchainDescription swapchainDesc;
             swapchainDesc.width = resolution.width;
             swapchainDesc.height = resolution.height;
-            m_Swapchain = m_Device->CreateSwapchain(GetWindow()->GetHandle(), swapchainDesc);
+            m_Swapchain = m_pRenderContext->GetDevice()->CreateSwapchain(windowHandle, swapchainDesc);
             if (!m_Swapchain) {
                 std::cerr << "Failed to create swapchain!" << std::endl;
                 return false;
             }
         }
 
-        // Create synchronization objects
-        m_ImageAvailableSemaphore = m_Device->CreateSemaphore();
-        m_RenderFinishedSemaphore = m_Device->CreateSemaphore();
-        m_InFlightFence = m_Device->CreateFence(true); // Start signaled
-
-        if (!m_ImageAvailableSemaphore || !m_RenderFinishedSemaphore || !m_InFlightFence) {
-            std::cerr << "Failed to create synchronization objects!" << std::endl;
-            return false;
-        }
-
-        // Initialize ResourceManager
-        FirstEngine::Resources::ResourceManager::Initialize();
+        // 加载场景（如果存在）
         FirstEngine::Resources::ResourceManager& resourceManager = FirstEngine::Resources::ResourceManager::GetInstance();
-
-        // Initialize ShaderCollectionsTools (loads all shaders from Package/Shaders)
-        auto& collectionsTools = FirstEngine::Renderer::ShaderCollectionsTools::GetInstance();
-        if (!collectionsTools.Initialize("build/Package/Shaders")) {
-            std::cerr << "Warning: Failed to initialize ShaderCollectionsTools, shaders may not be available." << std::endl;
-        } else {
-            std::cout << "ShaderCollectionsTools initialized successfully." << std::endl;
-        }
-        
-        // Initialize ShaderModuleTools with device (for creating GPU shader modules)
-        auto& moduleTools = FirstEngine::Renderer::ShaderModuleTools::GetInstance();
-        moduleTools.Initialize(m_Device);
-        std::cout << "ShaderModuleTools initialized successfully." << std::endl;
 
         // Helper function to resolve path (try multiple locations)
         auto resolvePath = [](const std::string& relativePath) -> std::string {
@@ -300,7 +185,7 @@ public:
         // Load resource manifest
         std::string manifestPath = resolvePath("build/Package/resource_manifest.json");
         if (fs::exists(manifestPath)) {
-            if (resourceManager.GetIDManager().LoadManifest(manifestPath)) {
+            if (resourceManager.LoadManifest(manifestPath)) {
                 std::cout << "Loaded resource manifest from: " << manifestPath << std::endl;
             } else {
                 std::cerr << "Failed to load resource manifest!" << std::endl;
@@ -310,13 +195,10 @@ public:
             std::cout << "Will register resources on demand." << std::endl;
         }
 
-        // Create scene
-        m_Scene = new FirstEngine::Resources::Scene("Example Scene");
-
-        // Load scene from file
+        // 加载场景（如果存在）
         std::string scenePath = resolvePath("build/Package/Scenes/example_scene.json");
         if (fs::exists(scenePath)) {
-            if (FirstEngine::Resources::SceneLoader::LoadFromFile(scenePath, *m_Scene)) {
+            if (m_pRenderContext->LoadScene(scenePath)) {
                 std::cout << "Loaded scene from: " << scenePath << std::endl;
             } else {
                 std::cerr << "Failed to load scene from: " << scenePath << std::endl;
@@ -325,9 +207,6 @@ public:
             std::cerr << "Scene file not found: " << scenePath << std::endl;
             std::cerr << "Current working directory: " << fs::current_path().string() << std::endl;
         }
-
-        // SceneRenderer is now owned by each Pass (IRenderPass)
-        // No need to create a global SceneRenderer anymore
 
         std::cout << "RenderApp initialized successfully!" << std::endl;
         return true;
@@ -339,183 +218,70 @@ protected:
     }
 
     void OnPrepareFrameGraph() override {
-        if (!m_FrameGraph || !m_RenderPipeline) {
+        if (!m_pRenderContext || !m_pRenderContext->IsEngineInitialized()) {
             return;
         }
 
-        // Rebuild FrameGraph every frame to allow dynamic configuration changes
-        // This enables per-frame adjustments to the rendering pipeline
-        // 
-        // Note: Resource release is safe here because:
-        // - OnSubmit() (previous frame) already waited for GPU to complete (WaitForFence)
-        // - This is called after OnSubmit(), so GPU is guaranteed to be done with old resources
-        // - New resources will be allocated after this, and used in the next OnSubmit()
-        
-        // Release old resources (from previous frame)
-        m_FrameGraph->ReleaseResources();
-        
-        // Clear the graph structure
-        m_FrameGraph->Clear();
-        
-        // Rebuild FrameGraph structure from pipeline (using current RenderConfig)
-        // This allows the pipeline to be reconfigured per frame based on RenderConfig changes
-        if (!m_RenderPipeline->BuildFrameGraph(*m_FrameGraph, m_RenderConfig)) {
-            std::cerr << "Failed to rebuild FrameGraph!" << std::endl;
-            return;
-        }
+        // Begin RendRenderDocHelpererDoc frame capture
+#ifdef _WIN32
+        FirstEngine::Core::RenderDocHelper::BeginFrame();
+#endif
 
-        // Build FrameGraph execution plan (Device/CommandBuffer independent)
-        // This determines the rendering pipeline structure and what resources are needed
-        // This happens before OnRender(), so we can use this information to decide
-        // which scene resources need to be collected
-        if (!m_RenderPipeline->BuildExecutionPlan(*m_FrameGraph, m_FrameGraphPlan)) {
-            std::cerr << "Failed to build execution plan!" << std::endl;
+        // 使用 RenderContext 构建 FrameGraph（所有参数都从内部获取）
+        if (!m_pRenderContext->BeginFrame()) {
+            std::cerr << "Failed to begin frame in RenderContext!" << std::endl;
             return;
-        }
-
-        // Compile FrameGraph based on the execution plan (allocate new resources)
-        // Note: Resource allocation happens here, after the plan structure is built
-        // New resources will be used in the current frame's rendering
-        if (!m_RenderPipeline->Compile(*m_FrameGraph, m_FrameGraphPlan)) {
-            std::cerr << "Failed to compile FrameGraph!" << std::endl;
         }
     }
 
     void OnCreateResources() override {
-        if (!m_Device) {
+        if (!m_pRenderContext || !m_pRenderContext->IsEngineInitialized()) {
             return;
         }
 
-        // ===== Resource Creation Phase (IRenderResource Processing) =====
-        // Process scheduled resources (create/update/destroy)
-        // Only processes IRenderResource* directly, no Entity/Component references
-        // Supports frame-by-frame processing for performance (maxResourcesPerFrame = 0 means unlimited)
-        // In production, you might want to limit this to avoid frame spikes
-        uint32_t maxResourcesPerFrame = 0; // 0 = unlimited, set to a number (e.g., 10) to limit per frame
-        FirstEngine::Renderer::RenderResourceManager::GetInstance().ProcessScheduledResources(m_Device, maxResourcesPerFrame);
-        // ===== End Resource Creation Phase =====
+        // 使用 RenderContext 处理资源（device 参数为 nullptr 时使用内部管理的 device）
+        m_pRenderContext->ProcessResources(nullptr, 0);
     }
 
     void OnRender() override {
-        if (!m_Scene || !m_FrameGraph) {
+        if (!m_pRenderContext || !m_pRenderContext->IsEngineInitialized()) {
             return;
         }
 
-        // Clear command lists from previous frame
-        m_FrameGraphRenderCommands.Clear();
-
-        // Update render config with current window dimensions
+        // 更新渲染配置（如果窗口尺寸改变）
         if (GetWindow()) {
-            m_RenderConfig.UpdateResolutionFromWindow(
+            m_pRenderContext->SetRenderConfig(
                 GetWindow()->GetWidth(),
-                GetWindow()->GetHeight()
+                GetWindow()->GetHeight(),
+                1.0f
             );
         }
 
-        // Execute FrameGraph to get render command list (data structure, no CommandBuffer dependency)
-        // FrameGraph::Execute will:
-        //   1. For each Pass with SceneRenderer, call Render() to generate SceneRenderCommands
-        //   2. Pass SceneRenderCommands to OnDraw() callback
-        // Scene and RenderConfig are passed to Execute, which will forward them to Passes with SceneRenderer
-        m_FrameGraphRenderCommands = m_FrameGraph->Execute(m_FrameGraphPlan, m_Scene, m_RenderConfig);
+        // 使用 RenderContext 执行 FrameGraph（所有参数都从内部获取）
+        if (!m_pRenderContext->ExecuteFrameGraph()) {
+            std::cerr << "Failed to execute FrameGraph in RenderContext!" << std::endl;
+            return;
+        }
     }
 
     void OnSubmit() override {
-        if (!m_Device || !m_FrameGraph || !m_Swapchain) {
+        if (!m_pRenderContext || !m_pRenderContext->IsEngineInitialized() || !m_Swapchain) {
             return;
         }
 
-        // Wait for previous frame to complete before starting new frame
-        // This ensures command buffer and semaphores from previous frame are no longer in use
-        m_Device->WaitForFence(m_InFlightFence, UINT64_MAX);
-        m_Device->ResetFence(m_InFlightFence);
-
-        // Now that fence is signaled, it's safe to release the previous frame's command buffer
-        // The command buffer from previous frame is no longer in use by GPU
-        m_CommandBuffer.reset();
-
-
-        // Begin RenderDoc frame capture
-        // Note: For Vulkan, RenderDoc works as an implicit layer and automatically captures frames
-        // Manual capture calls are disabled to avoid access violations
-        // RenderDoc will automatically capture when launched from RenderDoc UI or injected into process
-        // BeginRenderDocFrame();
-
-        // Acquire next swapchain image
-        // m_ImageAvailableSemaphore will be signaled when image is available
-        // After waiting for fence, the semaphore from previous frame should be unsignaled
-        if (!m_Swapchain->AcquireNextImage(m_ImageAvailableSemaphore, nullptr, m_CurrentImageIndex)) {
-            // Image acquisition failed or swapchain needs recreation
-            return;
-        }
-
-        // Create command buffer for this frame
-        m_CommandBuffer = m_Device->CreateCommandBuffer();
-        if (!m_CommandBuffer) {
-            return;
-        }
-
-        // Begin recording
-        m_CommandBuffer->Begin();
-
-        // Transition swapchain image from undefined to color attachment layout
-        auto* swapchainImage = m_Swapchain->GetImage(m_CurrentImageIndex);
-        if (swapchainImage) {
-            m_CommandBuffer->TransitionImageLayout(
-                swapchainImage,
-                FirstEngine::RHI::Format::Undefined, // Old layout (undefined for first use)
-                FirstEngine::RHI::Format::B8G8R8A8_UNORM, // New layout (color attachment)
-                1 // mipLevels
-            );
-        }
-
-        // Record render commands to command buffer
-        // FrameGraph commands were generated in OnRender() as data structures
-        // Scene commands have been merged into FrameGraph passes (geometry/forward)
-        // Now we convert these data structures to actual GPU commands
-        // This provides complete logical isolation between data generation and command recording
+        // 使用 RenderContext 提交渲染（只需要提供 swapchain，其他都从内部获取）
+        FirstEngine::Renderer::RenderContext::RenderParams params;
+        params.swapchain = m_Swapchain.get();
         
-        // Record FrameGraph render commands (includes merged scene commands)
-        // Scene commands are now part of FrameGraph passes, so we only need to record FrameGraph commands
-        if (!m_FrameGraphRenderCommands.IsEmpty()) {
-            m_CommandRecorder.RecordCommands(m_CommandBuffer.get(), m_FrameGraphRenderCommands);
+        if (!m_pRenderContext->SubmitFrame(params)) {
+            // 提交失败（可能是图像获取失败或需要重建 swapchain）
+            return;
         }
 
-        // Transition swapchain image from color attachment to present layout
-        // This is a direct CommandBuffer operation (not part of scene/FrameGraph data)
-        // This must be done before ending the command buffer
-        if (swapchainImage) {
-            m_CommandBuffer->TransitionImageLayout(
-                swapchainImage,
-                FirstEngine::RHI::Format::B8G8R8A8_UNORM, // Old layout (color attachment)
-                FirstEngine::RHI::Format::B8G8R8A8_SRGB, // New layout (present src - using SRGB format as indicator)
-                1 // mipLevels
-            );
-        }
-
-        // End recording
-        m_CommandBuffer->End();
-
-        // Submit command buffer
-        // Wait for image acquisition, signal render finished
-        std::vector<FirstEngine::RHI::SemaphoreHandle> waitSemaphores = {m_ImageAvailableSemaphore};
-        std::vector<FirstEngine::RHI::SemaphoreHandle> signalSemaphores = {m_RenderFinishedSemaphore};
-        m_Device->SubmitCommandBuffer(m_CommandBuffer.get(), waitSemaphores, signalSemaphores, m_InFlightFence);
-
-        // Present - wait for render finished
-        std::vector<FirstEngine::RHI::SemaphoreHandle> presentWaitSemaphores = {m_RenderFinishedSemaphore};
-        m_Swapchain->Present(m_CurrentImageIndex, presentWaitSemaphores);
-
-        // End RenderDoc frame capture
-        // Note: For Vulkan, RenderDoc works as an implicit layer and automatically captures frames
-        // Manual capture calls are disabled to avoid access violations
-        // RenderDoc will automatically capture when launched from RenderDoc UI or injected into process
-        // EndRenderDocFrame();
-
-        // Note: Command buffer is stored as member variable and will be released
-        // at the start of next frame after waiting for fence, ensuring GPU has finished using it
-        // Semaphores are reused, not destroyed here
-        // Render queue is cleared at the start of OnRender() for next frame
+        // End RenderDoc frame capture (after frame is submitted)
+#ifdef _WIN32
+        FirstEngine::Core::RenderDocHelper::EndFrame();
+#endif
     }
 
     void OnResize(int width, int height) override {
@@ -524,15 +290,19 @@ protected:
             return;
         }
 
-        // Update render config with new resolution
-        m_RenderConfig.UpdateResolutionFromWindow(width, height);
+        if (!m_pRenderContext || !m_pRenderContext->IsEngineInitialized()) {
+            return;
+        }
 
-        if (m_FrameGraph && m_Device) {
-            // Wait for GPU to finish before recreating swapchain
-            m_Device->WaitIdle();
+        // 更新 RenderContext 的渲染配置
+        m_pRenderContext->SetRenderConfig(width, height, 1.0f);
 
-            // Recreate swapchain with new dimensions using Recreate() method
-            // This properly handles old swapchain destruction
+        // 等待 GPU 完成
+        auto* device = m_pRenderContext->GetDevice();
+        if (device) {
+            device->WaitIdle();
+
+            // 重建 swapchain（窗口相关，RenderApp 管理）
             if (m_Swapchain) {
                 try {
                     if (!m_Swapchain->Recreate()) {
@@ -544,12 +314,12 @@ protected:
                     return;
                 }
             } else if (GetWindow()) {
-                // If swapchain doesn't exist yet, create it
+                // 如果 swapchain 不存在，创建它
                 try {
                     FirstEngine::RHI::SwapchainDescription swapchainDesc;
                     swapchainDesc.width = width;
                     swapchainDesc.height = height;
-                    m_Swapchain = m_Device->CreateSwapchain(GetWindow()->GetHandle(), swapchainDesc);
+                    m_Swapchain = device->CreateSwapchain(GetWindow()->GetHandle(), swapchainDesc);
                     
                     if (!m_Swapchain) {
                         std::cerr << "Failed to create swapchain on resize!" << std::endl;
@@ -560,139 +330,17 @@ protected:
                     return;
                 }
             }
-
-            // Rebuild FrameGraph with new dimensions from RenderConfig
-            if (m_RenderPipeline && m_FrameGraph) {
-                m_FrameGraph->Clear();
-                if (!m_RenderPipeline->BuildFrameGraph(*m_FrameGraph, m_RenderConfig)) {
-                    std::cerr << "Failed to rebuild FrameGraph on resize!" << std::endl;
-                    return;
-                }
-            }
         }
     }
 
 private:
-    void InitializeRenderDoc() {
-#ifdef _WIN32
-        // Try to load renderdoc.dll from multiple locations
-        HMODULE mod = nullptr;
-        
-        // First, try to get already loaded module (if injected by RenderDoc)
-        mod = GetModuleHandleA("renderdoc.dll");
-        
-        // If not found, try to load from common RenderDoc installation paths
-        if (!mod) {
-            const char* renderdocPaths[] = {
-                "C:\\Program Files\\RenderDoc\\renderdoc.dll",
-                "C:\\Program Files (x86)\\RenderDoc\\renderdoc.dll",
-                nullptr
-            };
-            
-            for (int i = 0; renderdocPaths[i] != nullptr; i++) {
-                mod = LoadLibraryA(renderdocPaths[i]);
-                if (mod) {
-                    std::cout << "Loaded RenderDoc from: " << renderdocPaths[i] << std::endl;
-                    break;
-                }
-            }
-        }
-        
-        if (mod) {
-            pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)GetProcAddress(mod, "RENDERDOC_GetAPI");
-            if (RENDERDOC_GetAPI) {
-                RENDERDOC_API_1_4_2* rdoc_api = nullptr;
-                int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_4_2, (void**)&rdoc_api);
-                if (ret == 1 && rdoc_api) {
-                    // Verify the API structure is valid by checking function pointers
-                    if (rdoc_api->StartFrameCapture && rdoc_api->EndFrameCapture) {
-                        m_RenderDocAPI = rdoc_api;
-                        std::cout << "RenderDoc API initialized successfully!" << std::endl;
-                        
-                        // Set capture options (optional)
-                        if (rdoc_api->SetCaptureOptionU32) {
-                            rdoc_api->SetCaptureOptionU32(1, 1); // Allow VSync
-                            rdoc_api->SetCaptureOptionU32(2, 0); // Allow fullscreen
-                        }
-                        
-                        // Check if RenderDoc is connected
-                        if (rdoc_api->IsTargetControlConnected && rdoc_api->IsTargetControlConnected()) {
-                            std::cout << "RenderDoc target control is connected!" << std::endl;
-                        } else {
-                            std::cout << "RenderDoc target control is NOT connected. Make sure RenderDoc UI is running." << std::endl;
-                        }
-                    } else {
-                        std::cout << "RenderDoc API structure is invalid (missing function pointers)." << std::endl;
-                    }
-                } else {
-                    std::cout << "Failed to get RenderDoc API. Return code: " << ret << std::endl;
-                }
-            } else {
-                std::cout << "Failed to get RENDERDOC_GetAPI function pointer." << std::endl;
-            }
-        } else {
-            std::cout << "RenderDoc DLL not found. RenderDoc capture will not be available." << std::endl;
-            std::cout << "To use RenderDoc:" << std::endl;
-            std::cout << "  1. Install RenderDoc from https://renderdoc.org/" << std::endl;
-            std::cout << "  2. Launch this application from RenderDoc UI (Launch Application)" << std::endl;
-            std::cout << "  3. Or inject RenderDoc into this process (Inject into Process)" << std::endl;
-        }
-        // If RenderDoc is not available, that's okay - program will run normally
-#endif
-    }
-
-    void BeginRenderDocFrame() {
-#ifdef _WIN32
-        if (m_RenderDocAPI) {
-            RENDERDOC_API_1_4_2* api = (RENDERDOC_API_1_4_2*)m_RenderDocAPI;
-            // Pass nullptr for both parameters - RenderDoc will automatically capture all devices/windows
-            // This is the safest approach and avoids access violation errors
-            if (api && api->StartFrameCapture) {
-                try {
-                    api->StartFrameCapture(nullptr, nullptr);
-                } catch (...) {
-                    // Silently ignore errors - RenderDoc might not be fully initialized yet
-                }
-            }
-        }
-#endif
-    }
-
-    void EndRenderDocFrame() {
-#ifdef _WIN32
-        if (m_RenderDocAPI) {
-            RENDERDOC_API_1_4_2* api = (RENDERDOC_API_1_4_2*)m_RenderDocAPI;
-            // Pass nullptr for both parameters - RenderDoc will automatically capture all devices/windows
-            if (api && api->EndFrameCapture) {
-                try {
-                    api->EndFrameCapture(nullptr, nullptr);
-                } catch (...) {
-                    // Silently ignore errors - RenderDoc might not be fully initialized yet
-                }
-            }
-        }
-#endif
-    }
-
-    FirstEngine::Device::VulkanDevice* m_Device;
-    FirstEngine::Renderer::IRenderPipeline* m_RenderPipeline = nullptr; // Render pipeline (Deferred, Forward, etc.)
-    FirstEngine::Renderer::FrameGraph* m_FrameGraph;
-    FirstEngine::Renderer::FrameGraphExecutionPlan m_FrameGraphPlan; // FrameGraph execution plan (Device/CommandBuffer independent)
+    // RenderContext 指针（管理所有渲染相关资源：device、pipeline、frameGraph、scene、同步对象等）
+    FirstEngine::Renderer::RenderContext* m_pRenderContext = nullptr;
+    
+    // Swapchain（窗口相关，RenderApp 管理）
     std::unique_ptr<FirstEngine::RHI::ISwapchain> m_Swapchain;
-    FirstEngine::RHI::SemaphoreHandle m_ImageAvailableSemaphore;
-    FirstEngine::RHI::SemaphoreHandle m_RenderFinishedSemaphore;
-    FirstEngine::RHI::FenceHandle m_InFlightFence;
-    std::unique_ptr<FirstEngine::RHI::ICommandBuffer> m_CommandBuffer; // Store command buffer to defer destruction
-    FirstEngine::Resources::Scene* m_Scene;
-    FirstEngine::Renderer::RenderConfig m_RenderConfig; // Global render configuration (camera, resolution, flags)
-    FirstEngine::Renderer::RenderCommandList m_FrameGraphRenderCommands; // Render commands from FrameGraph (CommandBuffer independent)
-    FirstEngine::Renderer::CommandRecorder m_CommandRecorder; // Converts RenderCommandList to CommandBuffer commands
-    uint32_t m_CurrentImageIndex = 0; // Store current image index for OnSubmit
+    
     std::chrono::high_resolution_clock::time_point m_LastTime;
-
-#ifdef _WIN32
-    RENDERDOC_API_1_4_2* m_RenderDocAPI = nullptr; // RenderDoc API pointer
-#endif
 };
 
 int main(int argc, char* argv[]) {

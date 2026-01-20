@@ -1,19 +1,23 @@
 #include "FirstEngine/Editor/EditorAPI.h"
 #include "FirstEngine/Core/Application.h"
 #include "FirstEngine/Core/Window.h"
+#include "FirstEngine/Core/RenderDoc.h"
 #include "FirstEngine/Device/VulkanDevice.h"
 #include "FirstEngine/Renderer/FrameGraph.h"
+#include "FirstEngine/Renderer/FrameGraphExecutionPlan.h"
 #include "FirstEngine/Renderer/DeferredRenderPipeline.h"
 #include "FirstEngine/Renderer/RenderConfig.h"
 #include "FirstEngine/Renderer/RenderResourceManager.h"
-#include "FirstEngine/Renderer/ShaderCollectionsTools.h"
-#include "FirstEngine/Renderer/ShaderModuleTools.h"
+#include "FirstEngine/Renderer/RenderCommandList.h"
+#include "FirstEngine/Renderer/CommandRecorder.h"
+#include "FirstEngine/Renderer/RenderContext.h"
 #include "FirstEngine/RHI/IDevice.h"
 #include "FirstEngine/RHI/ISwapchain.h"
 #include <memory>
 #include <unordered_map>
 #include <string>
 #include <iostream>
+#include <mutex>
 
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -24,22 +28,13 @@
 #include <windows.h>
 #endif
 
-// Internal structures
-struct RenderEngine {
-    FirstEngine::Device::VulkanDevice* device = nullptr;
-    FirstEngine::Device::VulkanRenderer* renderer = nullptr;  // Access to Vulkan instance
-    FirstEngine::Renderer::FrameGraph* frameGraph = nullptr;
-    FirstEngine::Renderer::DeferredRenderPipeline* renderPipeline = nullptr;
-    FirstEngine::Renderer::RenderConfig renderConfig;
-    void* windowHandle = nullptr;
-#ifdef _WIN32
-    GLFWwindow* hiddenGLFWWindow = nullptr;  // Hidden GLFW window for Vulkan initialization
-#endif
-    bool initialized = false;
-};
+// 全局渲染引擎管理器（单例模式）
+// RenderContext 现在管理完整的渲染引擎状态，不再需要单独的 RenderEngine 结构
+static FirstEngine::Renderer::RenderContext* g_GlobalRenderContext = nullptr;
+static std::mutex g_RenderContextMutex;
 
+// Viewport 结构（简化，不再需要 engine 指针）
 struct RenderViewport {
-    RenderEngine* engine = nullptr;
     void* parentWindowHandle = nullptr;
     void* childWindowHandle = nullptr;  // Win32 HWND for child window
     FirstEngine::RHI::ISwapchain* swapchain = nullptr;
@@ -77,157 +72,85 @@ struct RenderViewport {
 #endif
 };
 
+
 // Engine management
 extern "C" {
 
-RenderEngine* EditorAPI_CreateEngine(void* windowHandle, int width, int height) {
-    auto* engine = new RenderEngine();
-    engine->windowHandle = windowHandle;
-    engine->renderConfig.SetResolution(width, height);
-    return engine;
+// 创建引擎（现在只是初始化全局 RenderContext）
+void* EditorAPI_CreateEngine(void* windowHandle, int width, int height) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
+    
+    if (g_GlobalRenderContext) {
+        // 已经存在，返回现有实例
+        return g_GlobalRenderContext;
+    }
+    
+    // 创建全局 RenderContext
+    g_GlobalRenderContext = new FirstEngine::Renderer::RenderContext();
+    return g_GlobalRenderContext;
 }
 
-void EditorAPI_DestroyEngine(RenderEngine* engine) {
-    if (!engine) return;
+// 销毁引擎
+void EditorAPI_DestroyEngine(void* engine) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
-    EditorAPI_ShutdownEngine(engine);
-    delete engine;
+    if (g_GlobalRenderContext) {
+        delete g_GlobalRenderContext;
+        g_GlobalRenderContext = nullptr;
+    }
 }
 
-bool EditorAPI_InitializeEngine(RenderEngine* engine) {
-    if (!engine || engine->initialized) return false;
+// 初始化引擎
+bool EditorAPI_InitializeEngine(void* engine) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
-    try {
-        // Initialize singleton managers
-        FirstEngine::Renderer::RenderResourceManager::Initialize();
-        
-        // Initialize ShaderCollectionsTools with shader directory
-        auto& collectionsTools = FirstEngine::Renderer::ShaderCollectionsTools::GetInstance();
-        if (!collectionsTools.Initialize("build/Package/Shaders")) {
-            std::cerr << "Warning: Failed to initialize ShaderCollectionsTools, shaders may not be available." << std::endl;
-        }
-        
-#ifdef _WIN32
-        // For editor mode, we need a GLFW window for Vulkan initialization
-        // Create a hidden GLFW window (VulkanDevice expects GLFWwindow*)
-        if (!glfwInit()) {
-            std::cerr << "Failed to initialize GLFW for editor" << std::endl;
-            return false;
-        }
-        
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);  // Hidden window
-        GLFWwindow* glfwWindow = glfwCreateWindow(1, 1, "FirstEngine Editor Hidden", nullptr, nullptr);
-        
-        if (!glfwWindow) {
-            std::cerr << "Failed to create hidden GLFW window for editor" << std::endl;
-            glfwTerminate();
-            return false;
-        }
-        
-        // Use GLFW window for initialization
-        void* glfwHandle = static_cast<void*>(glfwWindow);
-        engine->hiddenGLFWWindow = glfwWindow;  // Store for cleanup
-#else
-        // Non-Windows: use provided window handle
-        void* glfwHandle = engine->windowHandle;
-#endif
-        
-        // Create Vulkan device
-        engine->device = new FirstEngine::Device::VulkanDevice();
-        if (!engine->device->Initialize(glfwHandle)) {
-            delete engine->device;
-            engine->device = nullptr;
-#ifdef _WIN32
-            if (engine->hiddenGLFWWindow) {
-                glfwDestroyWindow(engine->hiddenGLFWWindow);
-                engine->hiddenGLFWWindow = nullptr;
-            }
-            glfwTerminate();
-#endif
-            return false;
-        }
-        
-        // Get renderer for accessing Vulkan instance
-        engine->renderer = engine->device->GetVulkanRenderer();
-        if (!engine->renderer) {
-            delete engine->device;
-            engine->device = nullptr;
-#ifdef _WIN32
-            if (engine->hiddenGLFWWindow) {
-                glfwDestroyWindow(engine->hiddenGLFWWindow);
-                engine->hiddenGLFWWindow = nullptr;
-            }
-            glfwTerminate();
-#endif
-            return false;
-        }
-        
-        // Initialize ShaderModuleTools with device (for creating GPU shader modules)
-        auto& moduleTools = FirstEngine::Renderer::ShaderModuleTools::GetInstance();
-        moduleTools.Initialize(engine->device);
-        
-        // Create FrameGraph
-        engine->frameGraph = new FirstEngine::Renderer::FrameGraph(engine->device);
-        
-        // Create render pipeline
-        engine->renderPipeline = new FirstEngine::Renderer::DeferredRenderPipeline(engine->device);
-        
-        engine->initialized = true;
+    if (!engine || g_GlobalRenderContext != engine) {
+        return false;
+    }
+    
+    auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
+    if (context->IsEngineInitialized()) {
         return true;
-    } catch (const std::exception& e) {
-        std::cerr << "Error initializing engine: " << e.what() << std::endl;
-        return false;
-    } catch (...) {
-        std::cerr << "Unknown error initializing engine" << std::endl;
-        return false;
-    }
-}
-
-void EditorAPI_ShutdownEngine(RenderEngine* engine) {
-    if (!engine || !engine->initialized) return;
-    
-    if (engine->frameGraph) {
-        delete engine->frameGraph;
-        engine->frameGraph = nullptr;
     }
     
-    if (engine->renderPipeline) {
-        delete engine->renderPipeline;
-        engine->renderPipeline = nullptr;
-    }
-    
-    if (engine->device) {
-        engine->device->Shutdown();
-        delete engine->device;
-        engine->device = nullptr;
-    }
-    
+    // Initialize RenderDoc BEFORE creating Vulkan instance
+    // This is critical - RenderDoc needs to intercept Vulkan calls from the start
 #ifdef _WIN32
-    // Cleanup hidden GLFW window if we created it
-    if (engine->hiddenGLFWWindow) {
-        glfwDestroyWindow(engine->hiddenGLFWWindow);
-        engine->hiddenGLFWWindow = nullptr;
-        // Note: We don't call glfwTerminate() here as it might be used elsewhere
-        // The hidden window is only created for editor mode
-    }
+    FirstEngine::Core::RenderDocHelper::Initialize();
 #endif
     
-    // Shutdown singleton managers
-    FirstEngine::Renderer::ShaderModuleTools::Shutdown();
-    FirstEngine::Renderer::ShaderCollectionsTools::Shutdown();
-    FirstEngine::Renderer::RenderResourceManager::Shutdown();
+    // 从 context 获取窗口句柄（如果有的话，否则使用 nullptr）
+    void* windowHandle = nullptr;  // EditorAPI_CreateEngine 时传入的，但我们现在不需要它
+    int width = 1920, height = 1080;  // 默认值，实际会通过 SetRenderConfig 设置
     
-    engine->renderer = nullptr;
-    engine->initialized = false;
+    return context->InitializeEngine(windowHandle, width, height);
+}
+
+void EditorAPI_ShutdownEngine(void* engine) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
+    
+    if (!engine || g_GlobalRenderContext != engine) {
+        return;
+    }
+    
+    auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
+    context->ShutdownEngine();
 }
 
 // Viewport management
-RenderViewport* EditorAPI_CreateViewport(RenderEngine* engine, void* parentWindowHandle, int x, int y, int width, int height) {
-    if (!engine || !engine->initialized) return nullptr;
+RenderViewport* EditorAPI_CreateViewport(void* engine, void* parentWindowHandle, int x, int y, int width, int height) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
+    
+    if (!engine || g_GlobalRenderContext != engine) {
+        return nullptr;
+    }
+    
+    auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
+    if (!context->IsEngineInitialized()) {
+        return nullptr;
+    }
     
     auto* viewport = new RenderViewport();
-    viewport->engine = engine;
     viewport->parentWindowHandle = parentWindowHandle;
     viewport->x = x;
     viewport->y = y;
@@ -295,12 +218,17 @@ RenderViewport* EditorAPI_CreateViewport(RenderEngine* engine, void* parentWindo
     swapchainDesc.width = width;
     swapchainDesc.height = height;
     
+    // Get device from global RenderContext
+    auto* device = context->GetDevice();
+    if (!device) {
+        DestroyWindow(hwndChild);
+        delete viewport;
+        return nullptr;
+    }
+    
     // For now, use parent window handle (swapchain will render to main window)
     // TODO: Create separate surface and swapchain for child window
-    // Note: We need to pass a GLFWwindow*, but we have HWND
-    // For editor mode, we'll create swapchain using parent window
-    // The child window will be used for embedding, but rendering goes to parent swapchain
-    auto swapchainPtr = engine->device->CreateSwapchain(hwndParent, swapchainDesc);
+    auto swapchainPtr = device->CreateSwapchain(hwndParent, swapchainDesc);
     viewport->swapchain = swapchainPtr.release();
     
     if (viewport->swapchain) {
@@ -317,7 +245,13 @@ RenderViewport* EditorAPI_CreateViewport(RenderEngine* engine, void* parentWindo
     swapchainDesc.width = width;
     swapchainDesc.height = height;
     
-    auto swapchainPtr = engine->device->CreateSwapchain(parentWindowHandle, swapchainDesc);
+    auto* device = context->GetDevice();
+    if (!device) {
+        delete viewport;
+        return nullptr;
+    }
+    
+    auto swapchainPtr = device->CreateSwapchain(parentWindowHandle, swapchainDesc);
     viewport->swapchain = swapchainPtr.release();
     
     if (viewport->swapchain) {
@@ -361,18 +295,30 @@ void EditorAPI_ResizeViewport(RenderViewport* viewport, int x, int y, int width,
 #ifdef _WIN32
     if (viewport->childWindowHandle) {
         HWND hwnd = reinterpret_cast<HWND>(viewport->childWindowHandle);
-         UINT SWP_NOZORDER_LOCAL = 0x0004;
-         UINT SWP_NOACTIVATE_LOCAL = 0x0010;
+        UINT SWP_NOZORDER_LOCAL = 0x0004;
+        UINT SWP_NOACTIVATE_LOCAL = 0x0010;
         SetWindowPos(hwnd, nullptr, x, y, width, height, SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL);
         
         // Update swapchain if size changed
         if (viewport->swapchain && width > 0 && height > 0) {
             viewport->swapchain->Recreate();
         }
+        
+        // Update render config in global RenderContext
+        std::lock_guard<std::mutex> lock(g_RenderContextMutex);
+        if (g_GlobalRenderContext && g_GlobalRenderContext->IsEngineInitialized()) {
+            g_GlobalRenderContext->SetRenderConfig(width, height, 1.0f);
+        }
     }
 #else
     if (viewport->swapchain && width > 0 && height > 0) {
         viewport->swapchain->Recreate();
+    }
+    
+    // Update render config in global RenderContext
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
+    if (g_GlobalRenderContext && g_GlobalRenderContext->IsEngineInitialized()) {
+        g_GlobalRenderContext->SetRenderConfig(width, height, 1.0f);
     }
 #endif
 }
@@ -383,34 +329,112 @@ void EditorAPI_SetViewportActive(RenderViewport* viewport, bool active) {
 }
 
 // Frame rendering
-void EditorAPI_BeginFrame(RenderEngine* engine) {
-    if (!engine || !engine->initialized) return;
+// 对应 RenderApp::OnPrepareFrameGraph() - 构建 FrameGraph
+void EditorAPI_PrepareFrameGraph(void* engine) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
-    // Build FrameGraph for this frame
-    if (engine->frameGraph && engine->renderPipeline) {
-        engine->frameGraph->Clear();
-        engine->renderPipeline->BuildFrameGraph(*engine->frameGraph, engine->renderConfig);
+    if (!engine || g_GlobalRenderContext != engine) {
+        return;
+    }
+    
+    auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
+    if (!context->IsEngineInitialized()) {
+        return;
+    }
+    
+    // Begin RenderDoc frame capture
+#ifdef _WIN32
+    FirstEngine::Core::RenderDocHelper::BeginFrame();
+#endif
+    
+    // 使用 RenderContext 构建 FrameGraph（所有参数都从内部获取）
+    if (!context->BeginFrame()) {
+        std::cerr << "Failed to prepare FrameGraph in RenderContext (editor)!" << std::endl;
+        return;
     }
 }
 
-void EditorAPI_EndFrame(RenderEngine* engine) {
-    if (!engine || !engine->initialized) return;
-    // Frame end logic - could flush commands, wait for GPU, etc.
+// 对应 RenderApp::OnCreateResources() - 处理资源
+void EditorAPI_CreateResources(void* engine) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
+    
+    if (!engine || g_GlobalRenderContext != engine) {
+        return;
+    }
+    
+    auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
+    if (!context->IsEngineInitialized()) {
+        return;
+    }
+
+    // 处理计划中的资源
+    context->ProcessResources(context->GetDevice(), 0);
 }
 
-void EditorAPI_RenderViewport(RenderViewport* viewport) {
-    if (!viewport || !viewport->active || !viewport->ready) return;
-    if (!viewport->engine || !viewport->engine->initialized) return;
+// 对应 RenderApp::OnRender() - 执行 FrameGraph 生成渲染命令
+void EditorAPI_Render(void* engine) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
-    // Render logic for viewport
-    // This would typically involve:
-    // 1. Acquire swapchain image
-    // 2. Record command buffer with render commands
-    // 3. Submit command buffer
-    // 4. Present swapchain image
-    // 
-    // For now, this is a placeholder - actual rendering is handled by the main render loop
-    // The viewport window is created and embedded, but rendering goes through the main swapchain
+    if (!engine || g_GlobalRenderContext != engine) {
+        return;
+    }
+    
+    auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
+    if (!context->IsEngineInitialized()) {
+        return;
+    }
+
+    // 使用 RenderContext 执行 FrameGraph（所有参数都从内部获取）
+    if (!context->ExecuteFrameGraph()) {
+        std::cerr << "Failed to execute FrameGraph in RenderContext (editor)!" << std::endl;
+        return;
+    }
+}
+
+// 对应 RenderApp::OnSubmit() - 提交渲染
+void EditorAPI_SubmitFrame(RenderViewport* viewport) {
+    if (!viewport || !viewport->active || !viewport->ready) return;
+    if (!viewport->swapchain) return;
+    
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
+    
+    if (!g_GlobalRenderContext || !g_GlobalRenderContext->IsEngineInitialized()) {
+        return;
+    }
+    
+    auto* context = g_GlobalRenderContext;
+    
+    // 使用 RenderContext 提交渲染（只需要提供 swapchain，其他都从内部获取）
+    FirstEngine::Renderer::RenderContext::RenderParams params;
+    params.swapchain = viewport->swapchain;
+    
+    if (!context->SubmitFrame(params)) {
+        // 提交失败（可能是图像获取失败或需要重建 swapchain）
+        return;
+    }
+    
+    // End RenderDoc frame capture (after frame is submitted)
+#ifdef _WIN32
+    FirstEngine::Core::RenderDocHelper::EndFrame();
+#endif
+}
+
+// 已废弃：为了向后兼容保留，内部调用新的方法
+void EditorAPI_BeginFrame(void* engine) {
+    // 调用新的分离方法
+    EditorAPI_PrepareFrameGraph(engine);
+    EditorAPI_CreateResources(engine);
+    EditorAPI_Render(engine);
+}
+
+// 已废弃：为了向后兼容保留
+void EditorAPI_EndFrame(void* engine) {
+    // Frame end logic - command buffer will be released at start of next frame
+}
+
+// 已废弃：为了向后兼容保留，内部调用 EditorAPI_SubmitFrame
+void EditorAPI_RenderViewport(RenderViewport* viewport) {
+    EditorAPI_SubmitFrame(viewport);
 }
 
 bool EditorAPI_IsViewportReady(RenderViewport* viewport) {
@@ -427,32 +451,64 @@ void* EditorAPI_GetViewportWindowHandle(RenderViewport* viewport) {
 }
 
 // Scene management
-void EditorAPI_LoadScene(RenderEngine* engine, const char* scenePath) {
-    if (!engine || !scenePath) return;
-    // Load scene logic
+void EditorAPI_LoadScene(void* engine, const char* scenePath) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
+    
+    if (!engine || g_GlobalRenderContext != engine || !scenePath) {
+        return;
+    }
+    
+    auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
+    if (!context->IsEngineInitialized()) {
+        return;
+    }
+    
+    context->LoadScene(scenePath);
 }
 
-void EditorAPI_UnloadScene(RenderEngine* engine) {
-    if (!engine) return;
-    // Unload scene logic
+void EditorAPI_UnloadScene(void* engine) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
+    
+    if (!engine || g_GlobalRenderContext != engine) {
+        return;
+    }
+    
+    auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
+    if (!context->IsEngineInitialized()) {
+        return;
+    }
+    
+    context->UnloadScene();
 }
 
 // Resource management
-void EditorAPI_LoadResource(RenderEngine* engine, const char* resourcePath, int resourceType) {
-    if (!engine || !resourcePath) return;
-    // Load resource logic
+void EditorAPI_LoadResource(void* engine, const char* resourcePath, int resourceType) {
+    // TODO: 实现资源加载逻辑
+    (void)engine;
+    (void)resourcePath;
+    (void)resourceType;
 }
 
-void EditorAPI_UnloadResource(RenderEngine* engine, const char* resourcePath) {
-    if (!engine || !resourcePath) return;
-    // Unload resource logic
+void EditorAPI_UnloadResource(void* engine, const char* resourcePath) {
+    // TODO: 实现资源卸载逻辑
+    (void)engine;
+    (void)resourcePath;
 }
 
 // Configuration
-void EditorAPI_SetRenderConfig(RenderEngine* engine, int width, int height, float renderScale) {
-    if (!engine) return;
-    engine->renderConfig.SetResolution(width, height);
-    // Set render scale if supported
+void EditorAPI_SetRenderConfig(void* engine, int width, int height, float renderScale) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
+    
+    if (!engine || g_GlobalRenderContext != engine) {
+        return;
+    }
+    
+    auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
+    if (!context->IsEngineInitialized()) {
+        return;
+    }
+    
+    context->SetRenderConfig(width, height, renderScale);
 }
 
 } // extern "C"

@@ -48,12 +48,6 @@ namespace FirstEngine {
 
         // ResourceManager implementation
         ResourceManager::ResourceManager() {
-            // Register Resource classes as providers (for creating resource instances)
-            RegisterProvider(ResourceType::Texture, std::make_unique<TextureResource>());
-            RegisterProvider(ResourceType::Mesh, std::make_unique<MeshResource>());
-            RegisterProvider(ResourceType::Material, std::make_unique<MaterialResource>());
-            RegisterProvider(ResourceType::Model, std::make_unique<ModelResource>());
-            
             // Add default search paths
             m_SearchPaths.push_back(".");
             m_SearchPaths.push_back("assets");
@@ -62,17 +56,6 @@ namespace FirstEngine {
 
         ResourceManager::~ResourceManager() {
             Clear();
-        }
-
-        void ResourceManager::RegisterProvider(ResourceType type, std::unique_ptr<IResourceProvider> provider) {
-            if (provider) {
-                m_Providers[type] = std::move(provider);
-            }
-        }
-
-        IResourceProvider* ResourceManager::GetProvider(ResourceType type) const {
-            auto it = m_Providers.find(type);
-            return (it != m_Providers.end()) ? it->second.get() : nullptr;
         }
 
         ResourceType ResourceManager::DetectResourceType(const std::string& filepath) const {
@@ -182,27 +165,23 @@ namespace FirstEngine {
                 type = DetectResourceType(filepath);
             }
 
-            // Get provider for this resource type
-            IResourceProvider* provider = GetProvider(type);
-            if (!provider) {
-                return ResourceHandle();
-            }
-
-            // Create a new resource instance based on type
-            std::unique_ptr<IResource> resource;
+            // Create a new resource instance based on type and directly call its Load method
+            // All Resource classes (TextureResource, MeshResource, MaterialResource, ModelResource) 
+            // implement both IResource and IResourceProvider interfaces
+            IResource* resource = nullptr;
             
             switch (type) {
                 case ResourceType::Texture:
-                    resource = std::make_unique<TextureResource>();
+                    resource = new TextureResource();
                     break;
                 case ResourceType::Mesh:
-                    resource = std::make_unique<MeshResource>();
+                    resource = new MeshResource();
                     break;
                 case ResourceType::Material:
-                    resource = std::make_unique<MaterialResource>();
+                    resource = new MaterialResource();
                     break;
                 case ResourceType::Model:
-                    resource = std::make_unique<ModelResource>();
+                    resource = new ModelResource();
                     break;
                 default:
                     return ResourceHandle();
@@ -212,47 +191,52 @@ namespace FirstEngine {
                 return ResourceHandle();
             }
 
-            // Cast resource to IResourceProvider and call Load by ID
-            IResourceProvider* resourceProvider = dynamic_cast<IResourceProvider*>(resource.get());
+            // Get IResourceProvider interface from resource (all Resource classes implement IResourceProvider)
+            IResourceProvider* resourceProvider = dynamic_cast<IResourceProvider*>(resource);
             if (!resourceProvider) {
+                delete resource;
                 return ResourceHandle();
             }
 
             // Set resource ID in metadata before Load (so resource can access its ID)
             resource->GetMetadata().resourceID = id;
 
-            // Resource object calls Load on itself with ID
-            // This ensures unified loading interface: ModelResource::Load, MeshResource::Load, etc.
+            // Directly call Resource's Load method (e.g., ModelResource::Load, MeshResource::Load)
+            // This ensures unified loading interface without using provider mechanism
             // Load flow: 1) Collect dependencies 2) Load dependencies 3) Load resource data 4) Initialize
             // ResourceManager is accessed via singleton, no parameter needed
-            // For Model resources, this calls ModelResource::Load which uses ModelLoader internally
             ResourceLoadResult result = resourceProvider->Load(id);
             if (result != ResourceLoadResult::Success) {
+                delete resource;
                 return ResourceHandle();
             }
 
             // Store in cache using ID as key
-            IResource* resourcePtr = resource.get();
-            resourcePtr->AddRef(); // Initial reference count
+            resource->AddRef(); // Initial reference count
             
             switch (type) {
                 case ResourceType::Texture: {
-                    m_LoadedTextures[id] = std::unique_ptr<ITexture>(static_cast<ITexture*>(resource.release()));
-                    return ResourceHandle(static_cast<TextureHandle>(resourcePtr));
+                    ITexture* texture = static_cast<ITexture*>(resource);
+                    m_LoadedTextures[id] = texture;
+                    return ResourceHandle(static_cast<TextureHandle>(texture));
                 }
                 case ResourceType::Mesh: {
-                    m_LoadedMeshes[id] = std::unique_ptr<IMesh>(static_cast<IMesh*>(resource.release()));
-                    return ResourceHandle(static_cast<MeshHandle>(resourcePtr));
+                    IMesh* mesh = static_cast<IMesh*>(resource);
+                    m_LoadedMeshes[id] = mesh;
+                    return ResourceHandle(static_cast<MeshHandle>(mesh));
                 }
                 case ResourceType::Material: {
-                    m_LoadedMaterials[id] = std::unique_ptr<IMaterial>(static_cast<IMaterial*>(resource.release()));
-                    return ResourceHandle(static_cast<MaterialHandle>(resourcePtr));
+                    IMaterial* material = static_cast<IMaterial*>(resource);
+                    m_LoadedMaterials[id] = material;
+                    return ResourceHandle(static_cast<MaterialHandle>(material));
                 }
                 case ResourceType::Model: {
-                    m_LoadedModels[id] = std::unique_ptr<IModel>(static_cast<IModel*>(resource.release()));
-                    return ResourceHandle(static_cast<ModelHandle>(resourcePtr));
+                    IModel* model = static_cast<IModel*>(resource);
+                    m_LoadedModels[id] = model;
+                    return ResourceHandle(static_cast<ModelHandle>(model));
                 }
                 default:
+                    delete resource;
                     return ResourceHandle();
             }
         }
@@ -293,28 +277,28 @@ namespace FirstEngine {
             {
                 auto it = m_LoadedMeshes.find(id);
                 if (it != m_LoadedMeshes.end()) {
-                    return ResourceHandle(it->second.get());
+                    return ResourceHandle(it->second);
                 }
             }
             // Material
             {
                 auto it = m_LoadedMaterials.find(id);
                 if (it != m_LoadedMaterials.end()) {
-                    return ResourceHandle(it->second.get());
+                    return ResourceHandle(it->second);
                 }
             }
             // Texture
             {
                 auto it = m_LoadedTextures.find(id);
                 if (it != m_LoadedTextures.end()) {
-                    return ResourceHandle(it->second.get());
+                    return ResourceHandle(it->second);
                 }
             }
             // Model
             {
                 auto it = m_LoadedModels.find(id);
                 if (it != m_LoadedModels.end()) {
-                    return ResourceHandle(it->second.get());
+                    return ResourceHandle(it->second);
                 }
             }
 
@@ -360,9 +344,10 @@ namespace FirstEngine {
                 case ResourceType::Mesh: {
                     auto it = m_LoadedMeshes.find(id);
                     if (it != m_LoadedMeshes.end()) {
-                        MeshHandle mesh = it->second.get();
+                        IMesh* mesh = it->second;
                         mesh->Release();
                         if (mesh->GetRefCount() == 0) {
+                            delete mesh;
                             m_LoadedMeshes.erase(it);
                         }
                     }
@@ -371,9 +356,10 @@ namespace FirstEngine {
                 case ResourceType::Material: {
                     auto it = m_LoadedMaterials.find(id);
                     if (it != m_LoadedMaterials.end()) {
-                        MaterialHandle material = it->second.get();
+                        IMaterial* material = it->second;
                         material->Release();
                         if (material->GetRefCount() == 0) {
+                            delete material;
                             m_LoadedMaterials.erase(it);
                         }
                     }
@@ -382,9 +368,10 @@ namespace FirstEngine {
                 case ResourceType::Texture: {
                     auto it = m_LoadedTextures.find(id);
                     if (it != m_LoadedTextures.end()) {
-                        TextureHandle texture = it->second.get();
+                        ITexture* texture = it->second;
                         texture->Release();
                         if (texture->GetRefCount() == 0) {
+                            delete texture;
                             m_LoadedTextures.erase(it);
                         }
                     }
@@ -393,9 +380,10 @@ namespace FirstEngine {
                 case ResourceType::Model: {
                     auto it = m_LoadedModels.find(id);
                     if (it != m_LoadedModels.end()) {
-                        ModelHandle model = it->second.get();
+                        IModel* model = it->second;
                         model->Release();
                         if (model->GetRefCount() == 0) {
+                            delete model;
                             m_LoadedModels.erase(it);
                         }
                     }
@@ -457,11 +445,64 @@ namespace FirstEngine {
             );
         }
 
+        // Resource ID management methods (encapsulate ResourceIDManager)
+        ResourceID ResourceManager::RegisterResource(const std::string& filepath, ResourceType type, const std::string& virtualPath) {
+            return m_IDManager.RegisterResource(filepath, type, virtualPath);
+        }
+
+        ResourceID ResourceManager::GetIDFromPath(const std::string& filepath) const {
+            return m_IDManager.GetIDFromPath(filepath);
+        }
+
+        std::string ResourceManager::GetPathFromID(ResourceID id) const {
+            return m_IDManager.GetPathFromID(id);
+        }
+
+        ResourceType ResourceManager::GetTypeFromID(ResourceID id) const {
+            return m_IDManager.GetTypeFromID(id);
+        }
+
+        bool ResourceManager::IsRegistered(ResourceID id) const {
+            return m_IDManager.IsRegistered(id);
+        }
+
+        bool ResourceManager::IsPathRegistered(const std::string& filepath) const {
+            return m_IDManager.IsPathRegistered(filepath);
+        }
+
+        bool ResourceManager::LoadManifest(const std::string& manifestPath) {
+            return m_IDManager.LoadManifest(manifestPath);
+        }
+
+        bool ResourceManager::SaveManifest(const std::string& manifestPath) const {
+            return m_IDManager.SaveManifest(manifestPath);
+        }
+
         void ResourceManager::Clear() {
+            // Delete all meshes
+            for (auto& pair : m_LoadedMeshes) {
+                delete pair.second;
+            }
             m_LoadedMeshes.clear();
+            
+            // Delete all materials
+            for (auto& pair : m_LoadedMaterials) {
+                delete pair.second;
+            }
             m_LoadedMaterials.clear();
+            
+            // Delete all textures
+            for (auto& pair : m_LoadedTextures) {
+                delete pair.second;
+            }
             m_LoadedTextures.clear();
+            
+            // Delete all models
+            for (auto& pair : m_LoadedModels) {
+                delete pair.second;
+            }
             m_LoadedModels.clear();
+            
             m_PathToIDCache.clear();
         }
 

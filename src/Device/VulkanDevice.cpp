@@ -13,9 +13,6 @@
 #ifdef _WIN32
 // Undefine Windows API macros that conflict with our method names
 // Must be after all includes that might include Windows.h
-#ifdef CreateSemaphore
-#undef CreateSemaphore
-#endif
 #ifdef CreateMutex
 #undef CreateMutex
 #endif
@@ -552,12 +549,7 @@ namespace FirstEngine {
             return std::make_unique<VulkanShaderModule>(context, shaderModule.release(), stage);
         }
 
-#ifdef _WIN32
-#pragma push_macro("CreateSemaphore")
-#undef CreateSemaphore
-#endif
-
-        RHI::SemaphoreHandle VulkanDevice::CreateSemaphore() {
+        RHI::SemaphoreHandle VulkanDevice::CreateSemaphoreHandle() {
             auto* context = m_Renderer->GetDeviceContext();
             if (!context) {
                 return nullptr;
@@ -573,10 +565,6 @@ namespace FirstEngine {
 
             return reinterpret_cast<RHI::SemaphoreHandle>(semaphore);
         }
-
-#ifdef _WIN32
-#pragma pop_macro("CreateSemaphore")
-#endif
 
         void VulkanDevice::DestroySemaphore(RHI::SemaphoreHandle semaphore) {
             if (!semaphore) return;

@@ -12,8 +12,6 @@ namespace FirstEngine {
             : m_Name(name), m_ID(id) {
         }
 
-        ShaderCollection::~ShaderCollection() = default;
-
         void ShaderCollection::AddShader(ShaderStage stage, std::unique_ptr<RHI::IShaderModule> shaderModule) {
             m_ShaderModules[stage] = std::move(shaderModule);
         }

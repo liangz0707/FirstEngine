@@ -224,7 +224,7 @@ namespace FirstEngine {
                     
                     // Register material path and get ResourceID (or get existing ID if already registered)
                     // All path operations are hidden - only ResourceID is used for dependencies
-                    ResourceID materialID = resourceManager.GetIDManager().RegisterResource(materialPath, ResourceType::Material);
+                    ResourceID materialID = resourceManager.RegisterResource(materialPath, ResourceType::Material);
                     
                     if (materialID != InvalidResourceID) {
                         ResourceDependency dep;
@@ -265,7 +265,7 @@ namespace FirstEngine {
                 std::string meshKey = m_Metadata.filePath + "_mesh_" + std::to_string(i);
                 
                 // Register mesh with ResourceManager and get ID (internal IDs for meshes)
-                ResourceID meshID = resourceManager.GetIDManager().RegisterResource(meshKey, ResourceType::Mesh);
+                ResourceID meshID = resourceManager.RegisterResource(meshKey, ResourceType::Mesh);
                 meshResource->GetMetadata().resourceID = meshID;
                 meshResource->GetMetadata().filePath = meshKey; // Internal
                 meshResource->GetMetadata().name = meshKey;

@@ -37,27 +37,27 @@ namespace FirstEngine {
 
         // AABB implementation
         bool AABB::Contains(const glm::vec3& point) const {
-            return point.x >= min.x && point.x <= max.x &&
-                   point.y >= min.y && point.y <= max.y &&
-                   point.z >= min.z && point.z <= max.z;
+            return point.x >= minBounds.x && point.x <= maxBounds.x &&
+                   point.y >= minBounds.y && point.y <= maxBounds.y &&
+                   point.z >= minBounds.z && point.z <= maxBounds.z;
         }
 
         bool AABB::Intersects(const AABB& other) const {
-            return min.x <= other.max.x && max.x >= other.min.x &&
-                   min.y <= other.max.y && max.y >= other.min.y &&
-                   min.z <= other.max.z && max.z >= other.min.z;
+            return minBounds.x <= other.maxBounds.x && maxBounds.x >= other.minBounds.x &&
+                   minBounds.y <= other.maxBounds.y && maxBounds.y >= other.minBounds.y &&
+                   minBounds.z <= other.maxBounds.z && maxBounds.z >= other.minBounds.z;
         }
 
         AABB AABB::Transform(const glm::mat4& transform) const {
             glm::vec3 corners[8] = {
-                glm::vec3(min.x, min.y, min.z),
-                glm::vec3(max.x, min.y, min.z),
-                glm::vec3(min.x, max.y, min.z),
-                glm::vec3(max.x, max.y, min.z),
-                glm::vec3(min.x, min.y, max.z),
-                glm::vec3(max.x, min.y, max.z),
-                glm::vec3(min.x, max.y, max.z),
-                glm::vec3(max.x, max.y, max.z)
+                glm::vec3(minBounds.x, minBounds.y, minBounds.z),
+                glm::vec3(maxBounds.x, minBounds.y, minBounds.z),
+                glm::vec3(minBounds.x, maxBounds.y, minBounds.z),
+                glm::vec3(maxBounds.x, maxBounds.y, minBounds.z),
+                glm::vec3(minBounds.x, minBounds.y, maxBounds.z),
+                glm::vec3(maxBounds.x, minBounds.y, maxBounds.z),
+                glm::vec3(minBounds.x, maxBounds.y, maxBounds.z),
+                glm::vec3(maxBounds.x, maxBounds.y, maxBounds.z)
             };
 
             glm::vec3 transformedMin = glm::vec3(transform * glm::vec4(corners[0], 1.0f));
@@ -166,14 +166,14 @@ namespace FirstEngine {
 
             for (const auto& comp : m_Components) {
                 AABB compBounds = comp->GetBounds();
-                if (compBounds.min != compBounds.max || 
-                    (compBounds.min != glm::vec3(0.0f) || compBounds.max != glm::vec3(0.0f))) {
+                if (compBounds.minBounds != compBounds.maxBounds || 
+                    (compBounds.minBounds != glm::vec3(0.0f) || compBounds.maxBounds != glm::vec3(0.0f))) {
                     if (!hasBounds) {
                         bounds = compBounds;
                         hasBounds = true;
                     } else {
-                        bounds.min = glm::min(bounds.min, compBounds.min);
-                        bounds.max = glm::max(bounds.max, compBounds.max);
+                        bounds.minBounds = glm::min(bounds.minBounds, compBounds.minBounds);
+                        bounds.maxBounds = glm::max(bounds.maxBounds, compBounds.maxBounds);
                     }
                 }
             }
@@ -353,14 +353,14 @@ namespace FirstEngine {
         bool OctreeNode::IntersectsFrustum(const glm::mat4& viewProj) const {
             // Simplified frustum test using AABB corners
             glm::vec3 corners[8] = {
-                glm::vec3(m_Bounds.min.x, m_Bounds.min.y, m_Bounds.min.z),
-                glm::vec3(m_Bounds.max.x, m_Bounds.min.y, m_Bounds.min.z),
-                glm::vec3(m_Bounds.min.x, m_Bounds.max.y, m_Bounds.min.z),
-                glm::vec3(m_Bounds.max.x, m_Bounds.max.y, m_Bounds.min.z),
-                glm::vec3(m_Bounds.min.x, m_Bounds.min.y, m_Bounds.max.z),
-                glm::vec3(m_Bounds.max.x, m_Bounds.min.y, m_Bounds.max.z),
-                glm::vec3(m_Bounds.min.x, m_Bounds.max.y, m_Bounds.max.z),
-                glm::vec3(m_Bounds.max.x, m_Bounds.max.y, m_Bounds.max.z)
+                glm::vec3(m_Bounds.minBounds.x, m_Bounds.minBounds.y, m_Bounds.minBounds.z),
+                glm::vec3(m_Bounds.maxBounds.x, m_Bounds.minBounds.y, m_Bounds.minBounds.z),
+                glm::vec3(m_Bounds.minBounds.x, m_Bounds.maxBounds.y, m_Bounds.minBounds.z),
+                glm::vec3(m_Bounds.maxBounds.x, m_Bounds.maxBounds.y, m_Bounds.minBounds.z),
+                glm::vec3(m_Bounds.minBounds.x, m_Bounds.minBounds.y, m_Bounds.maxBounds.z),
+                glm::vec3(m_Bounds.maxBounds.x, m_Bounds.minBounds.y, m_Bounds.maxBounds.z),
+                glm::vec3(m_Bounds.minBounds.x, m_Bounds.maxBounds.y, m_Bounds.maxBounds.z),
+                glm::vec3(m_Bounds.maxBounds.x, m_Bounds.maxBounds.y, m_Bounds.maxBounds.z)
             };
 
             bool allInside = true;
@@ -548,8 +548,8 @@ namespace FirstEngine {
             glm::vec3 normalizedDir = glm::normalize(direction);
             for (Entity* entity : candidates) {
                 AABB bounds = entity->GetWorldBounds();
-                glm::vec3 min = bounds.min;
-                glm::vec3 max = bounds.max;
+                glm::vec3 min = bounds.minBounds;
+                glm::vec3 max = bounds.maxBounds;
 
                 float tmin = 0.0f;
                 float tmax = maxDistance;
@@ -614,7 +614,7 @@ namespace FirstEngine {
 
             // Expand octree bounds to include all entities
             AABB sceneBounds = GetSceneBounds();
-            if (sceneBounds.min != sceneBounds.max) {
+            if (sceneBounds.minBounds != sceneBounds.maxBounds) {
                 glm::vec3 center = sceneBounds.GetCenter();
                 glm::vec3 size = sceneBounds.GetSize();
                 glm::vec3 halfSize = size * 0.5f;
@@ -649,8 +649,8 @@ namespace FirstEngine {
             AABB bounds = entities[0]->GetWorldBounds();
             for (size_t i = 1; i < entities.size(); ++i) {
                 AABB entityBounds = entities[i]->GetWorldBounds();
-                bounds.min = glm::min(bounds.min, entityBounds.min);
-                bounds.max = glm::max(bounds.max, entityBounds.max);
+                bounds.minBounds = glm::min(bounds.minBounds, entityBounds.minBounds);
+                bounds.maxBounds = glm::max(bounds.maxBounds, entityBounds.maxBounds);
             }
 
             return bounds;

@@ -1,21 +1,5 @@
 #pragma once
 
-#ifdef _WIN32
-// Push and undefine Windows API macros that conflict with our method names
-#pragma push_macro("CreateSemaphore")
-#pragma push_macro("CreateMutex")
-#pragma push_macro("CreateEvent")
-#ifdef CreateSemaphore
-#undef CreateSemaphore
-#endif
-#ifdef CreateMutex
-#undef CreateMutex
-#endif
-#ifdef CreateEvent
-#undef CreateEvent
-#endif
-#endif
-
 #include "FirstEngine/Device/Export.h"
 #include "FirstEngine/RHI/IDevice.h"
 #include "FirstEngine/Device/VulkanRenderer.h"
@@ -51,11 +35,7 @@ namespace FirstEngine {
                 void* windowHandle, const RHI::SwapchainDescription& desc) override;
             std::unique_ptr<RHI::IShaderModule> CreateShaderModule(
                 const std::vector<uint32_t>& spirvCode, RHI::ShaderStage stage) override;
-#ifdef _WIN32
-#pragma push_macro("CreateSemaphore")
-#undef CreateSemaphore
-#endif
-            RHI::SemaphoreHandle CreateSemaphore() override;
+            RHI::SemaphoreHandle CreateSemaphoreHandle() override;
             void DestroySemaphore(RHI::SemaphoreHandle semaphore) override;
             RHI::FenceHandle CreateFence(bool signaled = false) override;
             void DestroyFence(RHI::FenceHandle fence) override;
@@ -107,10 +87,3 @@ namespace FirstEngine {
 
     } // namespace Device
 } // namespace FirstEngine
-
-#ifdef _WIN32
-// Restore Windows API macros
-#pragma pop_macro("CreateEvent")
-#pragma pop_macro("CreateMutex")
-#pragma pop_macro("CreateSemaphore")
-#endif

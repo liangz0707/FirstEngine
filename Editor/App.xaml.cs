@@ -17,6 +17,9 @@ namespace FirstEngineEditor
             // Cleanup services
             Services.ServiceLocator.Shutdown();
             
+            // Shutdown global render engine
+            Services.RenderEngineService.ShutdownGlobalEngine();
+            
             base.OnExit(e);
         }
     }

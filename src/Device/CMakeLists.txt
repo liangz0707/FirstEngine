@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
 
 project(FirstEngine_Device VERSION 1.0.0 LANGUAGES CXX)
 
@@ -36,8 +36,10 @@ set(DEVICE_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Device/VulkanRHIWrappers.h
 )
 
-# Create shared library
-add_library(FirstEngine_Device SHARED
+# Create static library (changed from SHARED to break circular dependency with FirstEngine_Core)
+# FirstEngine_Core (SHARED) needs to link FirstEngine_Device, but FirstEngine_Device also needs FirstEngine_Core
+# Making Device static allows the circular dependency (Core is still SHARED for C# P/Invoke)
+add_library(FirstEngine_Device STATIC
     ${DEVICE_SOURCES}
     ${DEVICE_HEADERS}
 )
@@ -52,9 +54,11 @@ target_include_directories(FirstEngine_Device
 )
 
 # Link dependencies
+# Note: FirstEngine_Core is NOT linked - Window implementation is now in header file
+# This breaks the circular dependency: Device can use Window without linking Core
+# Window implementation is in Window.h (inline), so no library link is needed
 target_link_libraries(FirstEngine_Device
     PUBLIC
-        FirstEngine_Core
         FirstEngine_Shader
         FirstEngine_Resources
         FirstEngine_RHI
@@ -87,25 +91,11 @@ else()
 endif()
 
 # Set library output name and directories
-# Enable Windows export all symbols to ensure import library is generated
 set_target_properties(FirstEngine_Device PROPERTIES
     OUTPUT_NAME "FirstEngine_Device"
     VERSION ${PROJECT_VERSION}
     FOLDER "FirstEngine"  # Organize in Visual Studio solution
-    ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib/Debug
-    ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib/Release
-    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/bin/Debug
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin/Release
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    WINDOWS_EXPORT_ALL_SYMBOLS TRUE
 )
 
-# Copy DLL to bin directory on Windows
-if(WIN32)
-    add_custom_command(TARGET FirstEngine_Device POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:FirstEngine_Device>
-        ${CMAKE_BINARY_DIR}/bin/$<CONFIG>/
-    )
-endif()
+# No need to copy DLL for static library
+# Static libraries are linked directly into the executable/DLL

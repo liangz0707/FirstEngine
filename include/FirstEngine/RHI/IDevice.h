@@ -1,21 +1,5 @@
 #pragma once
 
-#ifdef _WIN32
-// Push and undefine Windows API macros that conflict with our method names
-#pragma push_macro("CreateSemaphore")
-#pragma push_macro("CreateMutex")
-#pragma push_macro("CreateEvent")
-#ifdef CreateSemaphore
-#undef CreateSemaphore
-#endif
-#ifdef CreateMutex
-#undef CreateMutex
-#endif
-#ifdef CreateEvent
-#undef CreateEvent
-#endif
-#endif
-
 #include "FirstEngine/RHI/Export.h"
 #include "FirstEngine/RHI/Types.h"
 #include "FirstEngine/RHI/IImage.h"  // Need complete definition of IImageView
@@ -81,7 +65,7 @@ namespace FirstEngine {
                 const std::vector<uint32_t>& spirvCode, ShaderStage stage) = 0;
 
             // Synchronization object creation
-            virtual SemaphoreHandle CreateSemaphore() = 0;
+            virtual SemaphoreHandle CreateSemaphoreHandle() = 0;
             virtual void DestroySemaphore(SemaphoreHandle semaphore) = 0;
             virtual FenceHandle CreateFence(bool signaled = false) = 0;
             virtual void DestroyFence(FenceHandle fence) = 0;
@@ -133,10 +117,3 @@ namespace FirstEngine {
 
     } // namespace RHI
 } // namespace FirstEngine
-
-#ifdef _WIN32
-// Restore Windows API macros
-#pragma pop_macro("CreateEvent")
-#pragma pop_macro("CreateMutex")
-#pragma pop_macro("CreateSemaphore")
-#endif

@@ -1,11 +1,9 @@
 #pragma once
 
 #ifdef _WIN32
-    #ifdef FirstEngine_Resources_EXPORTS
-        #define FE_RESOURCES_API __declspec(dllexport)
-    #else
-        #define FE_RESOURCES_API __declspec(dllimport)
-    #endif
+    // FirstEngine_Resources is a STATIC library, so we don't need __declspec(dllexport/dllimport)
+    // Static libraries are linked directly into the executable/DLL, so symbols don't need to be exported
+    #define FE_RESOURCES_API
 #else
     #define FE_RESOURCES_API __attribute__((visibility("default")))
 #endif

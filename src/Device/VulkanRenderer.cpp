@@ -1,4 +1,4 @@
-﻿#include "FirstEngine/Device/VulkanRenderer.h"
+#include "FirstEngine/Device/VulkanRenderer.h"
 #include "FirstEngine/Device/DeviceContext.h"
 #include <iostream>
 #include <stdexcept>
@@ -12,7 +12,6 @@
 #define WIN32_LEAN_AND_MEAN  // Exclude rarely-used stuff from Windows headers
 #define VK_USE_PLATFORM_WIN32_KHR  // Enable Win32 platform extensions
 #include <Windows.h>
-#undef CreateSemaphore  // Undefine Windows API macro to avoid conflict with our method
 #endif
 
 namespace FirstEngine {

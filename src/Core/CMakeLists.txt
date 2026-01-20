@@ -9,11 +9,17 @@ endif()
 
 # Source files
 set(CORE_SOURCES
-    Window.cpp
+    # Window.cpp - removed, implementation is now in header file (Window.h)
+    # This avoids circular dependency: FirstEngine_Device can use Window without linking FirstEngine_Core
     CommandLine.cpp
     Thread.cpp
     ThreadManager.cpp
     Barrier.cpp
+    # RenderDoc.cpp - removed, implementation is now in header file (RenderDoc.h)
+    # This avoids circular dependency: EditorAPI can use RenderDocHelper without linking FirstEngine_Core
+    # EditorAPI.cpp - added directly to avoid circular dependency
+    # Instead of linking FirstEngine_Editor static library, we compile EditorAPI.cpp directly into FirstEngine_Core.dll
+    ${CMAKE_SOURCE_DIR}/src/Editor/EditorAPI.cpp
 )
 
 # Header files (add to project so they show up in Visual Studio)
@@ -27,6 +33,7 @@ set(CORE_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Task.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Barrier.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/MathTypes.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/RenderDoc.h
 )
 
 # Create shared library
@@ -57,11 +64,28 @@ elseif(glfw_FOUND)
     target_include_directories(FirstEngine_Core PUBLIC ${GLFW_INCLUDE_DIRS})
 endif()
 
-# Add Vulkan include directory (needed for Window.cpp)
-target_include_directories(FirstEngine_Core PRIVATE ${Vulkan_INCLUDE_DIRS})
+# Add Vulkan include directory (needed for Window.h which is now header-only)
+# Window.h includes vulkan/vulkan.h, so Vulkan include path must be PUBLIC
+target_include_directories(FirstEngine_Core PUBLIC ${Vulkan_INCLUDE_DIRS})
 
 # Link GLM for MathTypes
 target_link_libraries(FirstEngine_Core PUBLIC glm::glm)
+
+# Link EditorAPI dependencies
+# Instead of linking FirstEngine_Editor static library (which would create a cycle),
+# we compile EditorAPI.cpp directly into FirstEngine_Core.dll (see CORE_SOURCES above)
+# This breaks the cycle: Core no longer depends on Editor library, only on Editor's dependencies
+# FirstEngine_Device links FirstEngine_Core PRIVATE, so no public cycle
+target_link_libraries(FirstEngine_Core
+    PRIVATE
+        # EditorAPI.cpp is compiled directly into FirstEngine_Core.dll
+        # We only need to link EditorAPI's dependencies
+        FirstEngine_Device
+        FirstEngine_Renderer
+        FirstEngine_Resources
+        FirstEngine_RHI
+        FirstEngine_Shader
+)
 
 # Compiler-specific options
 if(MSVC)

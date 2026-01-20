@@ -3,17 +3,11 @@
 #include "FirstEngine/Renderer/Export.h"
 #include "FirstEngine/RHI/IShaderModule.h"
 #include "FirstEngine/RHI/Types.h"
+#include "FirstEngine/Shader/ShaderCompiler.h"  // For ShaderReflection complete definition
 #include <string>
 #include <unordered_map>
 #include <memory>
 #include <vector>
-
-// Forward declaration
-namespace FirstEngine {
-    namespace Shader {
-        struct ShaderReflection;
-    }
-}
 
 namespace FirstEngine {
     namespace Renderer {
@@ -34,7 +28,7 @@ namespace FirstEngine {
         public:
             ShaderCollection();
             ShaderCollection(const std::string& name, uint64_t id);
-            ~ShaderCollection();
+            inline ~ShaderCollection() {};
 
             // Get collection name
             const std::string& GetName() const { return m_Name; }

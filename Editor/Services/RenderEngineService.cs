@@ -37,6 +37,20 @@ namespace FirstEngineEditor.Services
         [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern void EditorAPI_SetViewportActive(IntPtr viewport, [MarshalAs(UnmanagedType.I1)] bool active);
 
+        // 新的分离方法（对应 RenderApp 的方法）
+        [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void EditorAPI_PrepareFrameGraph(IntPtr engine);
+
+        [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void EditorAPI_CreateResources(IntPtr engine);
+
+        [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void EditorAPI_Render(IntPtr engine);
+
+        [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void EditorAPI_SubmitFrame(IntPtr viewport);
+
+        // 已废弃：为了向后兼容保留
         [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern void EditorAPI_BeginFrame(IntPtr engine);
 
@@ -64,10 +78,10 @@ namespace FirstEngineEditor.Services
 
         #endregion
 
-        private IntPtr _engineHandle;
         private IntPtr _viewportHandle;
         private bool _initialized = false;
         private HwndSource? _hwndSource;
+        private static IntPtr? _globalEngineHandle = null;  // 全局引擎句柄（单例）
 
         public bool IsInitialized => _initialized;
         
@@ -87,15 +101,19 @@ namespace FirstEngineEditor.Services
 
             try
             {
-                _engineHandle = EditorAPI_CreateEngine(windowHandle, width, height);
-                if (_engineHandle == IntPtr.Zero)
-                    return false;
-
-                if (!EditorAPI_InitializeEngine(_engineHandle))
+                // 使用全局引擎句柄（单例模式）
+                if (!_globalEngineHandle.HasValue || _globalEngineHandle.Value == IntPtr.Zero)
                 {
-                    EditorAPI_DestroyEngine(_engineHandle);
-                    _engineHandle = IntPtr.Zero;
-                    return false;
+                    _globalEngineHandle = EditorAPI_CreateEngine(windowHandle, width, height);
+                    if (_globalEngineHandle.Value == IntPtr.Zero)
+                        return false;
+
+                    if (!EditorAPI_InitializeEngine(_globalEngineHandle.Value))
+                    {
+                        EditorAPI_DestroyEngine(_globalEngineHandle.Value);
+                        _globalEngineHandle = null;
+                        return false;
+                    }
                 }
 
                 _initialized = true;
@@ -110,12 +128,12 @@ namespace FirstEngineEditor.Services
 
         public bool CreateViewport(IntPtr parentWindowHandle, int x, int y, int width, int height)
         {
-            if (!_initialized || _engineHandle == IntPtr.Zero)
+            if (!_initialized || !_globalEngineHandle.HasValue || _globalEngineHandle.Value == IntPtr.Zero)
                 return false;
 
             try
             {
-                _viewportHandle = EditorAPI_CreateViewport(_engineHandle, parentWindowHandle, x, y, width, height);
+                _viewportHandle = EditorAPI_CreateViewport(_globalEngineHandle.Value, parentWindowHandle, x, y, width, height);
                 return _viewportHandle != IntPtr.Zero && EditorAPI_IsViewportReady(_viewportHandle);
             }
             catch (Exception ex)
@@ -141,19 +159,53 @@ namespace FirstEngineEditor.Services
             }
         }
 
+        // 新的分离方法（对应 RenderApp 的方法）
+        public void PrepareFrameGraph()
+        {
+            if (_initialized && _globalEngineHandle.HasValue && _globalEngineHandle.Value != IntPtr.Zero)
+            {
+                EditorAPI_PrepareFrameGraph(_globalEngineHandle.Value);
+            }
+        }
+
+        public void CreateResources()
+        {
+            if (_initialized && _globalEngineHandle.HasValue && _globalEngineHandle.Value != IntPtr.Zero)
+            {
+                EditorAPI_CreateResources(_globalEngineHandle.Value);
+            }
+        }
+
+        public void Render()
+        {
+            if (_initialized && _globalEngineHandle.HasValue && _globalEngineHandle.Value != IntPtr.Zero)
+            {
+                EditorAPI_Render(_globalEngineHandle.Value);
+            }
+        }
+
+        public void SubmitFrame()
+        {
+            if (_viewportHandle != IntPtr.Zero)
+            {
+                EditorAPI_SubmitFrame(_viewportHandle);
+            }
+        }
+
+        // 已废弃：为了向后兼容保留
         public void BeginFrame()
         {
-            if (_initialized && _engineHandle != IntPtr.Zero)
+            if (_initialized && _globalEngineHandle.HasValue && _globalEngineHandle.Value != IntPtr.Zero)
             {
-                EditorAPI_BeginFrame(_engineHandle);
+                EditorAPI_BeginFrame(_globalEngineHandle.Value);
             }
         }
 
         public void EndFrame()
         {
-            if (_initialized && _engineHandle != IntPtr.Zero)
+            if (_initialized && _globalEngineHandle.HasValue && _globalEngineHandle.Value != IntPtr.Zero)
             {
-                EditorAPI_EndFrame(_engineHandle);
+                EditorAPI_EndFrame(_globalEngineHandle.Value);
             }
         }
 
@@ -167,25 +219,25 @@ namespace FirstEngineEditor.Services
 
         public void LoadScene(string scenePath)
         {
-            if (_initialized && _engineHandle != IntPtr.Zero)
+            if (_initialized && _globalEngineHandle.HasValue && _globalEngineHandle.Value != IntPtr.Zero)
             {
-                EditorAPI_LoadScene(_engineHandle, scenePath);
+                EditorAPI_LoadScene(_globalEngineHandle.Value, scenePath);
             }
         }
 
         public void UnloadScene()
         {
-            if (_initialized && _engineHandle != IntPtr.Zero)
+            if (_initialized && _globalEngineHandle.HasValue && _globalEngineHandle.Value != IntPtr.Zero)
             {
-                EditorAPI_UnloadScene(_engineHandle);
+                EditorAPI_UnloadScene(_globalEngineHandle.Value);
             }
         }
 
         public void SetRenderConfig(int width, int height, float renderScale = 1.0f)
         {
-            if (_initialized && _engineHandle != IntPtr.Zero)
+            if (_initialized && _globalEngineHandle.HasValue && _globalEngineHandle.Value != IntPtr.Zero)
             {
-                EditorAPI_SetRenderConfig(_engineHandle, width, height, renderScale);
+                EditorAPI_SetRenderConfig(_globalEngineHandle.Value, width, height, renderScale);
             }
         }
 
@@ -197,18 +249,25 @@ namespace FirstEngineEditor.Services
                 _viewportHandle = IntPtr.Zero;
             }
 
-            if (_initialized && _engineHandle != IntPtr.Zero)
-            {
-                EditorAPI_ShutdownEngine(_engineHandle);
-                EditorAPI_DestroyEngine(_engineHandle);
-                _engineHandle = IntPtr.Zero;
-                _initialized = false;
-            }
+            // 注意：不在这里销毁全局引擎，因为可能有多个 RenderEngineService 实例
+            // 全局引擎应该在应用程序退出时统一销毁
+            _initialized = false;
 
             if (_hwndSource != null)
             {
                 _hwndSource.Dispose();
                 _hwndSource = null;
+            }
+        }
+
+        // 静态方法：销毁全局引擎（应该在应用程序退出时调用）
+        public static void ShutdownGlobalEngine()
+        {
+            if (_globalEngineHandle.HasValue && _globalEngineHandle.Value != IntPtr.Zero)
+            {
+                EditorAPI_ShutdownEngine(_globalEngineHandle.Value);
+                EditorAPI_DestroyEngine(_globalEngineHandle.Value);
+                _globalEngineHandle = null;
             }
         }
     }

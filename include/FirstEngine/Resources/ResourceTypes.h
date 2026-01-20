@@ -24,7 +24,6 @@ namespace FirstEngine {
         using TextureHandle = ITexture*;
         using ModelHandle = IModel*;
         
-        // Unified resource handle (can hold any resource type)
         union ResourceHandle {
             void* ptr;
             MeshHandle mesh;
@@ -51,16 +50,16 @@ namespace FirstEngine {
         // Resource metadata
         // Note: filePath is kept for internal use by ResourceManager only
         // Resource classes should NOT access filePath directly - use resourceID instead
+
         struct FE_RESOURCES_API ResourceMetadata {
-            ResourceID resourceID = 0;  // Primary identifier - the ONLY identifier exposed to resource classes
-            std::string filePath;       // Internal: File path (used by ResourceManager for loading, NOT exposed to resource classes)
+            ResourceID resourceID = 0;  
+            std::string filePath;  
             std::string name;
             uint64_t fileSize = 0;
             uint64_t loadTime = 0; // in milliseconds
             bool isLoaded = false;
             uint32_t refCount = 0;
             
-            // Dependencies (resources this resource depends on) - uses ResourceID only, NO paths
             std::vector<ResourceDependency> dependencies;
         };
 
@@ -120,7 +119,7 @@ namespace FirstEngine {
             virtual MaterialHandle GetMaterial(uint32_t index) const = 0;
             virtual const std::string& GetMeshName(uint32_t index) const = 0;
             
-            // Texture access (for lightmap, etc.)
+          
             virtual TextureHandle GetTexture(const std::string& slot) const = 0;
             virtual void SetTexture(const std::string& slot, TextureHandle texture) = 0;
         };

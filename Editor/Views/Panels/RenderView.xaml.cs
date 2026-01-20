@@ -162,6 +162,9 @@ namespace FirstEngineEditor.Views.Panels
                         
                         _isInitialized = true;
 
+                        // Start render loop automatically after viewport is created
+                        StartRenderLoop();
+
                         if (DataContext is RenderViewModel viewModel)
                         {
                             viewModel.RenderStatus = "Engine Initialized - Viewport Embedded";
@@ -286,9 +289,11 @@ namespace FirstEngineEditor.Views.Panels
         {
             if (_renderEngine != null && _isInitialized)
             {
-                _renderEngine.BeginFrame();
-                _renderEngine.RenderViewport();
-                _renderEngine.EndFrame();
+                // 使用新的分离方法，对应 RenderApp 的流程
+                _renderEngine.PrepareFrameGraph();
+                _renderEngine.CreateResources();
+                _renderEngine.Render();
+                _renderEngine.SubmitFrame();
             }
         }
     }
