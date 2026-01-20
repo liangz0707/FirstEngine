@@ -4,7 +4,7 @@ using FirstEngineEditor.ViewModels.Panels;
 
 namespace FirstEngineEditor.Views.Panels
 {
-    public partial class SceneListView : UserControl
+    public partial class SceneListView : System.Windows.Controls.UserControl
     {
         public SceneListView()
         {

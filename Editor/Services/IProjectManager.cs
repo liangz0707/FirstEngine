@@ -1,3 +1,5 @@
+using FirstEngineEditor.Models;
+
 namespace FirstEngineEditor.Services
 {
     public interface IProjectManager

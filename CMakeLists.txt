@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
 project(FirstEngine VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -78,8 +78,9 @@ if(EXISTS "${VULKAN_LOCAL_PATH}")
         set(VULKAN_DLL_FOUND FALSE)
     endif()
     
-    # Add include directory
-    include_directories(${Vulkan_INCLUDE_DIRS})
+    # Don't add Vulkan include directory globally to avoid conflicts with third_party/glslang
+    # Vulkan includes will be added per-target where needed
+    # include_directories(${Vulkan_INCLUDE_DIRS})
 else()
     # Use standard find_package
     find_package(Vulkan REQUIRED)
@@ -159,6 +160,12 @@ add_subdirectory(src/Application)
 add_subdirectory(src/RHI)
 add_subdirectory(src/Device)
 add_subdirectory(src/Renderer)
+
+# Editor module (编辑器API)
+add_subdirectory(src/Editor)
+
+# C# Editor Project (添加到Visual Studio解决方案)
+add_subdirectory(Editor)
 
 # Tools (工具项目)
 add_subdirectory(src/Tools/ShaderManager)

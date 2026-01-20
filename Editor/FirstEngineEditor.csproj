@@ -4,22 +4,31 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
     <AssemblyName>FirstEngineEditor</AssemblyName>
     <RootNamespace>FirstEngineEditor</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Toolkit.Mvvm" Version="7.1.3" />
+    <PackageReference Include="Microsoft.Toolkit.Mvvm" Version="7.1.2" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="System.IO.Abstractions" Version="19.2.69" />
-    <PackageReference Include="System.Windows.Forms" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Resource Include="Resources\**\*" />
   </ItemGroup>
+
+  <!-- Copy C++ DLLs to output directory -->
+  <!-- Note: This is handled by CMake post-build commands, but kept as fallback -->
+  <Target Name="CopyNativeDlls" AfterTargets="Build" Condition="'$(SolutionDir)' != ''">
+    <ItemGroup>
+      <NativeDlls Include="$(SolutionDir)bin\$(Configuration)\*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(NativeDlls)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

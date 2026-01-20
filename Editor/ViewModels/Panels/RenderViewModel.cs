@@ -30,6 +30,12 @@ namespace FirstEngineEditor.ViewModels.Panels
             RenderStatus = "Rendering...";
         }
 
+        public void PauseRendering()
+        {
+            IsRendering = false;
+            RenderStatus = "Paused";
+        }
+
         public void StopRendering()
         {
             IsRendering = false;

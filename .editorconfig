@@ -1,0 +1,40 @@
+# EditorConfig for Visual Studio
+# https://editorconfig.org
+
+root = true
+
+# All files - use CRLF for Windows compatibility
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C++ source files
+[*.{cpp,h,hpp,c,cc,cxx}]
+indent_style = space
+indent_size = 4
+
+# CMake files
+[CMakeLists.txt]
+indent_style = space
+indent_size = 4
+
+# Markdown files
+[*.md]
+trim_trailing_whitespace = false
+
+# Script files (keep LF for shell scripts)
+[*.{sh,bash}]
+end_of_line = lf
+
+# Windows scripts (use CRLF)
+[*.{bat,ps1,cmd}]
+end_of_line = crlf
+
+# Exclude third_party directories (keep their original settings)
+[third_party/**]
+end_of_line = unset
+
+[external/**]
+end_of_line = unset

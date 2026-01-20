@@ -4,7 +4,7 @@ using FirstEngineEditor.ViewModels.Panels;
 
 namespace FirstEngineEditor.Views.Panels
 {
-    public partial class ResourceListView : UserControl
+    public partial class ResourceListView : System.Windows.Controls.UserControl
     {
         public ResourceListView()
         {

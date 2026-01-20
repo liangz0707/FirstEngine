@@ -13,6 +13,7 @@
 #include "FirstEngine/Renderer/RenderConfig.h"
 #include "FirstEngine/Renderer/IRenderResource.h"
 #include "FirstEngine/Renderer/RenderResourceManager.h"
+#include "FirstEngine/Renderer/ShaderCollectionsTools.h"
 #include "FirstEngine/Renderer/ShaderModuleTools.h"
 #include "FirstEngine/Resources/Scene.h"
 #include "FirstEngine/Resources/Component.h"
@@ -24,6 +25,7 @@
 #include <iostream>
 #include <algorithm>
 #include <chrono>
+#include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #ifdef _WIN32
@@ -38,6 +40,7 @@ namespace fs = std::experimental::filesystem;
 // RenderDoc integration
 #define WIN32_LEAN_AND_MEAN  // Exclude rarely-used stuff from Windows headers
 #include <windows.h>
+#include <processthreadsapi.h>
 #undef CreateSemaphore  // Undefine Windows API macro to avoid conflict with our method
 
 // RenderDoc API structure (simplified - only the functions we need)
@@ -123,7 +126,8 @@ public:
         // Shutdown RenderResourceManager singleton
         FirstEngine::Renderer::RenderResourceManager::Shutdown();
         
-        // Shutdown ShaderModuleTools singleton
+        // Shutdown ShaderCollectionsTools and ShaderModuleTools singletons
+        FirstEngine::Renderer::ShaderCollectionsTools::Shutdown();
         FirstEngine::Renderer::ShaderModuleTools::Shutdown();
     }
 
@@ -205,15 +209,18 @@ public:
         FirstEngine::Resources::ResourceManager::Initialize();
         FirstEngine::Resources::ResourceManager& resourceManager = FirstEngine::Resources::ResourceManager::GetInstance();
 
-        // Initialize ShaderModuleTools (loads all shaders from Package/Shaders)
-        auto& shaderTools = FirstEngine::Renderer::ShaderModuleTools::GetInstance();
-        if (!shaderTools.Initialize("build/Package/Shaders", m_Device)) {
-            std::cerr << "Warning: Failed to initialize ShaderModuleTools, shaders may not be available." << std::endl;
+        // Initialize ShaderCollectionsTools (loads all shaders from Package/Shaders)
+        auto& collectionsTools = FirstEngine::Renderer::ShaderCollectionsTools::GetInstance();
+        if (!collectionsTools.Initialize("build/Package/Shaders")) {
+            std::cerr << "Warning: Failed to initialize ShaderCollectionsTools, shaders may not be available." << std::endl;
         } else {
-            // Set device for lazy shader module creation
-            shaderTools.SetDevice(m_Device);
-            std::cout << "ShaderModuleTools initialized successfully." << std::endl;
+            std::cout << "ShaderCollectionsTools initialized successfully." << std::endl;
         }
+        
+        // Initialize ShaderModuleTools with device (for creating GPU shader modules)
+        auto& moduleTools = FirstEngine::Renderer::ShaderModuleTools::GetInstance();
+        moduleTools.Initialize(m_Device);
+        std::cout << "ShaderModuleTools initialized successfully." << std::endl;
 
         // Helper function to resolve path (try multiple locations)
         auto resolvePath = [](const std::string& relativePath) -> std::string {
@@ -691,6 +698,11 @@ private:
 int main(int argc, char* argv[]) {
     FirstEngine::Core::CommandLineParser parser;
 
+    // Mode selection
+    parser.AddArgument("editor", "e", "Launch editor mode", FirstEngine::Core::ArgumentType::Flag);
+    parser.AddArgument("standalone", "s", "Launch standalone render window (default)", FirstEngine::Core::ArgumentType::Flag);
+    
+    // Window parameters (for standalone mode)
     parser.AddArgument("width", "w", "Window width", FirstEngine::Core::ArgumentType::Integer, false, "1280");
     parser.AddArgument("height", "h", "Window height", FirstEngine::Core::ArgumentType::Integer, false, "720");
     parser.AddArgument("title", "t", "Window title", FirstEngine::Core::ArgumentType::String, false, "FirstEngine");
@@ -705,26 +717,166 @@ int main(int argc, char* argv[]) {
 
     if (parser.GetBool("help")) {
         parser.PrintHelp("FirstEngine");
+        std::cout << "\nModes:\n";
+        std::cout << "  --editor, -e     Launch C# editor (WPF application)\n";
+        std::cout << "  --standalone, -s Launch standalone render window (default)\n";
         return 0;
     }
 
-    int width = parser.GetInt("width");
-    int height = parser.GetInt("height");
-    std::string title = parser.GetString("title");
-    bool headless = parser.GetBool("headless");
+    // Determine mode
+    bool editorMode = parser.GetBool("editor");
+    bool standaloneMode = parser.GetBool("standalone");
+    
+    // Default to standalone if neither is specified
+    if (!editorMode && !standaloneMode) {
+        standaloneMode = true;
+    }
 
-    try {
-        RenderApp app(width, height, title, headless);
+    if (editorMode) {
+        // Launch editor
+        // On Windows, we'll launch the C# editor executable
+        #ifdef _WIN32
+        std::string editorPath = "FirstEngineEditor.exe";
         
-        if (!app.Initialize()) {
-            std::cerr << "Failed to initialize application!" << std::endl;
+        // Try to find editor in common locations
+        char exePath[MAX_PATH];
+        DWORD pathLen = GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+        std::string foundEditorPath;
+        
+        if (pathLen > 0 && pathLen < MAX_PATH) {
+            // Get directory
+            std::string exeDir;
+            for (int i = pathLen - 1; i >= 0; i--) {
+                if (exePath[i] == '\\' || exePath[i] == '/') {
+                    exePath[i + 1] = '\0';
+                    exeDir = exePath;
+                    break;
+                }
+            }
+            
+            // List of paths to try (relative to executable directory)
+            std::vector<std::string> searchPaths = {
+                exeDir + editorPath,                                    // Same directory
+                exeDir + "../" + editorPath,                            // Parent directory
+                exeDir + "../../../Editor/bin/Debug/net8.0-windows/" + editorPath,  // Editor Debug (from build/bin/Debug, go up 3 levels)
+                exeDir + "../../../Editor/bin/Release/net8.0-windows/" + editorPath, // Editor Release
+                exeDir + "../../Editor/bin/Debug/net8.0-windows/" + editorPath,     // Editor Debug (from build/bin, go up 2 levels)
+                exeDir + "../../Editor/bin/Release/net8.0-windows/" + editorPath,   // Editor Release
+            };
+            
+            // Try each path
+            for (const auto& path : searchPaths) {
+                // Normalize path (convert / to \)
+                std::string normalizedPath = path;
+                std::replace(normalizedPath.begin(), normalizedPath.end(), '/', '\\');
+                
+                // Resolve .. using Windows API for proper path resolution
+                char resolvedPath[MAX_PATH];
+                DWORD result = GetFullPathNameA(normalizedPath.c_str(), MAX_PATH, resolvedPath, nullptr);
+                if (result > 0 && result < MAX_PATH) {
+                    normalizedPath = resolvedPath;
+                } else {
+                    // Fallback: Simple .. resolution
+                    size_t pos;
+                    while ((pos = normalizedPath.find("\\..\\")) != std::string::npos) {
+                        size_t prevSlash = normalizedPath.rfind('\\', pos - 1);
+                        if (prevSlash != std::string::npos) {
+                            normalizedPath.erase(prevSlash, pos + 4 - prevSlash);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                
+                // Check if file exists
+                DWORD fileAttributes = GetFileAttributesA(normalizedPath.c_str());
+                if (fileAttributes != INVALID_FILE_ATTRIBUTES && !(fileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                    foundEditorPath = normalizedPath;
+                    break;
+                }
+            }
+            
+            // If still not found, try to find Editor directory by going up from exe directory
+            if (foundEditorPath.empty()) {
+                std::string currentPath = exeDir;
+                
+                // Go up directories to find Editor folder (max 5 levels up)
+                for (int i = 0; i < 5; ++i) {
+                    // Try Debug
+                    std::string testPath = currentPath + "\\Editor\\bin\\Debug\\net8.0-windows\\" + editorPath;
+                    DWORD attrs = GetFileAttributesA(testPath.c_str());
+                    if (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+                        foundEditorPath = testPath;
+                        break;
+                    }
+                    
+                    // Try Release
+                    testPath = currentPath + "\\Editor\\bin\\Release\\net8.0-windows\\" + editorPath;
+                    attrs = GetFileAttributesA(testPath.c_str());
+                    if (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+                        foundEditorPath = testPath;
+                        break;
+                    }
+                    
+                    // Go up one directory level
+                    size_t lastSlash = currentPath.find_last_of("\\/");
+                    if (lastSlash != std::string::npos && lastSlash > 0) {
+                        currentPath = currentPath.substr(0, lastSlash);
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!foundEditorPath.empty()) {
+            // Launch editor
+            STARTUPINFOA si = { sizeof(si) };
+            PROCESS_INFORMATION pi;
+            std::string cmdLine = "\"" + foundEditorPath + "\"";
+            if (CreateProcessA(nullptr, const_cast<char*>(cmdLine.c_str()), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+                return 0;
+            } else {
+                std::cerr << "Error: Failed to launch editor: " << foundEditorPath << std::endl;
+                std::cerr << "Error code: " << GetLastError() << std::endl;
+                return 1;
+            }
+        }
+        
+        std::cerr << "Error: Could not find FirstEngineEditor.exe" << std::endl;
+        std::cerr << "Searched in:" << std::endl;
+        std::cerr << "  - Same directory as FirstEngine.exe" << std::endl;
+        std::cerr << "  - Parent directory" << std::endl;
+        std::cerr << "  - Editor/bin/Debug/net8.0-windows/" << std::endl;
+        std::cerr << "  - Editor/bin/Release/net8.0-windows/" << std::endl;
+        std::cerr << "Please ensure the editor is built: cd Editor && dotnet build FirstEngineEditor.csproj -c Debug" << std::endl;
+        return 1;
+        #else
+        std::cerr << "Error: Editor mode is only supported on Windows" << std::endl;
+        return 1;
+        #endif
+    } else {
+        // Standalone mode - run render window directly
+        int width = parser.GetInt("width");
+        int height = parser.GetInt("height");
+        std::string title = parser.GetString("title");
+        bool headless = parser.GetBool("headless");
+
+        try {
+            RenderApp app(width, height, title, headless);
+            
+            if (!app.Initialize()) {
+                std::cerr << "Failed to initialize application!" << std::endl;
+                return -1;
+            }
+
+            app.Run();
+        } catch (const std::exception& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
             return -1;
         }
-
-        app.Run();
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return -1;
     }
 
     return 0;

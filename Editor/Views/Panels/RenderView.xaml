@@ -2,9 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:d="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d"
-             d:DesignHeight="600" d:DesignWidth="800">
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d">
     <Grid Background="Black">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -23,12 +22,13 @@
                 BorderBrush="Gray" 
                 BorderThickness="1"
                 Background="Black"
-                Margin="5">
-            <TextBlock Text="Render View&#10;&#10;This will display the 3D scene&#10;rendered by FirstEngine"
-                       Foreground="White"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"
-                       TextAlignment="Center"/>
+                Margin="5"
+                Name="RenderSurface">
+            <Grid Name="RenderHostContainer"
+                  Loaded="OnRenderHostLoaded"
+                  SizeChanged="OnRenderHostSizeChanged">
+                <!-- RenderViewportHost will be added here programmatically -->
+            </Grid>
         </Border>
     </Grid>
 </UserControl>
