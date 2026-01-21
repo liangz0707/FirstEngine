@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
 
 project(FirstEngine_Resources VERSION 1.0.0 LANGUAGES CXX)
 
@@ -67,6 +67,7 @@ set(RESOURCES_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceDependency.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceID.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MaterialParameter.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/Icon.h
 )
 
 # Create static library (changed from SHARED to allow circular dependency with FirstEngine_Renderer)

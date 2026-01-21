@@ -41,7 +41,8 @@
                 <MenuItem Header="_Property Panel" IsChecked="True"/>
             </MenuItem>
             <MenuItem Header="_Tools">
-                <MenuItem Header="Resource _Import"/>
+                <MenuItem Header="Resource _Import" Click="OnImportResource"/>
+                <MenuItem Header="_Create Resource" Click="OnCreateResource"/>
             </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Header="_About"/>
@@ -50,44 +51,61 @@
 
         <!-- Main Content Area -->
         <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="250"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="300"/>
-            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="5"/>
+                <RowDefinition Height="250"/>
+            </Grid.RowDefinitions>
 
-            <!-- Left Panel: Scene List and Resource List -->
-            <Grid Grid.Column="0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="5"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+            <!-- Top: Main Editor Area -->
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="250"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="300"/>
+                </Grid.ColumnDefinitions>
 
-                <!-- Scene List -->
-                <GroupBox Grid.Row="0" Header="Scenes" Margin="5">
-                    <panels:SceneListView DataContext="{Binding SceneListViewModel}"/>
-                </GroupBox>
+                <!-- Left Panel: Scene List and Resource List -->
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="5"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
 
-                <!-- Resource List -->
-                <GroupBox Grid.Row="2" Header="Resources" Margin="5">
-                    <panels:ResourceListView DataContext="{Binding ResourceListViewModel}"/>
-                </GroupBox>
+                    <!-- Scene List -->
+                    <GroupBox Grid.Row="0" Header="Scenes" Margin="5">
+                        <panels:SceneListView DataContext="{Binding SceneListViewModel}"/>
+                    </GroupBox>
+
+                    <!-- Resource List (Legacy) -->
+                    <GroupBox Grid.Row="2" Header="Resources (Legacy)" Margin="5">
+                        <panels:ResourceListView DataContext="{Binding ResourceListViewModel}"/>
+                    </GroupBox>
+                </Grid>
+
+                <!-- Center: Render View -->
+                <Grid Grid.Column="1" Margin="5">
+                    <GroupBox Header="Render View">
+                        <panels:RenderView DataContext="{Binding RenderViewModel}"/>
+                    </GroupBox>
+                </Grid>
+
+                <!-- Right Panel: Property Panel -->
+                <Grid Grid.Column="2">
+                    <GroupBox Header="Properties" Margin="5">
+                        <panels:PropertyPanelView DataContext="{Binding PropertyPanelViewModel}"/>
+                    </GroupBox>
+                </Grid>
             </Grid>
 
-            <!-- Center: Render View -->
-            <Grid Grid.Column="1" Margin="5">
-                <GroupBox Header="Render View">
-                    <panels:RenderView DataContext="{Binding RenderViewModel}"/>
-                </GroupBox>
-            </Grid>
+            <!-- Splitter -->
+            <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="Gray"/>
 
-            <!-- Right Panel: Property Panel -->
-            <Grid Grid.Column="2">
-                <GroupBox Header="Properties" Margin="5">
-                    <panels:PropertyPanelView DataContext="{Binding PropertyPanelViewModel}"/>
-                </GroupBox>
-            </Grid>
+            <!-- Bottom: Resource Browser (UE5 style) -->
+            <GroupBox Grid.Row="2" Header="Content Browser" Margin="5">
+                <panels:ResourceBrowserView DataContext="{Binding ResourceBrowserViewModel}"/>
+            </GroupBox>
         </Grid>
 
         <!-- Status Bar -->

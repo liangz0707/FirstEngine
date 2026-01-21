@@ -48,8 +48,20 @@ namespace FirstEngineEditor.ViewModels.Panels
             var project = _projectManager.CurrentProject;
             if (project == null) return;
 
-            var manifestPath = Path.Combine(project.ProjectPath, "resource_manifest.json");
-            if (!File.Exists(manifestPath)) return;
+            // 使用统一的路径解析方法获取Package路径
+            string? packagePath = ProjectManager.GetPackagePath(project.ProjectPath);
+            if (string.IsNullOrEmpty(packagePath) || !Directory.Exists(packagePath))
+            {
+                System.Diagnostics.Debug.WriteLine($"ResourceListViewModel: Package directory not found");
+                return;
+            }
+
+            var manifestPath = Path.Combine(packagePath, "resource_manifest.json");
+            if (!File.Exists(manifestPath))
+            {
+                System.Diagnostics.Debug.WriteLine($"ResourceListViewModel: Manifest not found at: {manifestPath}");
+                return;
+            }
 
             try
             {

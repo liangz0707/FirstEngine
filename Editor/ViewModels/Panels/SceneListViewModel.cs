@@ -48,8 +48,20 @@ namespace FirstEngineEditor.ViewModels.Panels
             var project = _projectManager.CurrentProject;
             if (project == null) return;
 
-            var scenesPath = Path.Combine(project.ProjectPath, "Scenes");
-            if (!Directory.Exists(scenesPath)) return;
+            // 使用统一的路径解析方法获取Package路径
+            string? packagePath = ProjectManager.GetPackagePath(project.ProjectPath);
+            if (string.IsNullOrEmpty(packagePath) || !Directory.Exists(packagePath))
+            {
+                System.Diagnostics.Debug.WriteLine($"SceneListViewModel: Package directory not found");
+                return;
+            }
+
+            var scenesPath = Path.Combine(packagePath, "Scenes");
+            if (!Directory.Exists(scenesPath))
+            {
+                System.Diagnostics.Debug.WriteLine($"SceneListViewModel: Scenes directory not found at: {scenesPath}");
+                return;
+            }
 
             var sceneFiles = Directory.GetFiles(scenesPath, "*.json", SearchOption.TopDirectoryOnly);
             foreach (var file in sceneFiles)

@@ -232,8 +232,21 @@ namespace FirstEngine {
                 
                 // Initialize ShaderCollectionsTools with shader directory
                 auto& collectionsTools = ShaderCollectionsTools::GetInstance();
-                if (!collectionsTools.Initialize("build/Package/Shaders")) {
+                std::string shaderDir = "build/Package/Shaders";
+                if (!collectionsTools.Initialize(shaderDir)) {
                     std::cerr << "Warning: Failed to initialize ShaderCollectionsTools, shaders may not be available." << std::endl;
+                } else {
+                    // Load all shaders from Package/Shaders directory at startup
+                    if (fs::exists(shaderDir)) {
+                        std::cout << "Loading all shaders from: " << shaderDir << std::endl;
+                        if (collectionsTools.LoadAllShadersFromDirectory(shaderDir)) {
+                            std::cout << "Successfully loaded all shaders from Package/Shaders directory" << std::endl;
+                        } else {
+                            std::cerr << "Warning: Failed to load some shaders from Package/Shaders directory" << std::endl;
+                        }
+                    } else {
+                        std::cout << "Package/Shaders directory not found, shaders will be loaded on demand" << std::endl;
+                    }
                 }
                 
 #ifdef _WIN32
@@ -353,8 +366,21 @@ namespace FirstEngine {
             // RenderApp 模式：使用给定 windowHandle，不创建隐藏 GLFW 窗口
             RenderResourceManager::Initialize();
             auto& collectionsTools = ShaderCollectionsTools::GetInstance();
-            if (!collectionsTools.Initialize("build/Package/Shaders")) {
+            std::string shaderDir = "build/Package/Shaders";
+            if (!collectionsTools.Initialize(shaderDir)) {
                 std::cerr << "Warning: Failed to initialize ShaderCollectionsTools." << std::endl;
+            } else {
+                // Load all shaders from Package/Shaders directory at startup
+                if (fs::exists(shaderDir)) {
+                    std::cout << "Loading all shaders from: " << shaderDir << std::endl;
+                    if (collectionsTools.LoadAllShadersFromDirectory(shaderDir)) {
+                        std::cout << "Successfully loaded all shaders from Package/Shaders directory" << std::endl;
+                    } else {
+                        std::cerr << "Warning: Failed to load some shaders from Package/Shaders directory" << std::endl;
+                    }
+                } else {
+                    std::cout << "Package/Shaders directory not found, shaders will be loaded on demand" << std::endl;
+                }
             }
             m_Device = new FirstEngine::Device::VulkanDevice();
             if (!m_Device->Initialize(windowHandle)) {

@@ -15,12 +15,14 @@ namespace FirstEngineEditor.ViewModels
 
             SceneListViewModel = new SceneListViewModel();
             ResourceListViewModel = new ResourceListViewModel();
+            ResourceBrowserViewModel = new ResourceBrowserViewModel();
             PropertyPanelViewModel = new PropertyPanelViewModel();
             RenderViewModel = new RenderViewModel();
         }
 
         public SceneListViewModel SceneListViewModel { get; }
         public ResourceListViewModel ResourceListViewModel { get; }
+        public ResourceBrowserViewModel ResourceBrowserViewModel { get; }
         public PropertyPanelViewModel PropertyPanelViewModel { get; }
         public RenderViewModel RenderViewModel { get; }
 
