@@ -8,6 +8,7 @@ namespace fs = std::filesystem;
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 #endif
+#include <iostream>
 
 namespace FirstEngine {
     namespace Resources {
@@ -22,28 +23,16 @@ namespace FirstEngine {
             // Get resolved path from ResourceManager (internal cache usage)
             std::string resolvedPath = resourceManager.GetResolvedPath(id);
             if (resolvedPath.empty()) {
+                std::cerr << "TextureLoader::Load: Failed to get resolved path for texture ID " << id << std::endl;
+                std::cerr << "  Make sure the texture is registered in resource_manifest.json" << std::endl;
                 return result;
             }
 
-            // Check cache first (ResourceManager internal cache)
-            ResourceHandle cached = resourceManager.Get(id);
-            if (cached.texture) {
-                // Return cached data
-                ITexture* texture = cached.texture;
-                result.metadata = texture->GetMetadata();
-                result.imageData.width = texture->GetWidth();
-                result.imageData.height = texture->GetHeight();
-                result.imageData.channels = texture->GetChannels();
-                result.imageData.hasAlpha = texture->HasAlpha();
-                
-                // Copy image data
-                size_t dataSize = texture->GetDataSize();
-                result.imageData.data.resize(dataSize);
-                std::memcpy(result.imageData.data.data(), texture->GetData(), dataSize);
-                
-                result.success = true;
-                return result;
-            }
+            // NOTE: Do NOT check cache here - ResourceManager handles caching
+            // If we check cache here, we might return incomplete metadata (before dependencies are loaded)
+            // ResourceManager::LoadInternal stores resource in cache BEFORE calling Resource::Load
+            // to prevent circular dependencies, but the resource is not fully loaded yet
+            // Cache checking should only happen at ResourceManager level, not in Loader
 
             // Resolve XML file path
             std::string xmlFilePath = resolvedPath;
@@ -80,9 +69,19 @@ namespace FirstEngine {
                 imagePath = (fs::path(xmlDir) / imagePath).string();
             }
 
+            // Check if image file exists
+            if (!fs::exists(imagePath)) {
+                std::cerr << "TextureLoader::Load: Image file not found: " << imagePath << std::endl;
+                std::cerr << "  Texture ID: " << id << ", XML file: " << xmlFilePath << std::endl;
+                return result;
+            }
+            
             // Load image data using ImageLoader
             result.imageData = ImageLoader::LoadFromFile(imagePath);
             if (result.imageData.data.empty()) {
+                std::cerr << "TextureLoader::Load: Failed to load image data from: " << imagePath << std::endl;
+                std::cerr << "  Texture ID: " << id << std::endl;
+                std::cerr << "  This may indicate an unsupported format or corrupted file" << std::endl;
                 return result;
             }
 
@@ -159,7 +158,25 @@ namespace FirstEngine {
         }
 
         std::vector<std::string> TextureLoader::GetSupportedFormats() {
-            return { ".xml", ".jpg", ".jpeg", ".png", ".bmp", ".tga", ".dds", ".tiff", ".hdr" };
+            // Formats supported by stb_image (used by ImageLoader)
+            // NOTE: DDS and TIFF are NOT supported by stb_image, but kept for backward compatibility
+            // TODO: If DDS/TIFF support is needed, implement a specialized loader
+            return { 
+                ".xml",      // Texture resource XML file
+                ".jpg",      // JPEG (baseline & progressive)
+                ".jpeg",     // JPEG
+                ".png",      // PNG (1/2/4/8/16-bit per channel)
+                ".bmp",      // BMP (non-1bpp, non-RLE)
+                ".tga",      // TGA (including 16-bit)
+                ".psd",      // PSD (composited view, 8/16-bit)
+                ".gif",      // GIF (static & animated)
+                ".hdr",      // HDR (Radiance rgbE)
+                ".pic",      // PIC (Softimage PIC)
+                ".ppm",      // PNM PPM (binary)
+                ".pgm",      // PNM PGM (binary)
+                // ".dds",   // DDS - NOT supported by stb_image
+                // ".tiff",  // TIFF - NOT supported by stb_image
+            };
         }
 
     } // namespace Resources

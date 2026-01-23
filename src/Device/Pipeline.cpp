@@ -7,7 +7,7 @@
 namespace FirstEngine {
     namespace Device {
 
-        // GraphicsPipeline 实现
+        // GraphicsPipeline implementation
         GraphicsPipeline::GraphicsPipeline(DeviceContext* context)
             : m_Context(context), m_Pipeline(VK_NULL_HANDLE), m_PipelineLayout(VK_NULL_HANDLE) {
         }
@@ -25,7 +25,7 @@ namespace FirstEngine {
 
             std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 
-            // 顶点着色器
+            // Vertex shader
             VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
             vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -33,7 +33,7 @@ namespace FirstEngine {
             vertShaderStageInfo.pName = "main";
             shaderStages.push_back(vertShaderStageInfo);
 
-            // 片段着色器
+            // Fragment shader
             VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
             fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -41,7 +41,7 @@ namespace FirstEngine {
             fragShaderStageInfo.pName = "main";
             shaderStages.push_back(fragShaderStageInfo);
 
-            // 顶点输入
+            // Vertex input
             VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
             vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
             vertexInputInfo.vertexBindingDescriptionCount = 1;
@@ -49,13 +49,13 @@ namespace FirstEngine {
             vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(description.vertexAttributes.size());
             vertexInputInfo.pVertexAttributeDescriptions = description.vertexAttributes.data();
 
-            // 输入装配
+            // Input assembly
             VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
             inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
             inputAssembly.topology = description.primitiveTopology;
             inputAssembly.primitiveRestartEnable = VK_FALSE;
 
-            // 视口和裁剪
+            // Viewport and scissor
             VkPipelineViewportStateCreateInfo viewportState{};
             viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
             viewportState.viewportCount = 1;
@@ -63,7 +63,7 @@ namespace FirstEngine {
             viewportState.scissorCount = 1;
             viewportState.pScissors = &description.scissor;
 
-            // 光栅化
+            // Rasterization
             VkPipelineRasterizationStateCreateInfo rasterizer{};
             rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
             rasterizer.depthClampEnable = VK_FALSE;
@@ -74,13 +74,13 @@ namespace FirstEngine {
             rasterizer.frontFace = description.frontFace;
             rasterizer.depthBiasEnable = VK_FALSE;
 
-            // 多重采样
+            // Multisampling
             VkPipelineMultisampleStateCreateInfo multisampling{};
             multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
             multisampling.sampleShadingEnable = VK_FALSE;
             multisampling.rasterizationSamples = description.rasterizationSamples;
 
-            // 深度和模板测试
+            // Depth and stencil testing
             VkPipelineDepthStencilStateCreateInfo depthStencil{};
             depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
             depthStencil.depthTestEnable = description.depthTestEnable ? VK_TRUE : VK_FALSE;
@@ -89,25 +89,34 @@ namespace FirstEngine {
             depthStencil.depthBoundsTestEnable = VK_FALSE;
             depthStencil.stencilTestEnable = VK_FALSE;
 
-            // 颜色混合
-            VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-            colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
-                                                  VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            colorBlendAttachment.blendEnable = description.blendEnable ? VK_TRUE : VK_FALSE;
-            colorBlendAttachment.srcColorBlendFactor = description.srcColorBlendFactor;
-            colorBlendAttachment.dstColorBlendFactor = description.dstColorBlendFactor;
-            colorBlendAttachment.colorBlendOp = description.colorBlendOp;
-            colorBlendAttachment.srcAlphaBlendFactor = description.srcAlphaBlendFactor;
-            colorBlendAttachment.dstAlphaBlendFactor = description.dstAlphaBlendFactor;
-            colorBlendAttachment.alphaBlendOp = description.alphaBlendOp;
+            // Color blending
+            // Get color attachment count from render pass
+            uint32_t colorAttachmentCount = renderPass ? renderPass->GetColorAttachmentCount() : 1;
+            if (colorAttachmentCount == 0) {
+                colorAttachmentCount = 1; // Default to 1 if not available
+            }
+
+            // Create color blend attachments for all color attachments
+            std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments(colorAttachmentCount);
+            for (uint32_t i = 0; i < colorAttachmentCount; ++i) {
+                colorBlendAttachments[i].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
+                                                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+                colorBlendAttachments[i].blendEnable = description.blendEnable ? VK_TRUE : VK_FALSE;
+                colorBlendAttachments[i].srcColorBlendFactor = description.srcColorBlendFactor;
+                colorBlendAttachments[i].dstColorBlendFactor = description.dstColorBlendFactor;
+                colorBlendAttachments[i].colorBlendOp = description.colorBlendOp;
+                colorBlendAttachments[i].srcAlphaBlendFactor = description.srcAlphaBlendFactor;
+                colorBlendAttachments[i].dstAlphaBlendFactor = description.dstAlphaBlendFactor;
+                colorBlendAttachments[i].alphaBlendOp = description.alphaBlendOp;
+            }
 
             VkPipelineColorBlendStateCreateInfo colorBlending{};
             colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
             colorBlending.logicOpEnable = VK_FALSE;
-            colorBlending.attachmentCount = 1;
-            colorBlending.pAttachments = &colorBlendAttachment;
+            colorBlending.attachmentCount = colorAttachmentCount;
+            colorBlending.pAttachments = colorBlendAttachments.data();
 
-            // 动态状态
+            // Dynamic state
             VkDynamicState dynamicStates[] = {
                 VK_DYNAMIC_STATE_VIEWPORT,
                 VK_DYNAMIC_STATE_SCISSOR
@@ -118,7 +127,7 @@ namespace FirstEngine {
             dynamicState.dynamicStateCount = 2;
             dynamicState.pDynamicStates = dynamicStates;
 
-            // 创建图形管道
+            // Create graphics pipeline
             VkGraphicsPipelineCreateInfo pipelineInfo{};
             pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
             pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
@@ -168,7 +177,7 @@ namespace FirstEngine {
             }
         }
 
-        // ComputePipeline 实现
+        // ComputePipeline implementation
         ComputePipeline::ComputePipeline(DeviceContext* context)
             : m_Context(context), m_Pipeline(VK_NULL_HANDLE), m_PipelineLayout(VK_NULL_HANDLE) {
         }

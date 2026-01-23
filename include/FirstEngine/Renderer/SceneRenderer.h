@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "FirstEngine/Renderer/Export.h"
 #include "FirstEngine/Renderer/RenderBatch.h"
@@ -6,6 +6,7 @@
 #include "FirstEngine/Renderer/RenderConfig.h"
 #include "FirstEngine/Renderer/RenderFlags.h"
 #include "FirstEngine/RHI/IDevice.h"
+#include "FirstEngine/RHI/IRenderPass.h"
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>

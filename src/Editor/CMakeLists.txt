@@ -55,6 +55,10 @@ else()
     target_compile_features(FirstEngine_Editor PRIVATE cxx_std_17)
 endif()
 
+# EditorAPI verbose logging control
+# To enable verbose logging, uncomment the following line or define FE_EDITOR_API_VERBOSE_LOGGING
+# target_compile_definitions(FirstEngine_Editor PRIVATE FE_EDITOR_API_VERBOSE_LOGGING)
+
 # Organize in Visual Studio solution
 set_target_properties(FirstEngine_Editor PROPERTIES
     FOLDER "FirstEngine/Editor"

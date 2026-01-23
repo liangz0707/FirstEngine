@@ -3,6 +3,7 @@
 #include "FirstEngine/Resources/Export.h"
 #include "FirstEngine/Resources/ResourceTypes.h"
 #include "FirstEngine/Resources/ResourceProvider.h"
+#include "FirstEngine/Resources/MeshLoader.h"  // For Vertex definition
 #include <vector>
 #include <cstdint>
 #include <memory>
@@ -11,7 +12,6 @@ namespace FirstEngine {
     namespace Resources {
 
         // Forward declarations
-        struct Vertex;
         class ResourceManager;
 
         // Mesh resource implementation
@@ -25,7 +25,6 @@ namespace FirstEngine {
             bool IsFormatSupported(const std::string& filepath) const override;
             std::vector<std::string> GetSupportedFormats() const override;
             ResourceLoadResult Load(ResourceID id) override;
-            ResourceLoadResult LoadFromMemory(const void* data, size_t size) override;
             void LoadDependencies() override;
 
             // Initialize from vertex and index data

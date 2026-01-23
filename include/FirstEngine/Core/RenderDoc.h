@@ -4,7 +4,11 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <processthreadsapi.h>
+#include <winnt.h>  // For SEH support
 #include <iostream>
+#include <stdlib.h>  // For _dupenv_s
+#include <string>
+#include <debugapi.h>  // For OutputDebugStringA
 
 // RenderDoc API structure (simplified - only the functions we need)
 // Note: This structure must match RenderDoc's actual API structure layout
@@ -33,12 +37,38 @@ typedef int (*pRENDERDOC_GetAPI)(int, void*);
 
 namespace FirstEngine {
     namespace Core {
-        // RenderDoc 工具类 - 提供统一的 RenderDoc 集成
-        // 实现放在头文件中以避免循环依赖（EditorAPI 只需要头文件，不需要链接 FirstEngine_Core）
+        // RenderDoc utility class - provides unified RenderDoc integration
+        // Implementation is in header file to avoid circular dependency (EditorAPI only needs header, doesn't need to link FirstEngine_Core)
         class RenderDocHelper {
         public:
-            // 初始化 RenderDoc（必须在创建 Vulkan 实例之前调用）
+            // Initialize RenderDoc (must be called before creating Vulkan instance)
             static void Initialize() {
+                // Check environment variable to force enable RenderDoc even in debug mode
+                // Set FIRSTENGINE_ENABLE_RENDERDOC=1 to enable RenderDoc in debug builds
+                bool forceEnable = false;
+                char* envValue = nullptr;
+                size_t envSize = 0;
+                if (_dupenv_s(&envValue, &envSize, "FIRSTENGINE_ENABLE_RENDERDOC") == 0 && envValue) {
+                    forceEnable = (std::string(envValue) == "1" || std::string(envValue) == "true");
+                    free(envValue);
+                }
+                
+                // Skip RenderDoc initialization in debug mode unless forced
+                #ifdef _DEBUG
+                if (!forceEnable) {
+                    std::cout << "RenderDoc: Skipping initialization in debug mode (set FIRSTENGINE_ENABLE_RENDERDOC=1 to enable)" << std::endl;
+                    return;
+                } else {
+                    std::cout << "RenderDoc: Force enabled via FIRSTENGINE_ENABLE_RENDERDOC environment variable" << std::endl;
+                }
+                #endif
+                
+                // Check if debugger is attached at runtime (only skip if not forced)
+                if (IsDebuggerPresent() && !forceEnable) {
+                    std::cout << "RenderDoc: Skipping initialization - debugger is attached (set FIRSTENGINE_ENABLE_RENDERDOC=1 to enable)" << std::endl;
+                    return;
+                }
+                
                 // Try to load renderdoc.dll from multiple locations
                 HMODULE mod = nullptr;
                 
@@ -104,43 +134,160 @@ namespace FirstEngine {
                 // If RenderDoc is not available, that's okay - program will run normally
             }
             
-            // 开始帧捕获（在帧开始时调用）
+            // Begin frame capture (called at frame start)
             static void BeginFrame() {
+                // Check environment variable to force enable RenderDoc even in debug mode
+                bool forceEnable = CheckForceEnable();
+                
+                // Skip RenderDoc in debug mode unless forced
+                #ifdef _DEBUG
+                if (!forceEnable) {
+                    return;
+                }
+                #endif
+                
+                // Check if debugger is attached at runtime (only skip if not forced)
+                if (IsDebuggerPresent() && !forceEnable) {
+                    return;
+                }
+                
                 if (s_RenderDocAPI) {
+                    // Verify the API pointer is still valid
+                    if (!IsValidPointer(s_RenderDocAPI)) {
+                        s_RenderDocAPI = nullptr;
+                        return;
+                    }
+                    
                     // Pass nullptr for both parameters - RenderDoc will automatically capture all devices/windows
                     // This is the safest approach and avoids access violation errors
                     if (s_RenderDocAPI->StartFrameCapture) {
-                        try {
-                            s_RenderDocAPI->StartFrameCapture(nullptr, nullptr);
-                        } catch (...) {
-                            // Silently ignore errors - RenderDoc might not be fully initialized yet
-                        }
+                        // Call helper function that uses SEH (no object unwinding in that function)
+                        StartFrameCaptureSafe();
                     }
                 }
             }
             
-            // 结束帧捕获（在帧提交后调用）
+            // End frame capture (called after frame submission)
             static void EndFrame() {
+                // Check environment variable to force enable RenderDoc even in debug mode
+                bool forceEnable = CheckForceEnable();
+                
+                // Skip RenderDoc in debug mode unless forced
+                #ifdef _DEBUG
+                if (!forceEnable) {
+                    return;
+                }
+                #endif
+                
+                // Check if debugger is attached at runtime (only skip if not forced)
+                if (IsDebuggerPresent() && !forceEnable) {
+                    return;
+                }
+                
                 if (s_RenderDocAPI) {
+                    // Verify the API pointer is still valid
+                    if (!IsValidPointer(s_RenderDocAPI)) {
+                        s_RenderDocAPI = nullptr;
+                        return;
+                    }
+                    
                     // Pass nullptr for both parameters - RenderDoc will automatically capture all devices/windows
                     if (s_RenderDocAPI->EndFrameCapture) {
-                        try {
-                            s_RenderDocAPI->EndFrameCapture(nullptr, nullptr);
-                        } catch (...) {
-                            // Silently ignore errors - RenderDoc might not be fully initialized yet
-                        }
+                        // Call helper function that uses SEH (no object unwinding in that function)
+                        EndFrameCaptureSafe();
                     }
                 }
             }
             
-            // 检查 RenderDoc 是否可用
-            static bool IsAvailable() { return s_RenderDocAPI != nullptr; }
+            // Check if RenderDoc is available
+            static bool IsAvailable() { 
+                // Check environment variable to force enable RenderDoc even in debug mode
+                bool forceEnable = CheckForceEnable();
+                
+                #ifdef _DEBUG
+                if (!forceEnable) {
+                    return false; // Disable in debug mode unless forced
+                }
+                #endif
+                
+                // Disable if debugger is attached (unless forced)
+                if (IsDebuggerPresent() && !forceEnable) {
+                    return false;
+                }
+                
+                return s_RenderDocAPI != nullptr && IsValidPointer(s_RenderDocAPI);
+            }
             
         private:
-            // 使用 inline 关键字（C++17）在头文件中定义静态成员变量
+            // Check if RenderDoc is force enabled via environment variable
+            // This function handles object unwinding (std::string), so it cannot be in __try block
+            static bool CheckForceEnable() {
+                bool forceEnable = false;
+                char* envValue = nullptr;
+                size_t envSize = 0;
+                if (_dupenv_s(&envValue, &envSize, "FIRSTENGINE_ENABLE_RENDERDOC") == 0 && envValue) {
+                    forceEnable = (std::string(envValue) == "1" || std::string(envValue) == "true");
+                    free(envValue);
+                }
+                return forceEnable;
+            }
+            
+            // Safe wrapper for StartFrameCapture using SEH
+            // This function has no object unwinding, so it can use __try/__except
+            static void StartFrameCaptureSafe() {
+                __try {
+                    if (s_RenderDocAPI && s_RenderDocAPI->StartFrameCapture) {
+                        s_RenderDocAPI->StartFrameCapture(nullptr, nullptr);
+                    }
+                } __except(EXCEPTION_EXECUTE_HANDLER) {
+                    // Access violation or other exception occurred
+                    // Disable RenderDoc to prevent further crashes
+                    s_RenderDocAPI = nullptr;
+                    // Note: Cannot use std::cout here (object unwinding), use OutputDebugStringA instead
+                    OutputDebugStringA("RenderDoc: Exception in StartFrameCapture, disabling RenderDoc\n");
+                }
+            }
+            
+            // Safe wrapper for EndFrameCapture using SEH
+            // This function has no object unwinding, so it can use __try/__except
+            static void EndFrameCaptureSafe() {
+                __try {
+                    if (s_RenderDocAPI && s_RenderDocAPI->EndFrameCapture) {
+                        s_RenderDocAPI->EndFrameCapture(nullptr, nullptr);
+                    }
+                } __except(EXCEPTION_EXECUTE_HANDLER) {
+                    // Access violation or other exception occurred
+                    // Disable RenderDoc to prevent further crashes
+                    s_RenderDocAPI = nullptr;
+                    // Note: Cannot use std::cout here (object unwinding), use OutputDebugStringA instead
+                    OutputDebugStringA("RenderDoc: Exception in EndFrameCapture, disabling RenderDoc\n");
+                }
+            }
+            
+            // Verify pointer is valid (avoid access violation)
+            static bool IsValidPointer(void* ptr) {
+                if (!ptr) return false;
+                
+                // Use VirtualQuery to check if we can safely read from this pointer
+                MEMORY_BASIC_INFORMATION mbi;
+                if (VirtualQuery(ptr, &mbi, sizeof(mbi))) {
+                    // Check if the memory is committed and readable
+                    return (mbi.State == MEM_COMMIT) && 
+                           (mbi.Protect == PAGE_READONLY || 
+                            mbi.Protect == PAGE_READWRITE || 
+                            mbi.Protect == PAGE_EXECUTE_READ || 
+                            mbi.Protect == PAGE_EXECUTE_READWRITE ||
+                            mbi.Protect == PAGE_WRITECOPY ||
+                            mbi.Protect == PAGE_EXECUTE_WRITECOPY);
+                }
+                return false;
+            }
+            
+            // Use inline keyword (C++17) to define static member variable in header file
             inline static RENDERDOC_API_1_4_2* s_RenderDocAPI = nullptr;
         };
     }
 }
 
 #endif // _WIN32
+

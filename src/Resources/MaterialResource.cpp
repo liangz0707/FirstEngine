@@ -24,6 +24,7 @@ namespace fs = std::filesystem;
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 #endif
+#include <iostream>
 
 namespace FirstEngine {
     namespace Resources {
@@ -102,13 +103,6 @@ namespace FirstEngine {
             return ResourceLoadResult::Success;
         }
 
-        ResourceLoadResult MaterialResource::LoadFromMemory(const void* data, size_t size) {
-            // TODO: Implement material loading from memory
-            (void)data;
-            (void)size;
-            return ResourceLoadResult::UnknownError;
-        }
-
         MaterialResource::~MaterialResource() {
             // Release all texture references
             for (auto& pair : m_Textures) {
@@ -130,19 +124,28 @@ namespace FirstEngine {
             ResourceManager& resourceManager = ResourceManager::GetInstance();
 
             // Load textures from dependencies using ResourceID
+            // ResourceManager's cache mechanism prevents duplicate loading
             for (const auto& dep : m_Metadata.dependencies) {
                 if (dep.type == ResourceDependency::DependencyType::Texture) {
-                    // Skip if already loaded
-                    if (m_Textures.find(dep.slot) != m_Textures.end()) {
-                        continue;
+                    if (dep.resourceID == InvalidResourceID) {
+                        continue; // Skip invalid dependencies
+                    }
+                    
+                    // Skip if already loaded (check by slot)
+                    std::string slot = dep.slot.empty() ? "texture0" : dep.slot;
+                    if (m_Textures.find(slot) != m_Textures.end()) {
+                        continue; // Already loaded
                     }
                     
                     // Load by ID through ResourceManager
                     // ResourceManager internally uses the appropriate Resource::Load method
                     // (e.g., TextureResource::Load for textures, ModelResource::Load for models, etc.)
+                    // If texture is already loaded, ResourceManager::Load returns cached instance
                     ResourceHandle handle = resourceManager.Load(dep.resourceID);
                     if (handle.texture) {
-                        SetTexture(dep.slot.empty() ? "texture0" : dep.slot, handle.texture);
+                        SetTexture(slot, handle.texture);
+                    } else {
+                        std::cerr << "MaterialResource::LoadDependencies: Failed to load texture ID " << dep.resourceID << " for slot " << slot << std::endl;
                     }
                 }
             }

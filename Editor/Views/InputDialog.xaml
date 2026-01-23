@@ -3,7 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Input" Height="150" Width="400"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        Background="{StaticResource PrimaryBackgroundBrush}"
+        Foreground="{StaticResource PrimaryForegroundBrush}">
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -11,7 +13,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="{Binding Prompt}" Margin="0,0,0,10"/>
+        <TextBlock Grid.Row="0" Text="{Binding Prompt}" Margin="0,0,0,10" Foreground="{StaticResource PrimaryForegroundBrush}"/>
         <TextBox Grid.Row="1" Name="InputTextBox" Text="{Binding Answer}" Margin="0,0,0,10"/>
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="OK" Width="75" Margin="0,0,5,0" Click="OnOkClick" IsDefault="True"/>

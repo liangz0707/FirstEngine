@@ -1,6 +1,25 @@
 #include "FirstEngine/Renderer/RenderResourceManager.h"
+#include "FirstEngine/Core/ConfigFile.h"
+#include "FirstEngine/Resources/ResourceProvider.h"
+#include "FirstEngine/Renderer/ShaderCollectionsTools.h"
 #include <algorithm>
 #include <memory>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+
+#ifdef _WIN32
+#include <windows.h>
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#if __has_include(<filesystem>)
+#include <filesystem>
+namespace fs = std::filesystem;
+#else
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
+#endif
 
 namespace FirstEngine {
     namespace Renderer {
@@ -113,39 +132,207 @@ namespace FirstEngine {
                     continue;
                 }
 
-                ResourceState state = resource->GetState();
-                switch (state) {
+                // Get actual resource state
+                ResourceState resourceState = resource->GetResourceState();
+                switch (resourceState) {
                     case ResourceState::Uninitialized:
                         stats.uninitialized++;
                         break;
-                    case ResourceState::ScheduledCreate:
-                        stats.scheduledCreate++;
-                        break;
-                    case ResourceState::Creating:
-                        stats.creating++;
-                        break;
                     case ResourceState::Created:
                         stats.created++;
-                        break;
-                    case ResourceState::ScheduledUpdate:
-                        stats.scheduledUpdate++;
-                        break;
-                    case ResourceState::Updating:
-                        stats.updating++;
-                        break;
-                    case ResourceState::ScheduledDestroy:
-                        stats.scheduledDestroy++;
-                        break;
-                    case ResourceState::Destroying:
-                        stats.destroying++;
                         break;
                     case ResourceState::Destroyed:
                         stats.destroyed++;
                         break;
                 }
+
+                // Get schedule state
+                ScheduleState scheduleState = resource->GetScheduleState();
+                switch (scheduleState) {
+                    case ScheduleState::ScheduledCreate:
+                        stats.scheduledCreate++;
+                        break;
+                    case ScheduleState::ScheduledUpdate:
+                        stats.scheduledUpdate++;
+                        break;
+                    case ScheduleState::ScheduledDestroy:
+                        stats.scheduledDestroy++;
+                        break;
+                    case ScheduleState::None:
+                        break;
+                }
+
+                // Get operation state
+                OperationState operationState = resource->GetOperationState();
+                switch (operationState) {
+                    case OperationState::Creating:
+                        stats.creating++;
+                        break;
+                    case OperationState::Updating:
+                        stats.updating++;
+                        break;
+                    case OperationState::Destroying:
+                        stats.destroying++;
+                        break;
+                    case OperationState::Idle:
+                        break;
+                }
             }
 
             return stats;
+        }
+
+        std::string RenderResourceManager::ResolvePath(const std::string& relativePath) {
+            // Normalize path separators
+            std::string normalizedPath = relativePath;
+            std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/');
+            
+            // Try current working directory first
+            if (fs::exists(normalizedPath)) {
+                return fs::absolute(normalizedPath).string();
+            }
+            
+            // Try relative to executable directory (Windows)
+#ifdef _WIN32
+            char exePath[MAX_PATH];
+            DWORD pathLen = GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+            if (pathLen > 0 && pathLen < MAX_PATH) {
+                // Remove executable name, keep directory
+                std::string exeDir;
+                for (int i = pathLen - 1; i >= 0; i--) {
+                    if (exePath[i] == '\\' || exePath[i] == '/') {
+                        exePath[i + 1] = '\0';
+                        exeDir = exePath;
+                        // Normalize to forward slashes for consistency
+                        std::replace(exeDir.begin(), exeDir.end(), '\\', '/');
+                        break;
+                    }
+                }
+                
+                if (!exeDir.empty()) {
+                    // Try in executable directory
+                    std::string fullPath = exeDir + normalizedPath;
+                    if (fs::exists(fullPath)) {
+                        return fs::absolute(fullPath).string();
+                    }
+                    // Try going up one directory (if exe is in build/Debug or build/Release)
+                    std::string parentPath = exeDir + "../" + normalizedPath;
+                    if (fs::exists(parentPath)) {
+                        return fs::absolute(parentPath).string();
+                    }
+                    // Try going up two directories (if exe is in build/Debug/FirstEngine or similar)
+                    std::string grandParentPath = exeDir + "../../" + normalizedPath;
+                    if (fs::exists(grandParentPath)) {
+                        return fs::absolute(grandParentPath).string();
+                    }
+                    // Try going up three directories (if exe is deep in build tree)
+                    std::string greatGrandParentPath = exeDir + "../../../" + normalizedPath;
+                    if (fs::exists(greatGrandParentPath)) {
+                        return fs::absolute(greatGrandParentPath).string();
+                    }
+                }
+            }
+#endif
+            // Return original path if not found (caller will handle error)
+            return normalizedPath;
+        }
+
+        bool RenderResourceManager::LoadPackageResources(const std::string& configPath) {
+            // Load configuration file
+            FirstEngine::Core::ConfigFile config;
+            std::string resolvedConfigPath = ResolvePath(configPath);
+            
+            if (!fs::exists(resolvedConfigPath)) {
+                std::cerr << "RenderResourceManager: Config file not found: " << resolvedConfigPath << std::endl;
+                return false;
+            }
+
+            if (!config.LoadFromFile(resolvedConfigPath)) {
+                std::cerr << "RenderResourceManager: Failed to load config file: " << resolvedConfigPath << std::endl;
+                return false;
+            }
+
+            // Get Package path from config
+            std::string packagePath = config.GetValue("PackagePath", "");
+            if (packagePath.empty()) {
+                std::cerr << "RenderResourceManager: PackagePath not found in config file" << std::endl;
+                return false;
+            }
+
+            // Resolve Package path (might be relative)
+            std::string resolvedPackagePath = ResolvePath(packagePath);
+            if (!fs::exists(resolvedPackagePath)) {
+                std::cerr << "RenderResourceManager: Package directory not found: " << resolvedPackagePath << std::endl;
+                return false;
+            }
+
+            return LoadPackageResourcesFromPath(resolvedPackagePath);
+        }
+
+        bool RenderResourceManager::LoadPackageResourcesFromPath(const std::string& packagePath) {
+            // Normalize path
+            std::string normalizedPath = packagePath;
+            std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/');
+            
+            // Ensure path ends with /
+            if (!normalizedPath.empty() && normalizedPath.back() != '/') {
+                normalizedPath += '/';
+            }
+
+            if (!fs::exists(normalizedPath)) {
+                std::cerr << "RenderResourceManager: Package directory does not exist: " << normalizedPath << std::endl;
+                return false;
+            }
+
+            // Initialize ResourceManager if not already initialized
+            FirstEngine::Resources::ResourceManager::Initialize();
+            FirstEngine::Resources::ResourceManager& resourceManager = FirstEngine::Resources::ResourceManager::GetInstance();
+
+            // Add Package directory as search path
+            resourceManager.AddSearchPath(normalizedPath);
+            resourceManager.AddSearchPath(normalizedPath + "Models");
+            resourceManager.AddSearchPath(normalizedPath + "Materials");
+            resourceManager.AddSearchPath(normalizedPath + "Textures");
+            resourceManager.AddSearchPath(normalizedPath + "Shaders");
+            resourceManager.AddSearchPath(normalizedPath + "Scenes");
+
+            // Initialize ShaderCollectionsTools with shader directory
+            auto& collectionsTools = ShaderCollectionsTools::GetInstance();
+            std::string shaderDir = normalizedPath + "Shaders";
+            if (!collectionsTools.Initialize(shaderDir)) {
+                std::cerr << "RenderResourceManager: Warning: Failed to initialize ShaderCollectionsTools" << std::endl;
+            } else {
+                // Load all shaders from Package/Shaders directory at startup
+                if (fs::exists(shaderDir)) {
+                    std::cout << "RenderResourceManager: Loading all shaders from: " << shaderDir << std::endl;
+                    if (collectionsTools.LoadAllShadersFromDirectory(shaderDir)) {
+                        std::cout << "RenderResourceManager: Successfully loaded all shaders" << std::endl;
+                    } else {
+                        std::cerr << "RenderResourceManager: Warning: Failed to load some shaders" << std::endl;
+                    }
+                } else {
+                    std::cout << "RenderResourceManager: Shaders directory not found, shaders will be loaded on demand" << std::endl;
+                }
+            }
+
+            // Load resource manifest
+            std::string manifestPath = normalizedPath + "resource_manifest.json";
+            if (fs::exists(manifestPath)) {
+                if (resourceManager.LoadManifest(manifestPath)) {
+                    std::cout << "RenderResourceManager: Loaded resource manifest from: " << manifestPath << std::endl;
+                } else {
+                    std::cerr << "RenderResourceManager: Failed to load resource manifest from: " << manifestPath << std::endl;
+                    return false;
+                }
+            } else {
+                std::cout << "RenderResourceManager: Resource manifest not found: " << manifestPath << std::endl;
+                std::cout << "RenderResourceManager: Will register resources on demand." << std::endl;
+            }
+
+            // Store current package path
+            m_CurrentPackagePath = normalizedPath;
+
+            return true;
         }
 
     } // namespace Renderer

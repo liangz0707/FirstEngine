@@ -1,13 +1,16 @@
-﻿#pragma once
+#pragma once
 
+// Include standard library headers first, before any namespace definitions
+#include <string>
+#include <memory>
+
+// Then include project headers
 #include "FirstEngine/Renderer/Export.h"
-#include "FirstEngine/Renderer/FrameGraph.h"
 #include "FirstEngine/Renderer/RenderPassTypes.h"
 #include "FirstEngine/Renderer/RenderCommandList.h"
 #include "FirstEngine/Renderer/RenderConfig.h"
 #include "FirstEngine/Renderer/RenderFlags.h"
-#include <string>
-#include <memory>
+#include "FirstEngine/Renderer/FrameGraph.h"
 
 // Forward declarations
 namespace FirstEngine {

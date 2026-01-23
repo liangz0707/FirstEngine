@@ -38,8 +38,9 @@ namespace FirstEngine {
             uint64_t GetID() const { return m_ID; }
             void SetID(uint64_t id) { m_ID = id; }
 
-            // Note: Shader modules are now managed by ShaderModuleTools, not stored in ShaderCollection
-            // These methods are kept for backward compatibility but may be deprecated
+            // NOTE: Shader modules are now managed by ShaderModuleTools, not stored in ShaderCollection
+            // These methods are kept for backward compatibility but may be deprecated in a future version
+            // TODO: Consider deprecating these methods - use ShaderModuleTools instead
             // Add shader module for a specific stage (deprecated - use ShaderModuleTools instead)
             void AddShader(ShaderStage stage, std::unique_ptr<RHI::IShaderModule> shaderModule);
 

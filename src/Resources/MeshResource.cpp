@@ -80,25 +80,29 @@ namespace FirstEngine {
             // Store source mesh file path (for saving)
             m_SourceMeshFile = loadResult.meshFile;
 
-            // Use returned Handle data (vertices, indices) to initialize resource
-            if (!loadResult.vertices.empty()) {
-                if (!Initialize(loadResult.vertices, loadResult.indices, 
-                               loadResult.vertexStride > 0 ? loadResult.vertexStride : sizeof(Vertex))) {
-                    return ResourceLoadResult::InvalidFormat;
+            // Use returned Handle data (vertexData, vertexFormat, indices) to initialize resource
+            if (!loadResult.vertexData.empty() && loadResult.vertexCount > 0) {
+                // Initialize from flexible vertex format
+                m_VertexCount = loadResult.vertexCount;
+                m_IndexCount = static_cast<uint32_t>(loadResult.indices.size());
+                m_VertexStride = loadResult.vertexFormat.GetStride();
+                
+                // Copy vertex data
+                m_VertexData = loadResult.vertexData;
+                
+                // Copy index data
+                if (!loadResult.indices.empty()) {
+                    m_IndexData.resize(m_IndexCount * sizeof(uint32_t));
+                    std::memcpy(m_IndexData.data(), loadResult.indices.data(), m_IndexCount * sizeof(uint32_t));
                 }
+            } else {
+                return ResourceLoadResult::InvalidFormat;
             }
             
             m_Metadata.isLoaded = true;
             m_Metadata.fileSize = m_VertexData.size() + m_IndexData.size();
 
             return ResourceLoadResult::Success;
-        }
-
-        ResourceLoadResult MeshResource::LoadFromMemory(const void* data, size_t size) {
-            // TODO: Implement mesh loading from memory
-            (void)data;
-            (void)size;
-            return ResourceLoadResult::FileNotFound;
         }
 
         void MeshResource::LoadDependencies() {
@@ -108,8 +112,9 @@ namespace FirstEngine {
 
         bool MeshResource::Save(const std::string& xmlFilePath) const {
             // Save XML with source mesh file path (similar to TextureResource::Save)
+            // Note: vertexStride is no longer stored in XML - it's calculated from mesh file
             return MeshLoader::Save(xmlFilePath, m_Metadata.name, m_Metadata.resourceID,
-                                   m_SourceMeshFile, m_VertexStride);
+                                   m_SourceMeshFile);
         }
 
         // Render resource management implementation (internal)

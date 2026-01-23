@@ -11,11 +11,12 @@ struct VertexOutput {
     float4 lightPos : TEXCOORD0;
 };
 
-cbuffer PerObject : register(b0) {
+// Uniform Buffers - Set 0, Binding 0 and 1
+[[vk::binding(0, 0)]] cbuffer PerObject {
     float4x4 modelMatrix;
 };
 
-cbuffer PerFrame : register(b1) {
+[[vk::binding(1, 0)]] cbuffer PerFrame {
     float4x4 viewMatrix;
     float4x4 projectionMatrix;
     float4x4 viewProjectionMatrix;

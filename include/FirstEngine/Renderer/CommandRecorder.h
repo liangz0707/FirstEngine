@@ -22,9 +22,12 @@ namespace FirstEngine {
             );
 
             // Record a single command
-            void RecordCommand(
+            // renderPassDepth: current depth of active render passes (for validation)
+            // Returns true if command was successfully recorded, false otherwise
+            bool RecordCommand(
                 RHI::ICommandBuffer* commandBuffer,
-                const RenderCommand& command
+                const RenderCommand& command,
+                int renderPassDepth = 0
             );
 
         private:
@@ -36,9 +39,13 @@ namespace FirstEngine {
             void RecordDraw(RHI::ICommandBuffer* cmd, const RenderCommand::DrawParams& params);
             void RecordDrawIndexed(RHI::ICommandBuffer* cmd, const RenderCommand::DrawIndexedParams& params);
             void RecordTransitionImageLayout(RHI::ICommandBuffer* cmd, const RenderCommand::TransitionImageLayoutParams& params);
-            void RecordBeginRenderPass(RHI::ICommandBuffer* cmd, const RenderCommand::BeginRenderPassParams& params);
+            // Returns true if BeginRenderPass succeeded, false otherwise
+            bool RecordBeginRenderPass(RHI::ICommandBuffer* cmd, const RenderCommand::BeginRenderPassParams& params);
             void RecordEndRenderPass(RHI::ICommandBuffer* cmd, const RenderCommand::EndRenderPassParams& params);
             void RecordPushConstants(RHI::ICommandBuffer* cmd, const RenderCommand::PushConstantsParams& params);
+            
+            // Track current bound pipeline for PushConstants
+            RHI::IPipeline* m_CurrentPipeline = nullptr;
         };
 
     } // namespace Renderer

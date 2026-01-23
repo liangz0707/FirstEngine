@@ -14,6 +14,7 @@ namespace FirstEngineEditor.ViewModels
             _fileManager = ServiceLocator.Get<IFileManager>();
 
             SceneListViewModel = new SceneListViewModel();
+            SceneResourceListViewModel = new SceneResourceListViewModel();
             ResourceListViewModel = new ResourceListViewModel();
             ResourceBrowserViewModel = new ResourceBrowserViewModel();
             PropertyPanelViewModel = new PropertyPanelViewModel();
@@ -21,6 +22,7 @@ namespace FirstEngineEditor.ViewModels
         }
 
         public SceneListViewModel SceneListViewModel { get; }
+        public SceneResourceListViewModel SceneResourceListViewModel { get; }
         public ResourceListViewModel ResourceListViewModel { get; }
         public ResourceBrowserViewModel ResourceBrowserViewModel { get; }
         public PropertyPanelViewModel PropertyPanelViewModel { get; }

@@ -18,6 +18,7 @@ EditorAPI_RenderViewport
 EditorAPI_IsViewportReady
 EditorAPI_LoadScene
 EditorAPI_UnloadScene
+EditorAPI_SaveScene
 EditorAPI_LoadResource
 EditorAPI_UnloadResource
 EditorAPI_SetRenderConfig

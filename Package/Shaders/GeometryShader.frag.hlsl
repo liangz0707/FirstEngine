@@ -16,15 +16,8 @@ struct FragmentOutput {
     float4 material : SV_Target2;       // R: AO, G: Emission, B: unused, A: unused
 };
 
-Texture2D albedoMap : register(t0);
-Texture2D normalMap : register(t1);
-Texture2D metallicRoughnessMap : register(t2);
-Texture2D aoMap : register(t3);
-Texture2D emissionMap : register(t4);
-
-SamplerState textureSampler : register(s0);
-
-cbuffer MaterialParams : register(b0) {
+// Uniform Buffer - Set 0, Binding 0
+[[vk::binding(0, 0)]] cbuffer MaterialParams {
     float4 baseColor;
     float metallic;
     float roughness;
@@ -36,6 +29,16 @@ cbuffer MaterialParams : register(b0) {
     int useAoMap;
     int useEmissionMap;
 };
+
+// Separate Images - Set 0, Binding 1, 2, 3, 4, 5
+[[vk::binding(1, 0)]] Texture2D albedoMap;
+[[vk::binding(2, 0)]] Texture2D normalMap;
+[[vk::binding(3, 0)]] Texture2D metallicRoughnessMap;
+[[vk::binding(4, 0)]] Texture2D aoMap;
+[[vk::binding(5, 0)]] Texture2D emissionMap;
+
+// Separate Sampler - Set 0, Binding 6
+[[vk::binding(6, 0)]] SamplerState textureSampler;
 
 FragmentOutput main(FragmentInput input) {
     FragmentOutput output;

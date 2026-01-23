@@ -17,75 +17,75 @@ namespace FirstEngine {
         class ShadingMaterial;
 
         // ============================================================================
-        // MaterialDescriptorManager - 专门处理 Descriptor 和 Binding 的设备相关逻辑
+        // MaterialDescriptorManager - Handles device-specific logic for Descriptors and Bindings
         // ============================================================================
-        // 职责：
-        // 1. 管理 Descriptor Set Layouts 的创建和销毁
-        // 2. 管理 Descriptor Pool 的创建和销毁
-        // 3. 分配和管理 Descriptor Sets
-        // 4. 更新 Descriptor Sets 的绑定（Uniform Buffers、Textures）
-        // 5. 提供 Descriptor Set 的访问接口
+        // Responsibilities:
+        // 1. Manage creation and destruction of Descriptor Set Layouts
+        // 2. Manage creation and destruction of Descriptor Pool
+        // 3. Allocate and manage Descriptor Sets
+        // 4. Update Descriptor Set bindings (Uniform Buffers, Textures)
+        // 5. Provide access interface for Descriptor Sets
         //
-        // ShadingMaterial 专注于：
-        // - 保存 Shader 参数（CPU 端数据）
-        // - 记录 CPU 到 GPU 的参数传递
-        // - 不直接与 RHI 交互
+        // ShadingMaterial focuses on:
+        // - Storing Shader parameters (CPU-side data)
+        // - Recording CPU to GPU parameter transfer
+        // - Not directly interacting with RHI
         // ============================================================================
         class FE_RENDERER_API MaterialDescriptorManager {
         public:
             MaterialDescriptorManager();
             ~MaterialDescriptorManager();
 
-            // 禁用拷贝和赋值
+            // Disable copy and assignment
             MaterialDescriptorManager(const MaterialDescriptorManager&) = delete;
             MaterialDescriptorManager& operator=(const MaterialDescriptorManager&) = delete;
 
-            // 初始化：从 ShadingMaterial 的资源信息创建 descriptor sets
-            // material: ShadingMaterial 实例，提供 uniform buffers 和 texture bindings 信息
-            // device: RHI 设备，用于创建 GPU 资源
+            // Initialize: Create descriptor sets from ShadingMaterial's resource information
+            // material: ShadingMaterial instance, provides uniform buffers and texture bindings information
+            // device: RHI device, used to create GPU resources
             // Returns: true if successful, false otherwise
             bool Initialize(ShadingMaterial* material, RHI::IDevice* device);
 
-            // 清理所有资源
+            // Cleanup all resources
             void Cleanup(RHI::IDevice* device);
 
-            // 更新 descriptor set 绑定（当 uniform buffer 或 texture 改变时调用）
-            // material: ShadingMaterial 实例，提供最新的资源信息
-            // device: RHI 设备
+            // Update descriptor set bindings (called when uniform buffer or texture changes)
+            // material: ShadingMaterial instance, provides latest resource information
+            // device: RHI device
             // Returns: true if successful, false otherwise
             bool UpdateBindings(ShadingMaterial* material, RHI::IDevice* device);
 
-            // 获取 descriptor set（用于渲染时绑定）
-            // setIndex: Descriptor set 索引
-            // Returns: Descriptor set handle，如果不存在则返回 nullptr
+            // Get descriptor set (for binding during rendering)
+            // setIndex: Descriptor set index
+            // Returns: Descriptor set handle, returns nullptr if doesn't exist
             RHI::DescriptorSetHandle GetDescriptorSet(uint32_t setIndex) const;
 
-            // 获取 descriptor set layout（用于创建 pipeline layout）
-            // setIndex: Descriptor set 索引
-            // Returns: Descriptor set layout handle，如果不存在则返回 nullptr
+            // Get descriptor set layout (for creating pipeline layout)
+            // setIndex: Descriptor set index
+            // Returns: Descriptor set layout handle, returns nullptr if doesn't exist
             RHI::DescriptorSetLayoutHandle GetDescriptorSetLayout(uint32_t setIndex) const;
 
-            // 获取所有 descriptor set layouts（用于创建 pipeline）
-            // Returns: 所有 descriptor set layout handles 的列表（按 set 索引排序）
+            // Get all descriptor set layouts (for creating pipeline)
+            // Returns: List of all descriptor set layout handles (sorted by set index)
             std::vector<RHI::DescriptorSetLayoutHandle> GetAllDescriptorSetLayouts() const;
 
-            // 检查是否已初始化
+            // Check if initialized
             bool IsInitialized() const { return m_Initialized; }
 
         private:
-            // 从 ShadingMaterial 创建 descriptor set layouts
+            // Create descriptor set layouts from ShadingMaterial
             bool CreateDescriptorSetLayouts(ShadingMaterial* material, RHI::IDevice* device);
 
-            // 创建 descriptor pool
+            // Create descriptor pool
             bool CreateDescriptorPool(ShadingMaterial* material, RHI::IDevice* device);
 
-            // 分配 descriptor sets
+            // Allocate descriptor sets
             bool AllocateDescriptorSets(RHI::IDevice* device);
 
-            // 更新 descriptor set 绑定（写入 uniform buffers 和 textures）
+            // Update descriptor set bindings (write uniform buffers and textures)
             void WriteDescriptorSets(ShadingMaterial* material, RHI::IDevice* device);
 
-            // 内部状态
+            // Internal state
             bool m_Initialized = false;
             RHI::IDevice* m_Device = nullptr;
 

@@ -11,6 +11,7 @@
 #include "FirstEngine/RHI/IImage.h"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 namespace FirstEngine {
     namespace Renderer {
@@ -242,7 +243,12 @@ namespace FirstEngine {
                             // Ensure pipeline is created (lazy creation)
                             // If renderPass is available, create pipeline now
                             if (renderPass && !shadingMaterial->GetShadingState().GetPipeline()) {
-                                shadingMaterial->EnsurePipelineCreated(m_Device, renderPass);
+                                bool pipelineCreated = shadingMaterial->EnsurePipelineCreated(m_Device, renderPass);
+                                if (!pipelineCreated) {
+                                    std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: Failed to create pipeline for ShadingMaterial. "
+                                              << "Device: " << (m_Device ? "valid" : "null") 
+                                              << ", RenderPass: " << (renderPass ? "valid" : "null") << std::endl;
+                                }
                             }
                             
                             itemPipeline = shadingMaterial->GetShadingState().GetPipeline();
@@ -250,12 +256,29 @@ namespace FirstEngine {
                             
                             // If pipeline is not created yet and we don't have renderPass, skip this item
                             if (!itemPipeline) {
+                                if (!renderPass) {
+                                    std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: itemPipeline is null and renderPass is null, skipping draw command" << std::endl;
+                                } else {
+                                    std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: itemPipeline is null after EnsurePipelineCreated, skipping draw command" << std::endl;
+                                }
                                 continue; // Skip this item if pipeline is not ready
                             }
+                        } else if (shadingMaterial && !shadingMaterial->IsCreated()) {
+                            std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: ShadingMaterial is not created yet, skipping draw command" << std::endl;
+                            continue;
                         }
                     }
                     
                     // Bind pipeline if changed
+                    // IMPORTANT: Always bind pipeline if itemPipeline is valid, even if it's the same as currentPipeline
+                    // This ensures pipeline is bound before DrawIndexed, especially after render pass changes
+                    if (!itemPipeline) {
+                        // Pipeline is null - this should not happen if we skipped the item above
+                        // But if it does, log a warning and skip this item
+                        std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: itemPipeline is null, skipping draw command" << std::endl;
+                        continue;
+                    }
+                    
                     if (itemPipeline != currentPipeline) {
                         RenderCommand cmd;
                         cmd.type = RenderCommandType::BindPipeline;

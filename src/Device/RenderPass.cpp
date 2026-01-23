@@ -6,7 +6,7 @@ namespace FirstEngine {
     namespace Device {
 
         RenderPass::RenderPass(DeviceContext* context)
-            : m_Context(context), m_RenderPass(VK_NULL_HANDLE) {
+            : m_Context(context), m_RenderPass(VK_NULL_HANDLE), m_ColorAttachmentCount(0) {
         }
 
         RenderPass::~RenderPass() {
@@ -33,6 +33,13 @@ namespace FirstEngine {
                 return false;
             }
 
+            // Store color attachment count for subpass 0 (if available)
+            if (!subpasses.empty()) {
+                m_ColorAttachmentCount = subpasses[0].colorAttachmentCount;
+            } else {
+                m_ColorAttachmentCount = 0;
+            }
+
             return true;
         }
 
@@ -40,7 +47,7 @@ namespace FirstEngine {
                                      VkSampleCountFlagBits samples) {
             std::vector<VkAttachmentDescription> attachments;
 
-            // 颜色附件
+            // Color attachment
             VkAttachmentDescription colorAttachment{};
             colorAttachment.format = colorFormat;
             colorAttachment.samples = samples;
@@ -54,7 +61,7 @@ namespace FirstEngine {
                                          : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             attachments.push_back(colorAttachment);
 
-            // 深度附件（如果提供）
+            // Depth attachment (if provided)
             VkAttachmentDescription depthAttachment{};
             bool hasDepth = (depthFormat != VK_FORMAT_UNDEFINED);
             if (hasDepth) {
@@ -69,7 +76,7 @@ namespace FirstEngine {
                 attachments.push_back(depthAttachment);
             }
 
-            // 子通道
+            // Subpass
             VkAttachmentReference colorAttachmentRef{};
             colorAttachmentRef.attachment = 0;
             colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -86,7 +93,10 @@ namespace FirstEngine {
                 subpass.pDepthStencilAttachment = &depthAttachmentRef;
             }
 
-            // 依赖关系
+            // Store color attachment count for subpass 0
+            m_ColorAttachmentCount = 1;
+
+            // Dependencies
             VkSubpassDependency dependency{};
             dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
             dependency.dstSubpass = 0;

@@ -1,5 +1,7 @@
 #include "FirstEngine/Core/RenderDoc.h"
 #include <iostream>
+#include <stdlib.h>  // For _dupenv_s
+#include <string>
 
 #ifdef _WIN32
 
@@ -9,6 +11,32 @@ namespace FirstEngine {
         RENDERDOC_API_1_4_2* RenderDocHelper::s_RenderDocAPI = nullptr;
         
         void RenderDocHelper::Initialize() {
+            // Check environment variable to force enable RenderDoc even in debug mode
+            // Set FIRSTENGINE_ENABLE_RENDERDOC=1 to enable RenderDoc in debug builds
+            bool forceEnable = false;
+            char* envValue = nullptr;
+            size_t envSize = 0;
+            if (_dupenv_s(&envValue, &envSize, "FIRSTENGINE_ENABLE_RENDERDOC") == 0 && envValue) {
+                forceEnable = (std::string(envValue) == "1" || std::string(envValue) == "true");
+                free(envValue);
+            }
+            
+            // Skip RenderDoc initialization in debug mode unless forced
+            #ifdef _DEBUG
+            if (!forceEnable) {
+                std::cout << "RenderDoc: Skipping initialization in debug mode (set FIRSTENGINE_ENABLE_RENDERDOC=1 to enable)" << std::endl;
+                return;
+            } else {
+                std::cout << "RenderDoc: Force enabled via FIRSTENGINE_ENABLE_RENDERDOC environment variable" << std::endl;
+            }
+            #endif
+            
+            // Check if debugger is attached at runtime (only skip if not forced)
+            if (IsDebuggerPresent() && !forceEnable) {
+                std::cout << "RenderDoc: Skipping initialization - debugger is attached (set FIRSTENGINE_ENABLE_RENDERDOC=1 to enable)" << std::endl;
+                return;
+            }
+            
             // Try to load renderdoc.dll from multiple locations
             HMODULE mod = nullptr;
             
@@ -75,29 +103,102 @@ namespace FirstEngine {
         }
         
         void RenderDocHelper::BeginFrame() {
+            // Check environment variable to force enable RenderDoc even in debug mode
+            bool forceEnable = CheckForceEnable();
+            
+            // Skip RenderDoc in debug mode unless forced
+            #ifdef _DEBUG
+            if (!forceEnable) {
+                return;
+            }
+            #endif
+            
+            // Check if debugger is attached at runtime (only skip if not forced)
+            if (IsDebuggerPresent() && !forceEnable) {
+                return;
+            }
+            
             if (s_RenderDocAPI) {
+                // Verify the API pointer is still valid
+                if (!IsValidPointer(s_RenderDocAPI)) {
+                    s_RenderDocAPI = nullptr;
+                    return;
+                }
+                
                 // Pass nullptr for both parameters - RenderDoc will automatically capture all devices/windows
                 // This is the safest approach and avoids access violation errors
                 if (s_RenderDocAPI->StartFrameCapture) {
-                    try {
-                        s_RenderDocAPI->StartFrameCapture(nullptr, nullptr);
-                    } catch (...) {
-                        // Silently ignore errors - RenderDoc might not be fully initialized yet
-                    }
+                    // Call helper function that uses SEH (no object unwinding in that function)
+                    StartFrameCaptureSafe();
                 }
             }
         }
         
         void RenderDocHelper::EndFrame() {
+            // Check environment variable to force enable RenderDoc even in debug mode
+            bool forceEnable = CheckForceEnable();
+            
+            // Skip RenderDoc in debug mode unless forced
+            #ifdef _DEBUG
+            if (!forceEnable) {
+                return;
+            }
+            #endif
+            
+            // Check if debugger is attached at runtime (only skip if not forced)
+            if (IsDebuggerPresent() && !forceEnable) {
+                return;
+            }
+            
             if (s_RenderDocAPI) {
+                // Verify the API pointer is still valid
+                if (!IsValidPointer(s_RenderDocAPI)) {
+                    s_RenderDocAPI = nullptr;
+                    return;
+                }
+                
                 // Pass nullptr for both parameters - RenderDoc will automatically capture all devices/windows
                 if (s_RenderDocAPI->EndFrameCapture) {
-                    try {
-                        s_RenderDocAPI->EndFrameCapture(nullptr, nullptr);
-                    } catch (...) {
-                        // Silently ignore errors - RenderDoc might not be fully initialized yet
-                    }
+                    // Call helper function that uses SEH (no object unwinding in that function)
+                    EndFrameCaptureSafe();
                 }
+            }
+        }
+        
+        bool RenderDocHelper::CheckForceEnable() {
+            bool forceEnable = false;
+            char* envValue = nullptr;
+            size_t envSize = 0;
+            if (_dupenv_s(&envValue, &envSize, "FIRSTENGINE_ENABLE_RENDERDOC") == 0 && envValue) {
+                forceEnable = (std::string(envValue) == "1" || std::string(envValue) == "true");
+                free(envValue);
+            }
+            return forceEnable;
+        }
+        
+        void RenderDocHelper::StartFrameCaptureSafe() {
+            __try {
+                if (s_RenderDocAPI && s_RenderDocAPI->StartFrameCapture) {
+                    s_RenderDocAPI->StartFrameCapture(nullptr, nullptr);
+                }
+            } __except(EXCEPTION_EXECUTE_HANDLER) {
+                // Access violation or other exception occurred
+                // Disable RenderDoc to prevent further crashes
+                s_RenderDocAPI = nullptr;
+                std::cout << "RenderDoc: Exception in StartFrameCapture, disabling RenderDoc" << std::endl;
+            }
+        }
+        
+        void RenderDocHelper::EndFrameCaptureSafe() {
+            __try {
+                if (s_RenderDocAPI && s_RenderDocAPI->EndFrameCapture) {
+                    s_RenderDocAPI->EndFrameCapture(nullptr, nullptr);
+                }
+            } __except(EXCEPTION_EXECUTE_HANDLER) {
+                // Access violation or other exception occurred
+                // Disable RenderDoc to prevent further crashes
+                s_RenderDocAPI = nullptr;
+                std::cout << "RenderDoc: Exception in EndFrameCapture, disabling RenderDoc" << std::endl;
             }
         }
         

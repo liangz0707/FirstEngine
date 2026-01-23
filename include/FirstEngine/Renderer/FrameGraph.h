@@ -1,11 +1,6 @@
 #pragma once
 
-#include "FirstEngine/Renderer/Export.h"
-#include "FirstEngine/Renderer/RenderCommandList.h"
-#include "FirstEngine/Renderer/RenderPassTypes.h"
-#include "FirstEngine/Renderer/ResourceTypes.h"
-#include "FirstEngine/RHI/IDevice.h"
-#include "FirstEngine/RHI/Types.h"
+// Include standard library headers first, before any namespace definitions
 #include <memory>
 #include <vector>
 #include <string>
@@ -14,6 +9,17 @@
 #include <functional>
 #include <cstdint>
 #include <climits>
+#include <optional>
+
+// Then include project headers
+#include "FirstEngine/Renderer/Export.h"
+#include "FirstEngine/Renderer/RenderCommandList.h"
+#include "FirstEngine/Renderer/RenderPassTypes.h"
+#include "FirstEngine/Renderer/ResourceTypes.h"
+#include "FirstEngine/Renderer/FrameGraphResourceWrappers.h"  // For FramebufferResource and RenderPassResource
+#include "FirstEngine/RHI/IDevice.h"
+#include "FirstEngine/RHI/IFramebuffer.h"
+#include "FirstEngine/RHI/Types.h"
 
 // Forward declarations
 namespace FirstEngine {
@@ -104,6 +110,7 @@ namespace FirstEngine {
 
         // Forward declaration
         class FrameGraph;
+        // FramebufferResource and RenderPassResource are now fully defined in FrameGraphResourceWrappers.h
 
         // FrameGraph node (render pass)
         class FE_RENDERER_API FrameGraphNode {
@@ -131,6 +138,9 @@ namespace FirstEngine {
                 m_ReadResources.clear();
                 m_WriteResources.clear();
                 m_Dependencies.clear();
+                // Note: We don't clear m_CachedRenderPassDesc here because we want to compare
+                // with the previous frame's configuration to determine if recreation is needed
+                // The cache will be updated when a new render pass is created
             }
 
             // Dependencies
@@ -151,6 +161,24 @@ namespace FirstEngine {
             void SetType(const std::string& typeStr) { m_Type = StringToRenderPassType(typeStr); }
             std::string GetTypeString() const { return RenderPassTypeToString(m_Type); }
 
+            // Resource management (Framebuffer and RenderPass stored per node)
+            void SetFramebufferResource(std::unique_ptr<FramebufferResource> framebuffer);
+            FramebufferResource* GetFramebufferResource() const { return m_FramebufferResource.get(); }
+            RHI::IFramebuffer* GetFramebuffer() const;
+
+            void SetRenderPassResource(std::unique_ptr<RenderPassResource> renderPass);
+            RenderPassResource* GetRenderPassResource() const { return m_RenderPassResource.get(); }
+            RHI::IRenderPass* GetRenderPass() const;
+
+            // Check if node resources have changed (for determining if resources need to be recreated)
+            // This compares the current resource requirements with the cached ones
+            bool HasResourceChanges() const { return m_HasResourceChanges; }
+            void MarkResourceChanges(bool changed = true) { m_HasResourceChanges = changed; }
+
+            // Cache render pass description for comparison
+            void SetCachedRenderPassDescription(const RHI::RenderPassDescription& desc) { m_CachedRenderPassDesc = desc; }
+            const RHI::RenderPassDescription* GetCachedRenderPassDescription() const { return m_CachedRenderPassDesc.has_value() ? &m_CachedRenderPassDesc.value() : nullptr; }
+
         protected:
             std::string m_Name;
             uint32_t m_Index;
@@ -160,6 +188,16 @@ namespace FirstEngine {
             std::vector<uint32_t> m_Dependencies;
             ExecuteCallback m_ExecuteCallback;
             FrameGraph* m_FrameGraph = nullptr; // Reference to FrameGraph for automatic resource management
+            
+            // Per-node resources (managed through IRenderResource lifecycle)
+            std::unique_ptr<FramebufferResource> m_FramebufferResource;
+            std::unique_ptr<RenderPassResource> m_RenderPassResource;
+            
+            // Track if resources have changed (used to determine if recreation is needed)
+            bool m_HasResourceChanges = false;
+            
+            // Cached render pass description for comparison (to avoid unnecessary recreation)
+            std::optional<RHI::RenderPassDescription> m_CachedRenderPassDesc;
         };
 
         // FrameGraph resource
@@ -191,7 +229,7 @@ namespace FirstEngine {
 
         class FE_RENDERER_API FrameGraphBuilder {
         public:
-            FrameGraphBuilder(FrameGraph* graph, RHI::IRenderPass* renderPass = nullptr);
+            FrameGraphBuilder(FrameGraph* graph, RHI::IRenderPass* renderPass = nullptr, RHI::IFramebuffer* framebuffer = nullptr);
 
             // Read resources
             RHI::IImage* ReadTexture(const std::string& name);
@@ -207,10 +245,14 @@ namespace FirstEngine {
 
             // Get current render pass (for pipeline creation)
             RHI::IRenderPass* GetRenderPass() const { return m_RenderPass; }
+            
+            // Get framebuffer (created in FrameGraph::Execute)
+            RHI::IFramebuffer* GetFramebuffer() const { return m_Framebuffer; }
 
         private:
             FrameGraph* m_Graph;
             RHI::IRenderPass* m_RenderPass = nullptr;
+            RHI::IFramebuffer* m_Framebuffer = nullptr;
         };
 
         class FE_RENDERER_API FrameGraph {
@@ -264,12 +306,22 @@ namespace FirstEngine {
             uint32_t GetNodeCount() const { return static_cast<uint32_t>(m_Nodes.size()); }
 
             // Clear (for next frame)
-            // This clears the graph structure but does NOT release resources
+            // This clears the graph structure (nodes and indices) but does NOT release resources
+            // Resources are kept alive across frames and reused if their description hasn't changed
+            // This prevents unnecessary recreation of textures and buffers every frame
             void Clear();
 
             // Release all allocated resources
-            // This should be called before rebuilding the FrameGraph
+            // This should be called:
+            //   - When FrameGraph is being destroyed
+            //   - When explicitly needed to free all resources
+            //   - NOT called every frame (resources are reused automatically)
             void ReleaseResources();
+
+            // Mark nodes that are being removed for destruction
+            // This schedules destruction of resources for nodes that no longer exist
+            // Resources will be destroyed in ProcessResources after the frame is submitted
+            void MarkRemovedNodesForDestruction();
 
             // Get device
             RHI::IDevice* GetDevice() const { return m_Device; }
@@ -292,6 +344,13 @@ namespace FirstEngine {
             std::unordered_map<std::string, std::unique_ptr<FrameGraphResource>> m_Resources;
             std::unordered_map<std::string, uint32_t> m_ResourceNameToIndex;
             std::unordered_map<std::string, uint32_t> m_NodeNameToIndex;
+            
+            // Note: Framebuffers and RenderPasses are now stored in FrameGraphNode
+            // They are managed through IRenderResource lifecycle (FramebufferResource and RenderPassResource)
+            // Resources are destroyed via ScheduleDestroy when nodes are removed or changed
+            
+            // Note: ImageViews are owned by VulkanImage, which is owned by FrameGraphResource
+            // They will be automatically destroyed when Images are released
         };
 
     } // namespace Renderer

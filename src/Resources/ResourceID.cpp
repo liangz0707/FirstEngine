@@ -5,6 +5,8 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <iostream>
+#include <limits>
 #if __has_include(<filesystem>)
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -107,7 +109,22 @@ namespace FirstEngine {
 
         std::string ResourceIDManager::GetPathFromID(ResourceID id) const {
             auto it = m_IDToPath.find(id);
-            return (it != m_IDToPath.end()) ? it->second : std::string();
+            if (it == m_IDToPath.end()) {
+                std::cerr << "ResourceIDManager::GetPathFromID: Resource ID " << id << " not found in manifest." << std::endl;
+                std::cerr << "  Total registered resources: " << m_IDToPath.size() << std::endl;
+                if (m_IDToPath.size() > 0) {
+                    // Find min and max IDs
+                    ResourceID minID = std::numeric_limits<ResourceID>::max();
+                    ResourceID maxID = 0;
+                    for (const auto& pair : m_IDToPath) {
+                        if (pair.first < minID) minID = pair.first;
+                        if (pair.first > maxID) maxID = pair.first;
+                    }
+                    std::cerr << "  Available IDs range: " << minID << " to " << maxID << std::endl;
+                }
+                return std::string();
+            }
+            return it->second;
         }
 
         ResourceID ResourceIDManager::GetIDFromVirtualPath(const std::string& virtualPath) const {
@@ -270,8 +287,11 @@ namespace FirstEngine {
             try {
                 std::ifstream file(manifestPath, std::ios::in);
                 if (!file.is_open()) {
+                    std::cerr << "ResourceIDManager::LoadManifest: Failed to open manifest file: " << manifestPath << std::endl;
                     return false;
                 }
+                
+                std::cout << "ResourceIDManager::LoadManifest: Loading manifest from: " << manifestPath << std::endl;
 
                 // Read entire file into string
                 std::string content((std::istreambuf_iterator<char>(file)),
@@ -395,9 +415,17 @@ namespace FirstEngine {
                                     ResourceType type = ParseResourceTypeName(typeStr);
                                     
                                     // Register the resource with virtual path
-                                    RegisterResourceWithID(id, unescapedPath, type, unescapedVirtualPath);
+                                    if (RegisterResourceWithID(id, unescapedPath, type, unescapedVirtualPath)) {
+                                        // Debug output for specific ID
+                                        if (id == 4001) {
+                                            std::cout << "ResourceIDManager: Registered ID 4001 -> Path: " << unescapedPath << ", Type: " << typeStr << std::endl;
+                                        }
+                                    }
+                                } catch (const std::exception& e) {
+                                    std::cerr << "ResourceIDManager: Exception parsing resource entry: " << e.what() << std::endl;
                                 } catch (...) {
                                     // Skip invalid entries
+                                    std::cerr << "ResourceIDManager: Unknown exception parsing resource entry" << std::endl;
                                 }
                             }
                             
@@ -412,8 +440,13 @@ namespace FirstEngine {
                     }
                 }
 
+                std::cout << "ResourceIDManager::LoadManifest: Successfully loaded " << m_IDToPath.size() << " resources from manifest" << std::endl;
                 return true;
+            } catch (const std::exception& e) {
+                std::cerr << "ResourceIDManager::LoadManifest: Exception loading manifest: " << e.what() << std::endl;
+                return false;
             } catch (...) {
+                std::cerr << "ResourceIDManager::LoadManifest: Unknown exception loading manifest" << std::endl;
                 return false;
             }
         }

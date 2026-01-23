@@ -15,14 +15,8 @@ struct FragmentOutput {
     float4 color : SV_Target0;
 };
 
-Texture2D albedoMap : register(t0);
-Texture2D normalMap : register(t1);
-Texture2D metallicRoughnessMap : register(t2);
-Texture2D aoMap : register(t3);
-
-SamplerState textureSampler : register(s0);
-
-cbuffer MaterialParams : register(b0) {
+// Uniform Buffers - Set 0, Binding 0 and 1
+[[vk::binding(0, 0)]] cbuffer MaterialParams {
     float4 baseColor;
     float metallic;
     float roughness;
@@ -33,11 +27,20 @@ cbuffer MaterialParams : register(b0) {
     int useAoMap;
 };
 
-cbuffer LightingParams : register(b1) {
+[[vk::binding(1, 0)]] cbuffer LightingParams {
     float3 lightDirection;
     float3 lightColor;
     float3 ambientColor;
 };
+
+// Separate Images - Set 0, Binding 2, 3, 4, 5
+[[vk::binding(2, 0)]] Texture2D albedoMap;
+[[vk::binding(3, 0)]] Texture2D normalMap;
+[[vk::binding(4, 0)]] Texture2D metallicRoughnessMap;
+[[vk::binding(5, 0)]] Texture2D aoMap;
+
+// Separate Sampler - Set 0, Binding 6
+[[vk::binding(6, 0)]] SamplerState textureSampler;
 
 // PBR Functions
 float DistributionGGX(float3 N, float3 H, float roughness) {

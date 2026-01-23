@@ -14,6 +14,7 @@ namespace fs = std::filesystem;
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 #endif
+#include <iostream>
 
 namespace FirstEngine {
     namespace Resources {
@@ -24,22 +25,37 @@ namespace FirstEngine {
         ResourceXMLParser::~ResourceXMLParser() = default;
 
         bool ResourceXMLParser::ParseFromFile(const std::string& xmlFilePath) {
-            if (!fs::exists(xmlFilePath)) {
+            try {
+                if (!fs::exists(xmlFilePath)) {
+                    std::cerr << "ResourceXMLParser::ParseFromFile: XML file does not exist: " << xmlFilePath << std::endl;
+                    return false;
+                }
+
+                pugi::xml_parse_result result = m_Document->load_file(xmlFilePath.c_str());
+                if (!result) {
+                    std::cerr << "ResourceXMLParser::ParseFromFile: Failed to parse XML file: " << xmlFilePath << std::endl;
+                    std::cerr << "  Error: " << result.description() << " at offset " << result.offset << std::endl;
+                    return false;
+                }
+
+                // Get the document element (root element, not the document node itself)
+                m_RootNode = m_Document->document_element();
+                if (m_RootNode.empty()) {
+                    // Fallback to root() if document_element() is empty
+                    m_RootNode = m_Document->root();
+                }
+                if (m_RootNode.empty()) {
+                    std::cerr << "ResourceXMLParser::ParseFromFile: XML file has no root node: " << xmlFilePath << std::endl;
+                    return false;
+                }
+                return true;
+            } catch (const std::filesystem::filesystem_error& e) {
+                std::cerr << "ResourceXMLParser::ParseFromFile: Filesystem error: " << e.what() << " for file: " << xmlFilePath << std::endl;
+                return false;
+            } catch (const std::exception& e) {
+                std::cerr << "ResourceXMLParser::ParseFromFile: Exception: " << e.what() << " for file: " << xmlFilePath << std::endl;
                 return false;
             }
-
-            pugi::xml_parse_result result = m_Document->load_file(xmlFilePath.c_str());
-            if (!result) {
-                return false;
-            }
-
-            // Get the document element (root element, not the document node itself)
-            m_RootNode = m_Document->document_element();
-            if (m_RootNode.empty()) {
-                // Fallback to root() if document_element() is empty
-                m_RootNode = m_Document->root();
-            }
-            return !m_RootNode.empty();
         }
 
         bool ResourceXMLParser::ParseFromString(const std::string& xmlContent) {
@@ -83,6 +99,7 @@ namespace FirstEngine {
                 return ParseResourceID(idNode.text().as_string());
             }
             // Fallback to ID (for backward compatibility with Material, etc.)
+            // NOTE: This fallback is kept for backward compatibility with older XML formats
             idNode = m_RootNode.child("ID");
             if (idNode) {
                 return ParseResourceID(idNode.text().as_string());
@@ -220,27 +237,31 @@ namespace FirstEngine {
                 outData.meshFile = meshFileNode.text().as_string();
             }
 
-            // Read vertex stride (optional)
-            auto vertexStrideNode = m_RootNode.child("VertexStride");
-            if (!vertexStrideNode.empty()) {
-                outData.vertexStride = vertexStrideNode.text().as_uint(0);
-            }
+            // Note: vertexStride is no longer stored in XML - it's calculated from mesh file
 
             return true;
         }
 
         bool ResourceXMLParser::GetModelData(ModelData& outData) const {
             if (m_RootNode.empty()) {
+                std::cerr << "ResourceXMLParser::GetModelData: Root node is empty" << std::endl;
                 return false;
             }
             // Check root node name - use string comparison for safety
             const char* nodeName = m_RootNode.name();
-            if (!nodeName || std::string(nodeName) != "Model") {
+            if (!nodeName) {
+                std::cerr << "ResourceXMLParser::GetModelData: Root node has no name" << std::endl;
+                return false;
+            }
+            std::string rootName(nodeName);
+            if (rootName != "Model") {
+                std::cerr << "ResourceXMLParser::GetModelData: Root node is not 'Model', got: " << rootName << std::endl;
                 return false;
             }
 
             // ModelFile is deprecated - Model is a logical resource, actual geometry files
             // are specified in Mesh XML files (MeshFile). This is kept for backward compatibility only.
+            // TODO: Consider removing this in a future version when all XML files are updated
             auto modelFileNode = m_RootNode.child("ModelFile");
             if (!modelFileNode.empty()) {
                 outData.modelFile = modelFileNode.text().as_string();
@@ -250,13 +271,25 @@ namespace FirstEngine {
 
             // Parse meshes
             auto meshesNode = m_RootNode.child("Meshes");
-            if (!meshesNode.empty()) {
+            if (meshesNode.empty()) {
+                std::cerr << "ResourceXMLParser::GetModelData: No <Meshes> node found in XML" << std::endl;
+            } else {
+                size_t meshCount = 0;
                 for (pugi::xml_node meshNode : meshesNode.children("Mesh")) {
                     uint32_t index = meshNode.attribute("index").as_uint(0);
-                    ResourceID id = ParseResourceID(meshNode.attribute("resourceID").as_string());
+                    std::string resourceIDStr = meshNode.attribute("resourceID").as_string();
+                    ResourceID id = ParseResourceID(resourceIDStr);
                     if (id != InvalidResourceID) {
                         outData.meshIndices.push_back({index, id});
+                        meshCount++;
+                    } else {
+                        std::cerr << "ResourceXMLParser::GetModelData: Invalid mesh resourceID: " << resourceIDStr << " at index " << index << std::endl;
                     }
+                }
+                if (meshCount == 0) {
+                    std::cerr << "ResourceXMLParser::GetModelData: <Meshes> node exists but contains no valid <Mesh> entries" << std::endl;
+                } else {
+                    std::cout << "ResourceXMLParser::GetModelData: Parsed " << meshCount << " mesh dependencies" << std::endl;
                 }
             }
 
@@ -510,9 +543,7 @@ namespace FirstEngine {
             root.append_child("Name").text().set(name.c_str());
             root.append_child("ResourceID").text().set(std::to_string(id).c_str());
             root.append_child("MeshFile").text().set(data.meshFile.c_str());
-            if (data.vertexStride > 0) {
-                root.append_child("VertexStride").text().set(data.vertexStride);
-            }
+            // Note: vertexStride is no longer stored in XML - it's calculated from mesh file
 
             return doc.save_file(xmlFilePath.c_str());
         }

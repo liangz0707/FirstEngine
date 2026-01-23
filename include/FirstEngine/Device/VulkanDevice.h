@@ -79,10 +79,15 @@ namespace FirstEngine {
             void UpdateDescriptorSets(
                 const std::vector<RHI::DescriptorWrite>& writes) override;
 
+            // Sampler management
+            // Get or create default sampler (linear filtering, repeat addressing)
+            void* GetDefaultSampler();
+
         private:
             std::unique_ptr<VulkanRenderer> m_Renderer;
             std::unique_ptr<Core::Window> m_Window;
             RHI::DeviceInfo m_DeviceInfo;
+            VkSampler m_DefaultSampler = VK_NULL_HANDLE; // Cached default sampler
         };
 
     } // namespace Device

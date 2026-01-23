@@ -2,8 +2,7 @@
 
 #include "FirstEngine/Resources/Export.h"
 #include "FirstEngine/Resources/ResourceTypeEnum.h"
-#include "FirstEngine/RHI/IImage.h"
-#include "FirstEngine/RHI/IImageView.h"
+#include "FirstEngine/RHI/IImage.h"  // IImageView is defined in IImage.h
 #include <string>
 #include <memory>
 #include <cstdint>
@@ -21,9 +20,6 @@ namespace FirstEngine {
 
             // Load icon from file (supports PNG, JPG, BMP, TGA, DDS, etc.)
             bool LoadFromFile(const std::string& filePath);
-
-            // Load icon from memory
-            bool LoadFromMemory(const void* data, size_t size, const std::string& formatHint = "");
 
             // Create icon from RHI image (for rendering)
             bool CreateFromImage(RHI::IImage* image);

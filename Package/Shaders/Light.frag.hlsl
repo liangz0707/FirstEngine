@@ -11,15 +11,8 @@ struct FragmentOutput {
     float4 color : SV_Target0;
 };
 
-// G-Buffer inputs
-Texture2D gAlbedo : register(t0);
-Texture2D gNormal : register(t1);
-Texture2D gMaterial : register(t2);
-Texture2D gDepth : register(t3);
-
-SamplerState gBufferSampler : register(s0);
-
-cbuffer LightParams : register(b0) {
+// Uniform Buffers - Set 0, Binding 0 and 1
+[[vk::binding(0, 0)]] cbuffer LightParams {
     float3 lightPosition;
     float3 lightColor;
     float lightRadius;
@@ -30,12 +23,21 @@ cbuffer LightParams : register(b0) {
     float spotFalloff;
 };
 
-cbuffer PerFrame : register(b1) {
+[[vk::binding(1, 0)]] cbuffer PerFrame {
     float4x4 viewMatrix;
     float4x4 projectionMatrix;
     float4x4 invViewProjectionMatrix;
     float3 cameraPos;
 };
+
+// Separate Images - Set 0, Binding 2, 3, 4, 5 (G-Buffer)
+[[vk::binding(2, 0)]] Texture2D gAlbedo;
+[[vk::binding(3, 0)]] Texture2D gNormal;
+[[vk::binding(4, 0)]] Texture2D gMaterial;
+[[vk::binding(5, 0)]] Texture2D gDepth;
+
+// Separate Sampler - Set 0, Binding 6
+[[vk::binding(6, 0)]] SamplerState gBufferSampler;
 
 // Reconstruct world position from depth
 float3 ReconstructWorldPos(float2 screenUV, float depth) {

@@ -11,6 +11,7 @@ endif()
 set(RENDERER_SOURCES
     FrameGraph.cpp
     FrameGraphExecutionPlan.cpp
+    FrameGraphResourceWrappers.cpp
     PipelineConfig.cpp
     PipelineBuilder.cpp
     IRenderPipeline.cpp
@@ -48,6 +49,7 @@ set(RENDERER_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/Export.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/FrameGraph.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/FrameGraphExecutionPlan.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/FrameGraphResourceWrappers.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/PipelineBuilder.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/PipelineConfig.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Renderer/IRenderPipeline.h

@@ -240,6 +240,11 @@ namespace FirstEngine {
                             // We can validate using the vertex stride from geometry data
                             Renderer::RenderGeometry tempGeometry;
                             if (tempGeometry.InitializeFromMesh(mesh)) {
+                                // Note: ValidateVertexInputs only needs GetVertexStride(), 
+                                // which doesn't require GPU resources to be created.
+                                // However, if GPU resources are needed later, ensure they are created.
+                                // For now, ValidateVertexInputs doesn't require GPU buffers.
+                                
                                 // Validate vertex inputs match geometry
                                 if (!shadingMaterial->ValidateVertexInputs(&tempGeometry)) {
                                     // Vertex inputs don't match geometry - skip this item

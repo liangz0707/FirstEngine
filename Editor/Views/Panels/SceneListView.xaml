@@ -3,7 +3,11 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:converters="clr-namespace:FirstEngineEditor.Converters"
              mc:Ignorable="d">
+    <UserControl.Resources>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+    </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -12,16 +16,32 @@
 
         <!-- Toolbar -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
-            <Button Content="+" Width="30" Click="OnAddScene"/>
-            <Button Content="-" Width="30" Click="OnRemoveScene" Margin="5,0,0,0"/>
-            <Button Content="↻" Width="30" Click="OnRefresh" Margin="5,0,0,0"/>
+            <Button Content="+" Width="30" Click="OnAddScene" ToolTip="Add Scene"/>
+            <Button Content="-" Width="30" Click="OnRemoveScene" Margin="5,0,0,0" ToolTip="Remove Scene"/>
+            <Button Content="↻" Width="30" Click="OnRefresh" Margin="5,0,0,0" ToolTip="Refresh Scenes"/>
+            <Separator Margin="10,0,5,0" VerticalAlignment="Center"/>
+            <Button Content="▶" Width="30" Command="{Binding LoadSceneCommand}" ToolTip="Load Selected Scene" Margin="5,0,0,0"/>
+            <Button Content="↻" Width="30" Command="{Binding ReloadSceneCommand}" ToolTip="Reload Current Scene" Margin="5,0,0,0"/>
+            <Button Content="■" Width="30" Command="{Binding UnloadSceneCommand}" ToolTip="Unload Current Scene" Margin="5,0,0,0"/>
         </StackPanel>
 
         <!-- Scene List -->
-        <ListBox Grid.Row="1" 
-                 ItemsSource="{Binding Scenes}"
-                 SelectedItem="{Binding SelectedScene}"
-                 DisplayMemberPath="Name"
-                 Margin="5"/>
+        <Grid Grid.Row="1" Margin="5">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            
+            <!-- Current Scene Info -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,5" Visibility="{Binding CurrentLoadedSceneName, Converter={StaticResource NullToVisibilityConverter}}">
+                <TextBlock Text="Current Scene: " FontWeight="Bold" Foreground="{DynamicResource PrimaryForegroundBrush}"/>
+                <TextBlock Text="{Binding CurrentLoadedSceneName}" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+            </StackPanel>
+            
+            <ListBox Grid.Row="1" 
+                     ItemsSource="{Binding Scenes}"
+                     SelectedItem="{Binding SelectedScene}"
+                     DisplayMemberPath="Name"/>
+        </Grid>
     </Grid>
 </UserControl>

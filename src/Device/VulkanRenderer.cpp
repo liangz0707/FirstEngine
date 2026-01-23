@@ -477,16 +477,18 @@ namespace FirstEngine {
         }
 
         void VulkanRenderer::OnWindowResize(int width, int height) {
-            // Swapchain recreation is now handled via RHI::ISwapchain::Recreate()
-            // This method is kept for compatibility but does nothing
+            // Deprecated: Swapchain recreation is now handled via RHI::ISwapchain::Recreate()
+            // This method is kept for backward compatibility but does nothing
+            // TODO: Remove this method in a future version
             (void)width;
             (void)height;
         }
 
         void VulkanRenderer::Present() {
-            // Present is now handled via RHI::ISwapchain::Present()
-            // This method is kept for compatibility but does nothing
+            // Deprecated: Present is now handled via RHI::ISwapchain::Present()
+            // This method is kept for backward compatibility but does nothing
             // Application should use ISwapchain interface directly
+            // TODO: Remove this method in a future version
         }
 
         void VulkanRenderer::WaitIdle() {

@@ -34,7 +34,6 @@ namespace FirstEngine {
             bool IsFormatSupported(const std::string& filepath) const override;
             std::vector<std::string> GetSupportedFormats() const override;
             ResourceLoadResult Load(ResourceID id) override;
-            ResourceLoadResult LoadFromMemory(const void* data, size_t size) override;
             void LoadDependencies() override;
 
             // IModel interface

@@ -30,8 +30,6 @@ namespace FirstEngine {
         public:
             static ImageData LoadFromFile(const std::string& filepath);
 
-            static ImageData LoadFromMemory(const uint8_t* data, size_t size);
-
             static ImageFormat DetectFormat(const std::string& filepath);
             static ImageFormat DetectFormat(const uint8_t* data, size_t size);
 

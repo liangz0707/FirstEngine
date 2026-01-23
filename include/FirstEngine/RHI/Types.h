@@ -74,10 +74,77 @@ namespace FirstEngine {
 
         enum class Format : uint32_t {
             Undefined = 0,
+            
+            // 8-bit formats
+            R8_UNORM = 9,
+            R8_SNORM = 10,
+            R8_UINT = 13,
+            R8_SINT = 14,
+            R8G8_UNORM = 16,
+            R8G8_SNORM = 17,
+            R8G8_UINT = 20,
+            R8G8_SINT = 21,
             R8G8B8A8_UNORM = 37,
+            R8G8B8A8_SNORM = 38,
+            R8G8B8A8_UINT = 41,
+            R8G8B8A8_SINT = 42,
             R8G8B8A8_SRGB = 43,
             B8G8R8A8_UNORM = 44,
             B8G8R8A8_SRGB = 50,
+            
+            // 16-bit integer formats
+            R16_UINT = 62,
+            R16_SINT = 63,
+            R16_UNORM = 64,
+            R16_SNORM = 65,
+            R16_SFLOAT = 76,              // 1x 16-bit float = 2 bytes
+            R16G16_UINT = 68,
+            R16G16_SINT = 69,
+            R16G16_UNORM = 70,
+            R16G16_SNORM = 71,
+            R16G16_SFLOAT = 83,           // 2x 16-bit float = 4 bytes
+            R16G16B16_UINT = 88,
+            R16G16B16_SINT = 89,
+            R16G16B16_UNORM = 84,
+            R16G16B16_SNORM = 85,
+            R16G16B16_SFLOAT = 90,        // 3x 16-bit float = 6 bytes
+            R16G16B16A16_UINT = 95,
+            R16G16B16A16_SINT = 96,
+            R16G16B16A16_UNORM = 91,
+            R16G16B16A16_SNORM = 92,
+            R16G16B16A16_SFLOAT = 97,    // 4x 16-bit float = 8 bytes
+            
+            // 32-bit integer formats
+            R32_UINT = 98,
+            R32_SINT = 99,
+            R32_SFLOAT = 100,             // 1x 32-bit float = 4 bytes (shared with float)
+            R32G32_UINT = 101,
+            R32G32_SINT = 102,
+            R32G32_SFLOAT = 103,          // 2x 32-bit float = 8 bytes
+            R32G32B32_UINT = 104,
+            R32G32B32_SINT = 105,
+            R32G32B32_SFLOAT = 106,       // 3x 32-bit float = 12 bytes
+            R32G32B32A32_UINT = 107,
+            R32G32B32A32_SINT = 108,
+            R32G32B32A32_SFLOAT = 109,    // 4x 32-bit float = 16 bytes
+            
+            // 64-bit integer formats
+            R64_UINT = 110,
+            R64_SINT = 111,
+            R64G64_UINT = 113,
+            R64G64_SINT = 114,
+            R64G64B64_UINT = 116,
+            R64G64B64_SINT = 117,
+            R64G64B64A64_UINT = 119,
+            R64G64B64A64_SINT = 120,
+            
+            // 64-bit float formats (double)
+            R64_SFLOAT = 112,             // 1x 64-bit float = 8 bytes
+            R64G64_SFLOAT = 115,          // 2x 64-bit float = 16 bytes
+            R64G64B64_SFLOAT = 118,      // 3x 64-bit float = 24 bytes
+            R64G64B64A64_SFLOAT = 121,    // 4x 64-bit float = 32 bytes
+            
+            // Depth formats
             D32_SFLOAT = 126,
             D24_UNORM_S8_UINT = 130,
         };
@@ -108,7 +175,7 @@ namespace FirstEngine {
         };
 
         // Struct definitions
-        FE_RHI_API struct DeviceInfo {
+        struct DeviceInfo {
             std::string deviceName;
             uint32_t apiVersion;
             uint32_t driverVersion;
@@ -116,7 +183,7 @@ namespace FirstEngine {
             uint64_t hostMemory;
         };
 
-        FE_RHI_API struct AttachmentDescription {
+        struct AttachmentDescription {
             Format format;
             uint32_t samples = 1;
             bool loadOpClear = true;
@@ -127,13 +194,13 @@ namespace FirstEngine {
             Format finalLayout = Format::Undefined;
         };
 
-        FE_RHI_API struct RenderPassDescription {
+        struct RenderPassDescription {
             std::vector<AttachmentDescription> colorAttachments;
             AttachmentDescription depthAttachment;
             bool hasDepthAttachment = false;
         };
 
-        FE_RHI_API struct ImageDescription {
+        struct ImageDescription {
             uint32_t width;
             uint32_t height;
             uint32_t depth = 1;
@@ -144,7 +211,7 @@ namespace FirstEngine {
             MemoryPropertyFlags memoryProperties;
         };
 
-        FE_RHI_API struct SwapchainDescription {
+        struct SwapchainDescription {
             uint32_t width;
             uint32_t height;
             Format preferredFormat = Format::B8G8R8A8_UNORM;
@@ -152,20 +219,20 @@ namespace FirstEngine {
             uint32_t minImageCount = 2;
         };
 
-        FE_RHI_API struct VertexInputBinding {
+        struct VertexInputBinding {
             uint32_t binding;
             uint32_t stride;
             bool instanced = false;
         };
 
-        FE_RHI_API struct VertexInputAttribute {
+        struct VertexInputAttribute {
             uint32_t location;
             uint32_t binding;
             Format format;
             uint32_t offset;
         };
 
-        FE_RHI_API struct RasterizationState {
+        struct RasterizationState {
             bool depthClampEnable = false;
             bool rasterizerDiscardEnable = false;
             CullMode cullMode = CullMode::Back;
@@ -177,7 +244,7 @@ namespace FirstEngine {
             float lineWidth = 1.0f;
         };
 
-        FE_RHI_API struct DepthStencilState {
+        struct DepthStencilState {
             bool depthTestEnable = true;
             bool depthWriteEnable = true;
             CompareOp depthCompareOp = CompareOp::Less;
@@ -185,7 +252,7 @@ namespace FirstEngine {
             bool stencilTestEnable = false;
         };
 
-        FE_RHI_API struct ColorBlendAttachment {
+        struct ColorBlendAttachment {
             bool blendEnable = false;
             uint32_t srcColorBlendFactor = 1; // One
             uint32_t dstColorBlendFactor = 0; // Zero
@@ -244,14 +311,14 @@ namespace FirstEngine {
             std::vector<PushConstantRange> pushConstantRanges;
         };
 
-        FE_RHI_API struct ComputePipelineDescription {
+        struct ComputePipelineDescription {
             IShaderModule* computeShader = nullptr;
             std::vector<void*> descriptorSetLayouts;
             std::vector<GraphicsPipelineDescription::PushConstantRange> pushConstantRanges;
         };
 
         // Descriptor binding information
-        FE_RHI_API struct DescriptorBinding {
+        struct DescriptorBinding {
             uint32_t binding = 0;           // Binding index
             DescriptorType type = DescriptorType::UniformBuffer;
             uint32_t count = 1;             // Array size (1 for non-array)
@@ -259,24 +326,24 @@ namespace FirstEngine {
         };
 
         // Descriptor set layout description
-        FE_RHI_API struct DescriptorSetLayoutDescription {
+        struct DescriptorSetLayoutDescription {
             std::vector<DescriptorBinding> bindings;
         };
 
         // Descriptor write information (for updating descriptor sets)
-        FE_RHI_API struct DescriptorBufferInfo {
+        struct DescriptorBufferInfo {
             IBuffer* buffer = nullptr;
             uint64_t offset = 0;
             uint64_t range = 0;  // 0 means entire buffer
         };
 
-        FE_RHI_API struct DescriptorImageInfo {
+        struct DescriptorImageInfo {
             IImage* image = nullptr;
             IImageView* imageView = nullptr;
             void* sampler = nullptr;  // Sampler handle (void* for now)
         };
 
-        FE_RHI_API struct DescriptorWrite {
+        struct DescriptorWrite {
             DescriptorSetHandle dstSet = nullptr;
             uint32_t dstBinding = 0;
             uint32_t dstArrayElement = 0;  // For array bindings

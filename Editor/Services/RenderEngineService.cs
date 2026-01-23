@@ -73,8 +73,32 @@ namespace FirstEngineEditor.Services
         [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern void EditorAPI_UnloadScene(IntPtr engine);
 
+        [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [return: MarshalAs(UnmanagedType.I1)]
+        private static extern bool EditorAPI_SaveScene(IntPtr engine, string scenePath);
+
         [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern void EditorAPI_SetRenderConfig(IntPtr engine, int width, int height, float renderScale);
+
+        // Console output redirection
+        [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void EditorAPI_SetOutputCallback(IntPtr callback);
+
+        [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void EditorAPI_EnableConsoleRedirect(int enable);
+
+        [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void EditorAPI_AllocConsole();
+
+        [DllImport("FirstEngine_Core.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void EditorAPI_FreeConsole();
+
+        // Output callback delegate
+        // Note: isError is int (0 = false, 1 = true) for C compatibility
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        private delegate void OutputCallbackDelegate(string message, int isError);
+
+        private static OutputCallbackDelegate? s_OutputCallback;
 
         #endregion
 
@@ -101,6 +125,9 @@ namespace FirstEngineEditor.Services
 
             try
             {
+                // Setup console output redirection first
+                SetupConsoleRedirect();
+
                 // 使用全局引擎句柄（单例模式）
                 if (!_globalEngineHandle.HasValue || _globalEngineHandle.Value == IntPtr.Zero)
                 {
@@ -123,6 +150,39 @@ namespace FirstEngineEditor.Services
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to initialize render engine: {ex.Message}");
                 return false;
+            }
+        }
+
+        private void SetupConsoleRedirect()
+        {
+            try
+            {
+                // Create callback delegate (keep reference to prevent GC)
+                s_OutputCallback = new OutputCallbackDelegate((message, isError) =>
+                {
+                    if (string.IsNullOrEmpty(message))
+                        return;
+
+                    bool isErrorBool = (isError != 0);
+
+                    // Output to Visual Studio Output window (shows in Debug output)
+                    // Only output once to avoid duplication
+                    System.Diagnostics.Debug.WriteLine($"[C++ Engine] {(isErrorBool ? "ERROR" : "INFO")}: {message}");
+                });
+
+                // Set the callback - keep delegate alive by storing in static field
+                IntPtr callbackPtr = Marshal.GetFunctionPointerForDelegate(s_OutputCallback);
+                EditorAPI_SetOutputCallback(callbackPtr);
+
+                // Enable console redirect (1 = true, 0 = false)
+                EditorAPI_EnableConsoleRedirect(1);
+
+                System.Diagnostics.Debug.WriteLine("Console output redirection enabled - C++ engine output will appear in Output window");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to setup console redirect: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
             }
         }
 
@@ -233,6 +293,15 @@ namespace FirstEngineEditor.Services
             }
         }
 
+        public bool SaveScene(string scenePath)
+        {
+            if (_initialized && _globalEngineHandle.HasValue && _globalEngineHandle.Value != IntPtr.Zero)
+            {
+                return EditorAPI_SaveScene(_globalEngineHandle.Value, scenePath);
+            }
+            return false;
+        }
+
         public void SetRenderConfig(int width, int height, float renderScale = 1.0f)
         {
             if (_initialized && _globalEngineHandle.HasValue && _globalEngineHandle.Value != IntPtr.Zero)
@@ -247,6 +316,16 @@ namespace FirstEngineEditor.Services
             {
                 EditorAPI_DestroyViewport(_viewportHandle);
                 _viewportHandle = IntPtr.Zero;
+            }
+
+            // Disable console redirect
+            try
+            {
+                EditorAPI_EnableConsoleRedirect(0);
+            }
+            catch
+            {
+                // Ignore errors during cleanup
             }
 
             // 注意：不在这里销毁全局引擎，因为可能有多个 RenderEngineService 实例

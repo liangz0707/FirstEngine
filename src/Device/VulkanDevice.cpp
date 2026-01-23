@@ -32,7 +32,7 @@
 namespace FirstEngine {
     namespace Device {
 
-        VulkanDevice::VulkanDevice() {
+        VulkanDevice::VulkanDevice() : m_DefaultSampler(VK_NULL_HANDLE) {
         }
 
         VulkanDevice::~VulkanDevice() {
@@ -55,20 +55,28 @@ namespace FirstEngine {
                 return false;
             }
 
-            // 创建 VulkanRenderer
+            // Create VulkanRenderer
             m_Renderer = std::make_unique<VulkanRenderer>(m_Window.get());
 
-            // 填充设备信息
+            // Fill device information
             m_DeviceInfo.deviceName = "Vulkan Device";
             m_DeviceInfo.apiVersion = VK_API_VERSION_1_0;
             m_DeviceInfo.driverVersion = 0;
-            m_DeviceInfo.deviceMemory = 0; // 可以从物理设备获取
+            m_DeviceInfo.deviceMemory = 0; // Can be obtained from physical device
             m_DeviceInfo.hostMemory = 0;
 
             return true;
         }
 
         void VulkanDevice::Shutdown() {
+            // Destroy default sampler if created
+            if (m_DefaultSampler != VK_NULL_HANDLE && m_Renderer) {
+                auto* context = m_Renderer->GetDeviceContext();
+                if (context) {
+                    vkDestroySampler(context->GetDevice(), m_DefaultSampler, nullptr);
+                    m_DefaultSampler = VK_NULL_HANDLE;
+                }
+            }
             m_Renderer.reset();
             m_Window.reset();
         }
@@ -91,7 +99,7 @@ namespace FirstEngine {
                 return nullptr;
             }
 
-            // 限制颜色附件数量（Vulkan 规范要求最多 8 个）
+            // Limit color attachment count (Vulkan spec requires max 8)
             const uint32_t maxColorAttachments = 8;
             uint32_t colorAttachmentCount = static_cast<uint32_t>(desc.colorAttachments.size());
             if (colorAttachmentCount > maxColorAttachments) {
@@ -101,7 +109,7 @@ namespace FirstEngine {
                 colorAttachmentCount = maxColorAttachments;
             }
 
-            // 转换附件描述
+            // Convert attachment descriptions
             std::vector<VkAttachmentDescription> attachments;
             for (uint32_t i = 0; i < colorAttachmentCount; ++i) {
                 const auto& colorAttach = desc.colorAttachments[i];
@@ -113,14 +121,14 @@ namespace FirstEngine {
                 attachment.stencilLoadOp = colorAttach.stencilLoadOpClear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
                 attachment.stencilStoreOp = colorAttach.stencilStoreOpStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
                 
-                // initialLayout: 如果未定义，使用 UNDEFINED（允许）
+                // initialLayout: If undefined, use UNDEFINED (allowed)
                 VkImageLayout initialLayout = ConvertImageLayout(colorAttach.initialLayout);
                 if (initialLayout == VK_IMAGE_LAYOUT_UNDEFINED && colorAttach.initialLayout != RHI::Format::Undefined) {
-                    initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // 保持 UNDEFINED
+                    initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // Keep UNDEFINED
                 }
                 attachment.initialLayout = initialLayout;
                 
-                // finalLayout: 不能是 UNDEFINED，使用默认值 COLOR_ATTACHMENT_OPTIMAL
+                // finalLayout: Cannot be UNDEFINED, use default COLOR_ATTACHMENT_OPTIMAL
                 VkImageLayout finalLayout = ConvertImageLayout(colorAttach.finalLayout);
                 if (finalLayout == VK_IMAGE_LAYOUT_UNDEFINED || colorAttach.finalLayout == RHI::Format::Undefined) {
                     finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -139,14 +147,14 @@ namespace FirstEngine {
                 depthAttachment.stencilLoadOp = desc.depthAttachment.stencilLoadOpClear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
                 depthAttachment.stencilStoreOp = desc.depthAttachment.stencilStoreOpStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
                 
-                // initialLayout: 如果未定义，使用 UNDEFINED（允许）
+                // initialLayout: If undefined, use UNDEFINED (allowed)
                 VkImageLayout initialLayout = ConvertImageLayout(desc.depthAttachment.initialLayout);
                 if (initialLayout == VK_IMAGE_LAYOUT_UNDEFINED && desc.depthAttachment.initialLayout != RHI::Format::Undefined) {
-                    initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // 保持 UNDEFINED
+                    initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // Keep UNDEFINED
                 }
                 depthAttachment.initialLayout = initialLayout;
                 
-                // finalLayout: 不能是 UNDEFINED，使用默认值 DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                // finalLayout: Cannot be UNDEFINED, use default DEPTH_STENCIL_ATTACHMENT_OPTIMAL
                 VkImageLayout finalLayout = ConvertImageLayout(desc.depthAttachment.finalLayout);
                 if (finalLayout == VK_IMAGE_LAYOUT_UNDEFINED || desc.depthAttachment.finalLayout == RHI::Format::Undefined) {
                     finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -156,7 +164,7 @@ namespace FirstEngine {
                 attachments.push_back(depthAttachment);
             }
 
-            // 创建子通道
+            // Create subpass
             std::vector<VkAttachmentReference> colorRefs;
             for (uint32_t i = 0; i < colorAttachmentCount; ++i) {
                 VkAttachmentReference ref{};
@@ -167,7 +175,7 @@ namespace FirstEngine {
 
             VkAttachmentReference depthRef{};
             if (desc.hasDepthAttachment) {
-                depthRef.attachment = colorAttachmentCount; // 使用限制后的颜色附件数量
+                depthRef.attachment = colorAttachmentCount; // Use clamped color attachment count
                 depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             }
 
@@ -181,7 +189,7 @@ namespace FirstEngine {
                 subpass.pDepthStencilAttachment = nullptr;
             }
 
-            // 子通道依赖关系
+            // Subpass dependencies
             VkSubpassDependency dependency{};
             dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
             dependency.dstSubpass = 0;
@@ -191,7 +199,7 @@ namespace FirstEngine {
             dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
             dependency.dependencyFlags = 0;
 
-            // 创建渲染通道
+            // Create render pass
             VkRenderPassCreateInfo renderPassInfo{};
             renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
             renderPassInfo.pNext = nullptr;
@@ -210,7 +218,9 @@ namespace FirstEngine {
                 return nullptr;
             }
 
-            return std::make_unique<VulkanRenderPass>(context, renderPass);
+            // Store color attachment count for pipeline creation
+            uint32_t storedColorAttachmentCount = colorAttachmentCount;
+            return std::make_unique<VulkanRenderPass>(context, renderPass, storedColorAttachmentCount);
         }
 
         std::unique_ptr<RHI::IFramebuffer> VulkanDevice::CreateFramebuffer(
@@ -255,7 +265,7 @@ namespace FirstEngine {
 
             auto* vkRenderPass = static_cast<VulkanRenderPass*>(desc.renderPass);
 
-            // 创建着色器阶段
+            // Create shader stages
             std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
             for (auto* shaderModule : desc.shaderModules) {
                 auto* vkShader = static_cast<VulkanShaderModule*>(shaderModule);
@@ -267,7 +277,7 @@ namespace FirstEngine {
                 shaderStages.push_back(stageInfo);
             }
 
-            // 顶点输入
+            // Vertex input
             std::vector<VkVertexInputBindingDescription> bindings;
             for (const auto& binding : desc.vertexBindings) {
                 VkVertexInputBindingDescription vkBinding{};
@@ -294,13 +304,13 @@ namespace FirstEngine {
             vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
             vertexInputInfo.pVertexAttributeDescriptions = attributes.data();
 
-            // 输入装配
+            // Input assembly
             VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
             inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
             inputAssembly.topology = ConvertPrimitiveTopology(desc.primitiveTopology);
             inputAssembly.primitiveRestartEnable = VK_FALSE;
 
-            // 视口和裁剪
+            // Viewport and scissor
             VkViewport viewport{};
             viewport.x = desc.viewport.x;
             viewport.y = desc.viewport.y;
@@ -334,13 +344,13 @@ namespace FirstEngine {
             rasterizer.depthBiasClamp = desc.rasterizationState.depthBiasClamp;
             rasterizer.depthBiasSlopeFactor = desc.rasterizationState.depthBiasSlopeFactor;
 
-            // 多重采样
+            // Multisampling
             VkPipelineMultisampleStateCreateInfo multisampling{};
             multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
             multisampling.sampleShadingEnable = VK_FALSE;
             multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-            // 深度模板
+            // Depth stencil
             VkPipelineDepthStencilStateCreateInfo depthStencil{};
             depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
             depthStencil.depthTestEnable = desc.depthStencilState.depthTestEnable ? VK_TRUE : VK_FALSE;
@@ -349,20 +359,58 @@ namespace FirstEngine {
             depthStencil.depthBoundsTestEnable = desc.depthStencilState.depthBoundsTestEnable ? VK_TRUE : VK_FALSE;
             depthStencil.stencilTestEnable = desc.depthStencilState.stencilTestEnable ? VK_TRUE : VK_FALSE;
 
-            // 颜色混合
+            // Color blending
+            // Get color attachment count from render pass
+            uint32_t requiredColorAttachmentCount = vkRenderPass->GetColorAttachmentCount();
+            
             std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;
-            for (const auto& attachment : desc.colorBlendAttachments) {
-                VkPipelineColorBlendAttachmentState blendAttachment{};
-                blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                                                 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-                blendAttachment.blendEnable = attachment.blendEnable ? VK_TRUE : VK_FALSE;
-                blendAttachment.srcColorBlendFactor = static_cast<VkBlendFactor>(attachment.srcColorBlendFactor);
-                blendAttachment.dstColorBlendFactor = static_cast<VkBlendFactor>(attachment.dstColorBlendFactor);
-                blendAttachment.colorBlendOp = static_cast<VkBlendOp>(attachment.colorBlendOp);
-                blendAttachment.srcAlphaBlendFactor = static_cast<VkBlendFactor>(attachment.srcAlphaBlendFactor);
-                blendAttachment.dstAlphaBlendFactor = static_cast<VkBlendFactor>(attachment.dstAlphaBlendFactor);
-                blendAttachment.alphaBlendOp = static_cast<VkBlendOp>(attachment.alphaBlendOp);
-                colorBlendAttachments.push_back(blendAttachment);
+            
+            // If colorBlendAttachments is provided, use them (but ensure count matches)
+            if (!desc.colorBlendAttachments.empty()) {
+                // Use provided attachments, but ensure we have enough for all color attachments
+                for (const auto& attachment : desc.colorBlendAttachments) {
+                    VkPipelineColorBlendAttachmentState blendAttachment{};
+                    blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                                     VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+                    blendAttachment.blendEnable = attachment.blendEnable ? VK_TRUE : VK_FALSE;
+                    blendAttachment.srcColorBlendFactor = static_cast<VkBlendFactor>(attachment.srcColorBlendFactor);
+                    blendAttachment.dstColorBlendFactor = static_cast<VkBlendFactor>(attachment.dstColorBlendFactor);
+                    blendAttachment.colorBlendOp = static_cast<VkBlendOp>(attachment.colorBlendOp);
+                    blendAttachment.srcAlphaBlendFactor = static_cast<VkBlendFactor>(attachment.srcAlphaBlendFactor);
+                    blendAttachment.dstAlphaBlendFactor = static_cast<VkBlendFactor>(attachment.dstAlphaBlendFactor);
+                    blendAttachment.alphaBlendOp = static_cast<VkBlendOp>(attachment.alphaBlendOp);
+                    colorBlendAttachments.push_back(blendAttachment);
+                }
+                
+                // If we have fewer attachments than required, add default ones
+                while (colorBlendAttachments.size() < requiredColorAttachmentCount) {
+                    VkPipelineColorBlendAttachmentState blendAttachment{};
+                    blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                                     VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+                    blendAttachment.blendEnable = VK_FALSE;
+                    blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+                    blendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+                    blendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+                    blendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+                    blendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+                    blendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+                    colorBlendAttachments.push_back(blendAttachment);
+                }
+            } else {
+                // No color blend attachments provided - create default ones for all color attachments
+                for (uint32_t i = 0; i < requiredColorAttachmentCount; ++i) {
+                    VkPipelineColorBlendAttachmentState blendAttachment{};
+                    blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                                     VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+                    blendAttachment.blendEnable = VK_FALSE;
+                    blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+                    blendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+                    blendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+                    blendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+                    blendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+                    blendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+                    colorBlendAttachments.push_back(blendAttachment);
+                }
             }
 
             VkPipelineColorBlendStateCreateInfo colorBlending{};
@@ -370,15 +418,23 @@ namespace FirstEngine {
             colorBlending.logicOpEnable = VK_FALSE;
             colorBlending.attachmentCount = static_cast<uint32_t>(colorBlendAttachments.size());
             colorBlending.pAttachments = colorBlendAttachments.data();
+            
+            // Validate that attachment count matches render pass
+            if (colorBlending.attachmentCount != requiredColorAttachmentCount) {
+                std::cerr << "Error: VulkanDevice::CreateGraphicsPipeline: Color blend attachment count ("
+                          << colorBlending.attachmentCount << ") does not match render pass color attachment count ("
+                          << requiredColorAttachmentCount << ")" << std::endl;
+                return nullptr;
+            }
 
-            // 动态状态
+            // Dynamic state
             VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
             VkPipelineDynamicStateCreateInfo dynamicState{};
             dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
             dynamicState.dynamicStateCount = 2;
             dynamicState.pDynamicStates = dynamicStates;
 
-            // 管道布局
+            // Pipeline layout
             std::vector<VkPushConstantRange> pushConstantRanges;
             for (const auto& range : desc.pushConstantRanges) {
                 VkPushConstantRange vkRange{};
@@ -400,7 +456,7 @@ namespace FirstEngine {
                 return nullptr;
             }
 
-            // 创建图形管道
+            // Create graphics pipeline
             VkGraphicsPipelineCreateInfo pipelineInfo{};
             pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
             pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
@@ -428,8 +484,62 @@ namespace FirstEngine {
 
         std::unique_ptr<RHI::IPipeline> VulkanDevice::CreateComputePipeline(
             const RHI::ComputePipelineDescription& desc) {
-            // TODO: 实现 ComputePipeline 创建
-            return nullptr;
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                return nullptr;
+            }
+
+            if (!desc.computeShader) {
+                return nullptr;
+            }
+
+            // Get shader module
+            auto* vkShader = static_cast<VulkanShaderModule*>(desc.computeShader);
+            if (!vkShader) {
+                return nullptr;
+            }
+
+            // Create pipeline layout
+            std::vector<VkPushConstantRange> pushConstantRanges;
+            for (const auto& range : desc.pushConstantRanges) {
+                VkPushConstantRange vkRange{};
+                vkRange.offset = range.offset;
+                vkRange.size = range.size;
+                vkRange.stageFlags = ConvertShaderStage(range.stageFlags);
+                pushConstantRanges.push_back(vkRange);
+            }
+
+            VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(desc.descriptorSetLayouts.size());
+            pipelineLayoutInfo.pSetLayouts = reinterpret_cast<const VkDescriptorSetLayout*>(desc.descriptorSetLayouts.data());
+            pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(pushConstantRanges.size());
+            pipelineLayoutInfo.pPushConstantRanges = pushConstantRanges.data();
+
+            VkPipelineLayout pipelineLayout;
+            if (vkCreatePipelineLayout(context->GetDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+                return nullptr;
+            }
+
+            // Create compute pipeline
+            VkPipelineShaderStageCreateInfo shaderStageInfo{};
+            shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            shaderStageInfo.module = vkShader->GetVkShaderModule();
+            shaderStageInfo.pName = "main";
+
+            VkComputePipelineCreateInfo pipelineInfo{};
+            pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+            pipelineInfo.stage = shaderStageInfo;
+            pipelineInfo.layout = pipelineLayout;
+
+            VkPipeline pipeline;
+            if (vkCreateComputePipelines(context->GetDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
+                vkDestroyPipelineLayout(context->GetDevice(), pipelineLayout, nullptr);
+                return nullptr;
+            }
+
+            return std::make_unique<VulkanPipeline>(context, pipeline, pipelineLayout);
         }
 
         std::unique_ptr<RHI::IBuffer> VulkanDevice::CreateBuffer(
@@ -821,13 +931,27 @@ namespace FirstEngine {
             const RHI::DescriptorSetLayoutDescription& desc) {
             auto* context = m_Renderer->GetDeviceContext();
             if (!context) {
+                std::cerr << "Error: VulkanDevice::CreateDescriptorSetLayout: Device context is nullptr" << std::endl;
                 return nullptr;
             }
 
             VkDevice device = context->GetDevice();
+            if (device == VK_NULL_HANDLE) {
+                std::cerr << "Error: VulkanDevice::CreateDescriptorSetLayout: VkDevice is VK_NULL_HANDLE" << std::endl;
+                return nullptr;
+            }
+
             std::vector<VkDescriptorSetLayoutBinding> bindings;
+            bindings.reserve(desc.bindings.size());
 
             for (const auto& binding : desc.bindings) {
+                // Validate binding
+                if (binding.count == 0) {
+                    std::cerr << "Warning: VulkanDevice::CreateDescriptorSetLayout: Binding " 
+                              << binding.binding << " has count 0, skipping" << std::endl;
+                    continue;
+                }
+
                 VkDescriptorSetLayoutBinding vkBinding{};
                 vkBinding.binding = binding.binding;
                 vkBinding.descriptorType = Device::ConvertDescriptorType(binding.type);
@@ -837,15 +961,20 @@ namespace FirstEngine {
                 bindings.push_back(vkBinding);
             }
 
+            if (bindings.empty()) {
+                std::cerr << "Warning: VulkanDevice::CreateDescriptorSetLayout: No valid bindings, creating empty layout" << std::endl;
+            }
+
             VkDescriptorSetLayoutCreateInfo layoutInfo{};
             layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-            layoutInfo.pBindings = bindings.data();
+            layoutInfo.pBindings = bindings.empty() ? nullptr : bindings.data();
 
             VkDescriptorSetLayout layout;
             VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &layout);
             if (result != VK_SUCCESS) {
-                std::cerr << "Failed to create descriptor set layout!" << std::endl;
+                std::cerr << "Error: VulkanDevice::CreateDescriptorSetLayout: Failed to create descriptor set layout! "
+                          << "Result: " << result << ", Binding count: " << bindings.size() << std::endl;
                 return nullptr;
             }
 
@@ -1032,7 +1161,14 @@ namespace FirstEngine {
                             // Get VkImageView from IImageView
                             if (imgInfo.imageView) {
                                 auto* vkImageView = static_cast<VulkanImageView*>(imgInfo.imageView);
-                                vkImgInfo.imageView = vkImageView->GetVkImageView();
+                                VkImageView vkImageViewHandle = vkImageView->GetVkImageView();
+                                if (vkImageViewHandle == VK_NULL_HANDLE) {
+                                    std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: ImageView handle is VK_NULL_HANDLE for binding " 
+                                              << write.dstBinding << std::endl;
+                                    vkImgInfo.imageView = VK_NULL_HANDLE;
+                                } else {
+                                    vkImgInfo.imageView = vkImageViewHandle;
+                                }
                             } else {
                                 // If no imageView provided, try to create one from image
                                 auto* vkImage = static_cast<VulkanImage*>(imgInfo.image);
@@ -1041,11 +1177,15 @@ namespace FirstEngine {
                                     auto* vkImageView = static_cast<VulkanImageView*>(defaultView);
                                     vkImgInfo.imageView = vkImageView->GetVkImageView();
                                 } else {
+                                    std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Failed to create image view for binding " 
+                                              << write.dstBinding << std::endl;
                                     vkImgInfo.imageView = VK_NULL_HANDLE;
                                 }
                             }
                             vkImgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                         } else {
+                            std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Image is nullptr for binding " 
+                                      << write.dstBinding << std::endl;
                             vkImgInfo.imageView = VK_NULL_HANDLE;
                             vkImgInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
                         }
@@ -1054,12 +1194,93 @@ namespace FirstEngine {
                     }
                     vkWrite.descriptorCount = static_cast<uint32_t>(imageInfos.back().size());
                     vkWrite.pImageInfo = imageInfos.back().data();
+                    
+                    // Validate that all image views are valid
+                    bool hasInvalidImageView = false;
+                    for (const auto& imgInfo : imageInfos.back()) {
+                        if (imgInfo.imageView == VK_NULL_HANDLE) {
+                            hasInvalidImageView = true;
+                            break;
+                        }
+                    }
+                    if (hasInvalidImageView) {
+                        std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Some image views are VK_NULL_HANDLE for binding " 
+                                  << write.dstBinding << ". This will cause descriptor set binding errors." << std::endl;
+                    }
                 }
 
+                // Validate descriptor count before adding
+                if (vkWrite.descriptorCount == 0) {
+                    std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Descriptor count is 0 for binding " 
+                              << vkWrite.dstBinding << " in set " << vkWrite.dstSet << std::endl;
+                    continue; // Skip this write
+                }
+                
+                // Validate that we have valid data for the descriptor type
+                if (vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || 
+                    vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+                    if (!vkWrite.pImageInfo || vkWrite.pImageInfo[0].imageView == VK_NULL_HANDLE) {
+                        std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Invalid image view for binding " 
+                                  << vkWrite.dstBinding << " in set " << vkWrite.dstSet << std::endl;
+                        continue; // Skip this write
+                    }
+                } else if (vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+                           vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+                    if (!vkWrite.pBufferInfo || vkWrite.pBufferInfo[0].buffer == VK_NULL_HANDLE) {
+                        std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Invalid buffer for binding " 
+                                  << vkWrite.dstBinding << " in set " << vkWrite.dstSet << std::endl;
+                        continue; // Skip this write
+                    }
+                }
+                
                 vkWrites.push_back(vkWrite);
             }
 
-            vkUpdateDescriptorSets(device, static_cast<uint32_t>(vkWrites.size()), vkWrites.data(), 0, nullptr);
+            if (!vkWrites.empty()) {
+                vkUpdateDescriptorSets(device, static_cast<uint32_t>(vkWrites.size()), vkWrites.data(), 0, nullptr);
+            }
+        }
+
+        void* VulkanDevice::GetDefaultSampler() {
+            // Return cached sampler if already created
+            if (m_DefaultSampler != VK_NULL_HANDLE) {
+                return reinterpret_cast<void*>(m_DefaultSampler);
+            }
+
+            auto* context = m_Renderer->GetDeviceContext();
+            if (!context) {
+                std::cerr << "Error: VulkanDevice::GetDefaultSampler: Device context is nullptr" << std::endl;
+                return nullptr;
+            }
+
+            VkDevice device = context->GetDevice();
+            
+            // Create default sampler with linear filtering and repeat addressing
+            VkSamplerCreateInfo samplerInfo{};
+            samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+            samplerInfo.magFilter = VK_FILTER_LINEAR;
+            samplerInfo.minFilter = VK_FILTER_LINEAR;
+            samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+            samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerInfo.mipLodBias = 0.0f;
+            samplerInfo.anisotropyEnable = VK_FALSE; // Can be enabled if needed
+            samplerInfo.maxAnisotropy = 1.0f;
+            samplerInfo.compareEnable = VK_FALSE;
+            samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+            samplerInfo.minLod = 0.0f;
+            samplerInfo.maxLod = 0.0f; // Use all mip levels
+            samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+            samplerInfo.unnormalizedCoordinates = VK_FALSE;
+
+            VkResult result = vkCreateSampler(device, &samplerInfo, nullptr, &m_DefaultSampler);
+            if (result != VK_SUCCESS) {
+                std::cerr << "Error: VulkanDevice::GetDefaultSampler: Failed to create sampler!" << std::endl;
+                return nullptr;
+            }
+
+            return reinterpret_cast<void*>(m_DefaultSampler);
         }
 
 

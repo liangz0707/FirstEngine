@@ -3,18 +3,134 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:FirstEngineEditor.Views.Panels"
+             xmlns:converters="clr-namespace:FirstEngineEditor.Converters"
              mc:Ignorable="d">
+    <UserControl.Resources>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:CameraTypeToVisibilityConverter x:Key="CameraTypeToVisibilityConverter"/>
+    </UserControl.Resources>
     <Grid>
-        <DataGrid ItemsSource="{Binding Properties}"
-                  AutoGenerateColumns="False"
-                  IsReadOnly="False"
-                  HeadersVisibility="Column"
-                  GridLinesVisibility="Horizontal">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Property" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*"/>
-                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80" IsReadOnly="True"/>
-            </DataGrid.Columns>
-        </DataGrid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="3"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Properties Section -->
+        <GroupBox Grid.Row="0" Header="Properties">
+            <DataGrid ItemsSource="{Binding Properties}"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="False"
+                      HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal"
+                      SelectionMode="Single"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Property" Binding="{Binding Name}" Width="120" IsReadOnly="True"/>
+                    <DataGridTemplateColumn Header="Value" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBox Text="{Binding Value, Mode=TwoWay}" 
+                                         LostFocus="OnPropertyValueChanged"
+                                         Tag="{Binding}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80" IsReadOnly="True"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </GroupBox>
+
+        <GridSplitter Grid.Row="1" Height="3" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"/>
+
+        <!-- Components Section -->
+        <GroupBox Grid.Row="2" Header="Components">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" 
+                        AllowDrop="True"
+                        DragOver="OnComponentsDragOver"
+                        Drop="OnComponentsDrop"
+                        Background="Transparent">
+                    <ListBox ItemsSource="{Binding Components}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ContextMenuOpening="OnComponentsContextMenuOpening">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="2" Padding="4" Background="Transparent">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="{StaticResource SelectionHoverBrush}"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel Orientation="Vertical">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Type}" Margin="5,0" FontWeight="SemiBold"/>
+                                            <TextBlock Text=" - " Margin="5,0" Visibility="{Binding ModelId, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                            <TextBlock Text="{Binding ModelId}" Margin="5,0" Visibility="{Binding ModelId, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                            <Button Content="×" 
+                                                    Width="20" 
+                                                    Height="20" 
+                                                    Margin="10,0,0,0"
+                                                    Click="OnRemoveComponent"
+                                                    Tag="{Binding}"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding AdditionalInfo}" 
+                                                   Margin="5,0,0,0" 
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource TertiaryForegroundBrush}"
+                                                   Visibility="{Binding AdditionalInfo, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                    </StackPanel>
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Set as Main Camera" 
+                                                      Click="OnSetMainCamera"
+                                                      Tag="{Binding}"
+                                                      Visibility="{Binding ComponentData.Type, Converter={StaticResource CameraTypeToVisibilityConverter}}"/>
+                                            <Separator Visibility="{Binding ComponentData.Type, Converter={StaticResource CameraTypeToVisibilityConverter}}"/>
+                                            <MenuItem Header="Add Camera Component" Click="OnAddCameraComponent"/>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                        <ListBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Add Camera Component" Click="OnAddCameraComponent"/>
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
+                    </ListBox>
+                </Border>
+
+                <TextBlock Grid.Row="1" 
+                           Text="拖拽 Model 资源到这里添加 Component" 
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Foreground="Gray"
+                           Margin="5">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Components.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+        </GroupBox>
     </Grid>
 </UserControl>

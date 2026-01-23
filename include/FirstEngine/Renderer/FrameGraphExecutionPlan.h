@@ -20,14 +20,14 @@ namespace FirstEngine {
 namespace FirstEngine {
     namespace Renderer {
 
-        // FrameGraph 执行计划 - 与 CommandBuffer 和 Device 无关的中间结构
-        // 这个结构描述了渲染流程，但不包含实际的 GPU 资源或命令
+        // FrameGraph execution plan - Intermediate structure independent of CommandBuffer and Device
+        // This structure describes the rendering flow but does not contain actual GPU resources or commands
         class FE_RENDERER_API FrameGraphExecutionPlan {
         public:
             FrameGraphExecutionPlan();
             ~FrameGraphExecutionPlan();
 
-            // 执行计划中的节点信息
+            // Node information in execution plan
             struct NodePlan {
                 std::string name;
                 uint32_t index;
@@ -35,15 +35,15 @@ namespace FirstEngine {
                 std::string typeString; // String representation (for serialization/debugging)
                 std::vector<std::string> readResources;
                 std::vector<std::string> writeResources;
-                std::vector<uint32_t> dependencies; // 依赖的节点索引
+                std::vector<uint32_t> dependencies; // Dependent node indices
             };
 
-            // 执行计划中的资源信息
+            // Resource information in execution plan
             struct ResourcePlan {
                 std::string name;
                 ResourceType type;
                 std::unique_ptr<ResourceDescription> description; // Use pointer to support polymorphism
-                // 不包含实际的 RHI 资源指针，只有描述信息
+                // Does not contain actual RHI resource pointers, only description information
                 
                 ResourcePlan() = default;
                 ResourcePlan(const ResourcePlan& other);
@@ -52,37 +52,37 @@ namespace FirstEngine {
                 ResourcePlan& operator=(ResourcePlan&& other) noexcept = default;
             };
 
-            // 添加节点计划
+            // Add node plan
             void AddNodePlan(const NodePlan& nodePlan);
             void AddNodePlan(NodePlan&& nodePlan);
 
-            // 添加资源计划
+            // Add resource plan
             void AddResourcePlan(const ResourcePlan& resourcePlan);
             void AddResourcePlan(ResourcePlan&& resourcePlan);
 
-            // 获取执行顺序（拓扑排序后的节点索引）
+            // Get execution order (topologically sorted node indices)
             const std::vector<uint32_t>& GetExecutionOrder() const { return m_ExecutionOrder; }
             void SetExecutionOrder(const std::vector<uint32_t>& order) { m_ExecutionOrder = order; }
 
-            // 获取节点计划
+            // Get node plan
             const std::vector<NodePlan>& GetNodePlans() const { return m_NodePlans; }
             const NodePlan* GetNodePlan(uint32_t index) const;
             const NodePlan* GetNodePlan(const std::string& name) const;
 
-            // 获取资源计划
+            // Get resource plan
             const std::vector<ResourcePlan>& GetResourcePlans() const { return m_ResourcePlans; }
             const ResourcePlan* GetResourcePlan(const std::string& name) const;
 
-            // 清空计划
+            // Clear plan
             void Clear();
 
-            // 检查计划是否有效
+            // Check if plan is valid
             bool IsValid() const;
 
         private:
             std::vector<NodePlan> m_NodePlans;
             std::vector<ResourcePlan> m_ResourcePlans;
-            std::vector<uint32_t> m_ExecutionOrder; // 拓扑排序后的执行顺序
+            std::vector<uint32_t> m_ExecutionOrder; // Execution order after topological sort
             std::unordered_map<std::string, uint32_t> m_NodeNameToIndex;
             std::unordered_map<std::string, uint32_t> m_ResourceNameToIndex;
         };

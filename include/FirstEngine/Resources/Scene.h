@@ -62,6 +62,7 @@ namespace FirstEngine {
         // Forward declarations for components (defined in separate files)
         class LightComponent;
         class EffectComponent;
+        class CameraComponent;
 
         // Entity class
         class FE_RESOURCES_API Entity {
@@ -237,7 +238,9 @@ namespace FirstEngine {
             const std::vector<std::unique_ptr<SceneLevel>>& GetLevels() const { return m_Levels; }
             std::vector<SceneLevel*> GetLevelsSortedByOrder() const;
 
-            // Entity management (delegated to levels, but kept for compatibility)
+            // Entity management (delegated to levels, but kept for backward compatibility)
+            // NOTE: These methods are kept for backward compatibility. New code should use SceneLevel API.
+            // TODO: Consider deprecating these methods in a future version
             Entity* CreateEntity(const std::string& name = "", const std::string& levelName = "Default");
             Entity* GetEntity(uint64_t id) const;
             Entity* FindEntityByName(const std::string& name) const;
@@ -256,6 +259,10 @@ namespace FirstEngine {
             std::vector<ModelComponent*> GetModelComponents() const;
             std::vector<LightComponent*> GetLightComponents() const;
             std::vector<EffectComponent*> GetEffectComponents() const;
+            std::vector<CameraComponent*> GetCameraComponents() const;
+            
+            // Get main camera (first camera with IsMainCamera flag set, or first camera if none is marked)
+            CameraComponent* GetMainCamera() const;
 
             // Octree management
             void RebuildOctree();

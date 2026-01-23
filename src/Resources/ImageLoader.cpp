@@ -3,6 +3,7 @@
 #include <fstream>
 #include <vector>
 #include <cstring>
+#include <iostream>
 
 // Use stb_image for image loading
 #define STB_IMAGE_IMPLEMENTATION
@@ -26,7 +27,21 @@ namespace FirstEngine {
             unsigned char* data = stbi_load(filepath.c_str(), &width, &height, &channels, 0);
 
             if (!data) {
-                throw std::runtime_error("Failed to load image: " + filepath + " - " + stbi_failure_reason());
+                // Get failure reason safely (stbi_failure_reason may return nullptr)
+                const char* failureReason = stbi_failure_reason();
+                std::string errorMsg = "Failed to load image: " + filepath;
+                if (failureReason != nullptr) {
+                    errorMsg += " - ";
+                    errorMsg += failureReason;
+                } else {
+                    errorMsg += " - Unknown error";
+                }
+                
+                // Log error instead of throwing exception to prevent crashes
+                std::cerr << "ImageLoader::LoadFromFile: " << errorMsg << std::endl;
+                
+                // Return empty result instead of throwing
+                return result;
             }
 
             result.width = static_cast<uint32_t>(width);
@@ -41,36 +56,6 @@ namespace FirstEngine {
 
             // Free memory allocated by stb_image
             stbi_image_free(data);
-
-            return result;
-        }
-
-        ImageData ImageLoader::LoadFromMemory(const uint8_t* data, size_t size) {
-            ImageData result{};
-            result.width = 0;
-            result.height = 0;
-            result.channels = 0;
-            result.hasAlpha = false;
-
-            int width, height, channels;
-            unsigned char* imageData = stbi_load_from_memory(
-                data, static_cast<int>(size), &width, &height, &channels, 0);
-
-            if (!imageData) {
-                throw std::runtime_error("Failed to load image from memory: " + std::string(stbi_failure_reason()));
-            }
-
-            result.width = static_cast<uint32_t>(width);
-            result.height = static_cast<uint32_t>(height);
-            result.channels = static_cast<uint32_t>(channels);
-            result.hasAlpha = (channels == 4);
-
-            // Copy data
-            size_t dataSize = width * height * channels;
-            result.data.resize(dataSize);
-            std::memcpy(result.data.data(), imageData, dataSize);
-
-            stbi_image_free(imageData);
 
             return result;
         }

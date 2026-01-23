@@ -18,7 +18,9 @@ endif()
 # Ensure proper debug flags for MSVC
 if(MSVC)
     # Set debug compilation flags
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Zi /Od /D_DEBUG")
+    # /ZI enables Edit and Continue (Program Database for Edit and Continue)
+    # /Od disables optimizations for debugging
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /ZI /Od /D_DEBUG")
     # Set debug linker flags
     set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} /DEBUG")
     set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} /DEBUG")

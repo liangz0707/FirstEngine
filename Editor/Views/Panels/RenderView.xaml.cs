@@ -76,6 +76,13 @@ namespace FirstEngineEditor.Views.Panels
                 // Initialize engine
                 if (_renderEngine.Initialize(windowHandle, width, height))
                 {
+                    // Set render engine reference in SceneManagementService
+                    var sceneService = ServiceLocator.Get<ISceneManagementService>();
+                    if (sceneService is SceneManagementService sceneManagementService)
+                    {
+                        SceneManagementService.SetRenderEngine(_renderEngine);
+                    }
+
                     // Wait for window to be fully loaded and laid out before creating viewport
                     // This ensures the HwndHost parent is ready and has correct size
                     Dispatcher.BeginInvoke(new Action(() =>
@@ -347,6 +354,111 @@ namespace FirstEngineEditor.Views.Panels
                 _renderEngine.CreateResources();
                 _renderEngine.Render();
                 _renderEngine.SubmitFrame();
+            }
+        }
+
+        private void OnRenderSurfaceDragOver(object sender, System.Windows.DragEventArgs e)
+        {
+            // Allow dropping scene or scene level resources
+            if (e.Data.GetDataPresent("ResourceBrowserItem"))
+            {
+                if (e.Data.GetData("ResourceBrowserItem") is ResourceBrowserItem item)
+                {
+                    if (item.Type == "Scene" || item.Type == "SceneLevel")
+                    {
+                        e.Effects = System.Windows.DragDropEffects.Link;
+                        e.Handled = true;
+                        return;
+                    }
+                }
+            }
+            e.Effects = System.Windows.DragDropEffects.None;
+        }
+
+        private async void OnRenderSurfaceDrop(object sender, System.Windows.DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent("ResourceBrowserItem"))
+                return;
+
+            if (e.Data.GetData("ResourceBrowserItem") is ResourceBrowserItem item)
+            {
+                var sceneService = ServiceLocator.Get<ISceneManagementService>();
+                
+                if (item.Type == "Scene")
+                {
+                    // Load scene
+                    string scenePath = GetFullPathFromVirtualPath(item.Path);
+                    if (!string.IsNullOrEmpty(scenePath) && System.IO.File.Exists(scenePath))
+                    {
+                        bool success = await sceneService.LoadSceneAsync(scenePath);
+                        if (!success)
+                        {
+                            System.Windows.MessageBox.Show("Failed to load scene", "Error", 
+                                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                        }
+                    }
+                }
+                else if (item.Type == "SceneLevel")
+                {
+                    // Load scene level
+                    if (string.IsNullOrEmpty(sceneService.GetCurrentScenePath()))
+                    {
+                        System.Windows.MessageBox.Show("No scene loaded. Please load a scene first.", "Error", 
+                            System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    string levelPath = GetFullPathFromVirtualPath(item.Path);
+                    if (!string.IsNullOrEmpty(levelPath) && System.IO.File.Exists(levelPath))
+                    {
+                        bool success = await sceneService.LoadSceneLevelAsync(levelPath);
+                        if (!success)
+                        {
+                            System.Windows.MessageBox.Show("Failed to load scene level", "Error", 
+                                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                        }
+                    }
+                }
+            }
+            e.Handled = true;
+        }
+
+        private string GetFullPathFromVirtualPath(string virtualPath)
+        {
+            var project = ServiceLocator.Get<IProjectManager>().CurrentProject;
+            if (project == null) return string.Empty;
+
+            string? packagePath = ProjectManager.GetPackagePath(project.ProjectPath);
+            if (string.IsNullOrEmpty(packagePath)) return string.Empty;
+
+            // Convert virtual path to physical path
+            // Virtual path format: "Scenes/scene.json" or similar
+            // Path might already be a full path or relative path
+            if (System.IO.Path.IsPathRooted(virtualPath))
+            {
+                // Normalize the path (convert to absolute, resolve .. and .)
+                try
+                {
+                    return System.IO.Path.GetFullPath(virtualPath);
+                }
+                catch
+                {
+                    return virtualPath;
+                }
+            }
+            
+            // Combine package path with virtual path
+            string normalizedVirtualPath = virtualPath.Replace('/', System.IO.Path.DirectorySeparatorChar);
+            string fullPath = System.IO.Path.Combine(packagePath, normalizedVirtualPath);
+            
+            // Normalize the final path
+            try
+            {
+                return System.IO.Path.GetFullPath(fullPath);
+            }
+            catch
+            {
+                return fullPath;
             }
         }
     }

@@ -1,6 +1,8 @@
 #include "FirstEngine/Renderer/CommandRecorder.h"
 #include "FirstEngine/RHI/ICommandBuffer.h"
+#include "FirstEngine/RHI/IFramebuffer.h"
 #include <cstring>
+#include <iostream>
 
 namespace FirstEngine {
     namespace Renderer {
@@ -16,60 +18,105 @@ namespace FirstEngine {
                 return;
             }
 
+            // Track render pass state to ensure BeginRenderPass and EndRenderPass are properly matched
+            int renderPassDepth = 0;
+
             const auto& commands = commandList.GetCommands();
             for (const auto& command : commands) {
-                RecordCommand(commandBuffer, command);
+                // Pass current depth to RecordCommand (before updating depth)
+                bool commandSucceeded = RecordCommand(commandBuffer, command, renderPassDepth);
+
+                // Update render pass depth after recording the command
+                // Only increase depth if BeginRenderPass actually succeeded
+                if (command.type == RenderCommandType::BeginRenderPass && commandSucceeded) {
+                    renderPassDepth++;
+                } else if (command.type == RenderCommandType::EndRenderPass && renderPassDepth > 0) {
+                    renderPassDepth--;
+                }
+            }
+
+            // Warn if render pass depth is not balanced
+            if (renderPassDepth != 0) {
+                std::cerr << "Warning: CommandRecorder: Unbalanced BeginRenderPass/EndRenderPass commands. "
+                          << "Depth: " << renderPassDepth << std::endl;
             }
         }
 
-        void CommandRecorder::RecordCommand(
+        bool CommandRecorder::RecordCommand(
             RHI::ICommandBuffer* commandBuffer,
-            const RenderCommand& command
+            const RenderCommand& command,
+            int renderPassDepth
         ) {
             if (!commandBuffer) {
-                return;
+                return false;
             }
 
             switch (command.type) {
                 case RenderCommandType::BindPipeline:
                     RecordBindPipeline(commandBuffer, command.params.bindPipeline);
-                    break;
+                    return true;
                 case RenderCommandType::BindDescriptorSets:
                     RecordBindDescriptorSets(commandBuffer, command.params.bindDescriptorSets);
-                    break;
+                    return true;
                 case RenderCommandType::BindVertexBuffers:
                     RecordBindVertexBuffers(commandBuffer, command.params.bindVertexBuffers);
-                    break;
+                    return true;
                 case RenderCommandType::BindIndexBuffer:
                     RecordBindIndexBuffer(commandBuffer, command.params.bindIndexBuffer);
-                    break;
+                    return true;
                 case RenderCommandType::Draw:
-                    RecordDraw(commandBuffer, command.params.draw);
-                    break;
+                    // Only draw if we're in a valid render pass
+                    if (renderPassDepth > 0) {
+                        RecordDraw(commandBuffer, command.params.draw);
+                        return true;
+                    } else {
+                        std::cerr << "Error: CommandRecorder: Attempted to call Draw without an active render pass. "
+                                  << "Current depth: " << renderPassDepth << std::endl;
+                        return false;
+                    }
                 case RenderCommandType::DrawIndexed:
-                    RecordDrawIndexed(commandBuffer, command.params.drawIndexed);
-                    break;
+                    // Only draw if we're in a valid render pass
+                    if (renderPassDepth > 0) {
+                        RecordDrawIndexed(commandBuffer, command.params.drawIndexed);
+                        return true;
+                    } else {
+                        std::cerr << "Error: CommandRecorder: Attempted to call DrawIndexed without an active render pass. "
+                                  << "Current depth: " << renderPassDepth << std::endl;
+                        return false;
+                    }
                 case RenderCommandType::TransitionImageLayout:
                     RecordTransitionImageLayout(commandBuffer, command.params.transitionImageLayout);
-                    break;
+                    return true;
                 case RenderCommandType::BeginRenderPass:
-                    RecordBeginRenderPass(commandBuffer, command.params.beginRenderPass);
-                    break;
+                    // Reset pipeline state when starting a new render pass
+                    // This ensures we always bind a pipeline after BeginRenderPass
+                    m_CurrentPipeline = nullptr;
+                    return RecordBeginRenderPass(commandBuffer, command.params.beginRenderPass);
                 case RenderCommandType::EndRenderPass:
-                    RecordEndRenderPass(commandBuffer, command.params.endRenderPass);
-                    break;
+                    // Only call EndRenderPass if we're in a valid render pass
+                    // renderPassDepth > 0 means we have at least one active BeginRenderPass
+                    if (renderPassDepth > 0) {
+                        RecordEndRenderPass(commandBuffer, command.params.endRenderPass);
+                        return true;
+                    } else {
+                        std::cerr << "Error: CommandRecorder: Attempted to call EndRenderPass without a matching BeginRenderPass. "
+                                  << "Current depth: " << renderPassDepth << std::endl;
+                        return false;
+                    }
                 case RenderCommandType::PushConstants:
                     RecordPushConstants(commandBuffer, command.params.pushConstants);
-                    break;
+                    return true;
                 default:
                     // Unknown command type, skip
-                    break;
+                    return false;
             }
         }
 
         void CommandRecorder::RecordBindPipeline(RHI::ICommandBuffer* cmd, const RenderCommand::BindPipelineParams& params) {
             if (params.pipeline) {
                 cmd->BindPipeline(params.pipeline);
+                // Track current pipeline for PushConstants
+                m_CurrentPipeline = params.pipeline;
             }
         }
 
@@ -96,6 +143,12 @@ namespace FirstEngine {
         }
 
         void CommandRecorder::RecordDrawIndexed(RHI::ICommandBuffer* cmd, const RenderCommand::DrawIndexedParams& params) {
+            // Ensure pipeline is bound before drawing
+            if (!m_CurrentPipeline) {
+                std::cerr << "Error: CommandRecorder::RecordDrawIndexed: No pipeline bound. "
+                          << "Ensure BindPipeline is called before DrawIndexed." << std::endl;
+                return; // Don't draw if no pipeline is bound
+            }
             cmd->DrawIndexed(params.indexCount, params.instanceCount, params.firstIndex, params.vertexOffset, params.firstInstance);
         }
 
@@ -105,7 +158,7 @@ namespace FirstEngine {
             }
         }
 
-        void CommandRecorder::RecordBeginRenderPass(RHI::ICommandBuffer* cmd, const RenderCommand::BeginRenderPassParams& params) {
+        bool CommandRecorder::RecordBeginRenderPass(RHI::ICommandBuffer* cmd, const RenderCommand::BeginRenderPassParams& params) {
             if (params.renderPass && params.framebuffer) {
                 cmd->BeginRenderPass(
                     params.renderPass,
@@ -114,20 +167,43 @@ namespace FirstEngine {
                     params.clearDepth,
                     params.clearStencil
                 );
+                
+                // Set viewport and scissor after beginning render pass
+                // This is required for pipelines with dynamic viewport/scissor state
+                uint32_t width = params.framebuffer->GetWidth();
+                uint32_t height = params.framebuffer->GetHeight();
+                cmd->SetViewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f);
+                cmd->SetScissor(0, 0, width, height);
+                
+                return true;
+            } else {
+                std::cerr << "Error: CommandRecorder::RecordBeginRenderPass: Invalid renderPass or framebuffer (nullptr)" << std::endl;
+                return false;
             }
         }
 
         void CommandRecorder::RecordEndRenderPass(RHI::ICommandBuffer* cmd, const RenderCommand::EndRenderPassParams& params) {
             (void)params; // Unused
+            // Only call EndRenderPass if we're in a valid render pass state
+            // This check is done in RecordCommand before calling this method
             cmd->EndRenderPass();
         }
 
         void CommandRecorder::RecordPushConstants(RHI::ICommandBuffer* cmd, const RenderCommand::PushConstantsParams& params) {
-            // Note: PushConstants is not in ICommandBuffer interface yet
-            // This is a placeholder for future implementation
-            (void)cmd;
-            (void)params;
-            // TODO: Implement when ICommandBuffer::PushConstants is added
+            if (!cmd || !params.data || params.size == 0) {
+                return;
+            }
+
+            // Convert stageFlags (uint32_t) to ShaderStage enum
+            RHI::ShaderStage stageFlags = static_cast<RHI::ShaderStage>(params.stageFlags);
+            
+            // Use the currently bound pipeline (tracked in RecordBindPipeline)
+            if (m_CurrentPipeline) {
+                cmd->PushConstants(m_CurrentPipeline, stageFlags, params.offset, params.size, params.data);
+            } else {
+                std::cerr << "Warning: CommandRecorder::RecordPushConstants: No pipeline bound. "
+                          << "Ensure BindPipeline is called before PushConstants." << std::endl;
+            }
         }
 
     } // namespace Renderer

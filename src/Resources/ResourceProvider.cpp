@@ -11,6 +11,7 @@
 #include <vector>
 #include <memory>
 #include <cctype>
+#include <iostream>
 #if __has_include(<filesystem>)
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -136,8 +137,15 @@ namespace FirstEngine {
             // Check cache first - if resource already loaded, return it
             ResourceHandle cached = Get(id);
             if (cached.ptr) {
-                // Increment reference count
-                static_cast<IResource*>(cached.ptr)->AddRef();
+                // Increment reference count and return cached resource
+                // NOTE: Even if resource is not fully loaded yet (isLoaded=false),
+                // we return it because:
+                // 1. Loader::Load (e.g., ModelLoader::Load) no longer checks cache,
+                //    so it will always load from file and return complete metadata
+                // 2. Resource::Load will use the complete metadata to load dependencies
+                // 3. This prevents infinite recursion during circular dependency resolution
+                IResource* resource = static_cast<IResource*>(cached.ptr);
+                resource->AddRef();
                 return cached;
             }
 
@@ -157,6 +165,9 @@ namespace FirstEngine {
             // Get resource path from ID
             std::string filepath = m_IDManager.GetPathFromID(id);
             if (filepath.empty()) {
+                std::cerr << "ResourceManager::LoadInternal: Failed to get path for resource ID " << id << std::endl;
+                std::cerr << "  This usually means the resource is not registered in the manifest." << std::endl;
+                std::cerr << "  Make sure resource_manifest.json is loaded and contains ID " << id << std::endl;
                 return ResourceHandle();
             }
 
@@ -201,47 +212,101 @@ namespace FirstEngine {
             // Set resource ID in metadata before Load (so resource can access its ID)
             resource->GetMetadata().resourceID = id;
 
-            // Directly call Resource's Load method (e.g., ModelResource::Load, MeshResource::Load)
-            // This ensures unified loading interface without using provider mechanism
-            // Load flow: 1) Collect dependencies 2) Load dependencies 3) Load resource data 4) Initialize
-            // ResourceManager is accessed via singleton, no parameter needed
-            ResourceLoadResult result = resourceProvider->Load(id);
-            if (result != ResourceLoadResult::Success) {
-                delete resource;
-                return ResourceHandle();
-            }
-
-            // Store in cache using ID as key
-            resource->AddRef(); // Initial reference count
+            // Store in cache BEFORE calling Load to prevent circular dependency issues
+            // This ensures that if a dependency tries to load this resource, it will get the cached (loading) instance
+            // Initial reference count is 0, will be incremented after successful load
+            resource->AddRef(); // Initial reference count for cache
             
+            bool cacheStored = false;
             switch (type) {
                 case ResourceType::Texture: {
                     ITexture* texture = static_cast<ITexture*>(resource);
                     m_LoadedTextures[id] = texture;
-                    return ResourceHandle(static_cast<TextureHandle>(texture));
+                    cacheStored = true;
+                    break;
                 }
                 case ResourceType::Mesh: {
                     IMesh* mesh = static_cast<IMesh*>(resource);
                     m_LoadedMeshes[id] = mesh;
-                    return ResourceHandle(static_cast<MeshHandle>(mesh));
+                    cacheStored = true;
+                    break;
                 }
                 case ResourceType::Material: {
                     IMaterial* material = static_cast<IMaterial*>(resource);
                     m_LoadedMaterials[id] = material;
-                    return ResourceHandle(static_cast<MaterialHandle>(material));
+                    cacheStored = true;
+                    break;
                 }
                 case ResourceType::Model: {
                     IModel* model = static_cast<IModel*>(resource);
                     m_LoadedModels[id] = model;
+                    cacheStored = true;
+                    break;
+                }
+                default:
+                    break;
+            }
+
+            if (!cacheStored) {
+                delete resource;
+                return ResourceHandle();
+            }
+
+            // Now call Resource's Load method (e.g., ModelResource::Load, MeshResource::Load)
+            // This ensures unified loading interface without using provider mechanism
+            // Load flow: 1) Collect dependencies 2) Load dependencies 3) Load resource data 4) Initialize
+            // ResourceManager is accessed via singleton, no parameter needed
+            // If a dependency tries to load this resource during Load(), it will get the cached instance
+            ResourceLoadResult result = resourceProvider->Load(id);
+            if (result != ResourceLoadResult::Success) {
+                // Load failed, remove from cache and cleanup
+                switch (type) {
+                    case ResourceType::Texture:
+                        m_LoadedTextures.erase(id);
+                        break;
+                    case ResourceType::Mesh:
+                        m_LoadedMeshes.erase(id);
+                        break;
+                    case ResourceType::Material:
+                        m_LoadedMaterials.erase(id);
+                        break;
+                    case ResourceType::Model:
+                        m_LoadedModels.erase(id);
+                        break;
+                    default:
+                        break;
+                }
+                resource->Release(); // Release the ref count we added
+                delete resource;
+                return ResourceHandle();
+            }
+
+            // Load successful, return cached resource
+            switch (type) {
+                case ResourceType::Texture: {
+                    ITexture* texture = static_cast<ITexture*>(resource);
+                    return ResourceHandle(static_cast<TextureHandle>(texture));
+                }
+                case ResourceType::Mesh: {
+                    IMesh* mesh = static_cast<IMesh*>(resource);
+                    return ResourceHandle(static_cast<MeshHandle>(mesh));
+                }
+                case ResourceType::Material: {
+                    IMaterial* material = static_cast<IMaterial*>(resource);
+                    return ResourceHandle(static_cast<MaterialHandle>(material));
+                }
+                case ResourceType::Model: {
+                    IModel* model = static_cast<IModel*>(resource);
                     return ResourceHandle(static_cast<ModelHandle>(model));
                 }
                 default:
-                    delete resource;
                     return ResourceHandle();
             }
         }
 
-        // Legacy path-based load methods (for compatibility - auto-registers path and gets ID)
+        // Legacy path-based load methods (for backward compatibility - auto-registers path and gets ID)
+        // NOTE: These methods are kept for backward compatibility. New code should use ResourceID-based API.
+        // TODO: Consider deprecating these methods in a future version
         ResourceHandle ResourceManager::Load(const std::string& filepath, const std::string& basePath) {
             ResourceType type = DetectResourceType(filepath);
             if (type == ResourceType::Unknown) {
@@ -305,7 +370,9 @@ namespace FirstEngine {
             return ResourceHandle();
         }
 
-        // Legacy path-based get methods
+        // Legacy path-based get methods (for backward compatibility)
+        // NOTE: These methods are kept for backward compatibility. New code should use ResourceID-based API.
+        // TODO: Consider deprecating these methods in a future version
         ResourceHandle ResourceManager::Get(const std::string& filepath) const {
             ResourceType type = DetectResourceType(filepath);
             if (type == ResourceType::Unknown) {
@@ -405,7 +472,9 @@ namespace FirstEngine {
             }
         }
 
-        // Legacy path-based unload methods
+        // Legacy path-based unload methods (for backward compatibility)
+        // NOTE: These methods are kept for backward compatibility. New code should use ResourceID-based API.
+        // TODO: Consider deprecating these methods in a future version
         void ResourceManager::Unload(const std::string& filepath) {
             ResourceType type = DetectResourceType(filepath);
             if (type != ResourceType::Unknown) {

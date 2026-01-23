@@ -10,14 +10,18 @@ struct FragmentOutput {
     float4 color : SV_Target0;
 };
 
-Texture2D inputTexture : register(t0);
-SamplerState textureSampler : register(s0);
-
-cbuffer PostProcessParams : register(b0) {
+// Uniform Buffer - Set 0, Binding 0
+[[vk::binding(0, 0)]] cbuffer PostProcessParams {
     float2 screenSize;
     float time;
     float intensity;
 };
+
+// Separate Image - Set 0, Binding 1
+[[vk::binding(1, 0)]] Texture2D inputTexture;
+
+// Separate Sampler - Set 0, Binding 2
+[[vk::binding(2, 0)]] SamplerState textureSampler;
 
 FragmentOutput main(FragmentInput input) {
     FragmentOutput output;

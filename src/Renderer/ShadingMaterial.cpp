@@ -178,117 +178,395 @@ namespace FirstEngine {
         }
 
         // ============================================================================
-        // 辅助函数：将 SPIR-V 类型映射为 RHI Format
+        // Helper function: Map SPIR-V types to RHI Format
         // ============================================================================
         // 
-        // 参数说明：
-        //   - basetype: SPIRType 基础类型
-        //     * 3 = Int (有符号整数)
-        //     * 4 = UInt (无符号整数)
-        //     * 5 = Float (浮点数)
-        //   - width: 类型宽度（位数）
-        //     * 8 = 8 位 (int8, uint8, float8)
-        //     * 16 = 16 位 (int16, uint16, float16/half)
-        //     * 32 = 32 位 (int32, uint32, float32)
-        //     * 64 = 64 位 (int64, uint64, float64/double)
-        //   - vecsize: 向量大小
-        //     * 1 = scalar (标量，如 float, int)
-        //     * 2 = vec2 (2 分量向量，如 vec2, float2)
-        //     * 3 = vec3 (3 分量向量，如 vec3, float3)
-        //     * 4 = vec4 (4 分量向量，如 vec4, float4)
+        // Parameter description:
+        //   - basetype: SPIRType base type
+        //     * 3 = Int (signed integer)
+        //     * 4 = UInt (unsigned integer)
+        //     * 5 = Float (floating point)
+        //   - width: Type width (bits)
+        //     * 8 = 8 bits (int8, uint8, float8)
+        //     * 16 = 16 bits (int16, uint16, float16/half)
+        //     * 32 = 32 bits (int32, uint32, float32)
+        //     * 64 = 64 bits (int64, uint64, float64/double)
+        //   - vecsize: Vector size
+        //     * 1 = scalar (e.g., float, int)
+        //     * 2 = vec2 (2-component vector, e.g., vec2, float2)
+        //     * 3 = vec3 (3-component vector, e.g., vec3, float3)
+        //     * 4 = vec4 (4-component vector, e.g., vec4, float4)
         //
-        // 返回值：
-        //   RHI::Format - 对应的顶点属性格式
+        // Return value:
+        //   RHI::Format - Corresponding vertex attribute format
         //
-        // 格式的用处：
-        //   - 确定顶点属性在内存中的布局和大小
-        //   - 用于创建 VkVertexInputAttributeDescription
-        //   - 影响顶点数据的读取和解释方式
-        //   - 例如：vec3 float32 -> 12 字节，vec4 float32 -> 16 字节
+        // Format usage:
+        //   - Determines vertex attribute layout and size in memory
+        //   - Used to create VkVertexInputAttributeDescription
+        //   - Affects how vertex data is read and interpreted
+        //   - Example: vec3 float32 -> 12 bytes, vec4 float32 -> 16 bytes
         //
-        // 注意：
-        //   当前实现使用 R8G8B8A8_UNORM 作为通用格式（4 字节），
-        //   对于 vec3 (12 字节) 等非 4 字节对齐的类型，可能需要调整
+        // Note:
+        //   Current implementation uses R8G8B8A8_UNORM as a generic format (4 bytes),
+        //   For non-4-byte aligned types like vec3 (12 bytes), may need adjustment
         // ============================================================================
         static RHI::Format MapTypeToFormat(uint32_t basetype, uint32_t width, uint32_t vecsize) {
+            // basetype: SPIRType::BaseType enum values
+            // width: 8, 16, 32, 64 bits
+            // vecsize: 1=scalar, 2=vec2, 3=vec3, 4=vec4
+            //
+            // SPIRType::BaseType enum:
+            //   0=Unknown, 1=Void, 2=Boolean, 3=SByte, 4=UByte, 5=Short, 6=UShort,
+            //   7=Int, 8=UInt, 9=Int64, 10=UInt64, 11=AtomicCounter,
+            //   12=Half, 13=Float, 14=Double, ...
             
-            if (basetype == 5) { // Float
+            // ============================================================================
+            // Float types (13=Float, 12=Half, 14=Double)
+            // ============================================================================
+            if (basetype == 13) { // SPIRType::Float (32-bit float)
                 if (width == 32) {
                     switch (vecsize) {
-                        case 1: return RHI::Format::R8G8B8A8_UNORM; // Use RGBA for scalar (will use R channel)
-                        case 2: return RHI::Format::R8G8B8A8_UNORM; // Use RGBA for vec2 (will use RG channels)
-                        case 3: return RHI::Format::R8G8B8A8_UNORM; // Use RGBA for vec3 (will use RGB channels)
-                        case 4: return RHI::Format::R8G8B8A8_UNORM; // Perfect match for vec4
-                        default: return RHI::Format::R8G8B8A8_UNORM;
+                        case 1: return RHI::Format::R32_SFLOAT;
+                        case 2: return RHI::Format::R32G32_SFLOAT;
+                        case 3: return RHI::Format::R32G32B32_SFLOAT;
+                        case 4: return RHI::Format::R32G32B32A32_SFLOAT;
+                        default: return RHI::Format::R32_SFLOAT;
                     }
                 } else if (width == 16) {
-                    return RHI::Format::R8G8B8A8_UNORM; // Fallback for float16
+                    // 32-bit float type but 16-bit width (unusual, treat as half)
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R16_SFLOAT;
+                        case 2: return RHI::Format::R16G16_SFLOAT;
+                        case 3: return RHI::Format::R16G16B16_SFLOAT;
+                        case 4: return RHI::Format::R16G16B16A16_SFLOAT;
+                        default: return RHI::Format::R16_SFLOAT;
+                    }
+                } else if (width == 64) {
+                    // 64-bit float (double precision)
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R64_SFLOAT;
+                        case 2: return RHI::Format::R64G64_SFLOAT;
+                        case 3: return RHI::Format::R64G64B64_SFLOAT;
+                        case 4: return RHI::Format::R64G64B64A64_SFLOAT;
+                        default: return RHI::Format::R64_SFLOAT;
+                    }
+                } else {
+                    // Unknown width: Default to 16-bit (2 bytes per component)
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R16_SFLOAT;
+                        case 2: return RHI::Format::R16G16_SFLOAT;
+                        case 3: return RHI::Format::R16G16B16_SFLOAT;
+                        case 4: return RHI::Format::R16G16B16A16_SFLOAT;
+                        default: return RHI::Format::R16_SFLOAT;
+                    }
                 }
-            } else if (basetype == 3) { // Int
-                return RHI::Format::R8G8B8A8_UNORM; // Fallback for int
-            } else if (basetype == 4) { // UInt
-                return RHI::Format::R8G8B8A8_UNORM; // Fallback for uint
+            } else if (basetype == 12) { // SPIRType::Half (16-bit float)
+                switch (vecsize) {
+                    case 1: return RHI::Format::R16_SFLOAT;
+                    case 2: return RHI::Format::R16G16_SFLOAT;
+                    case 3: return RHI::Format::R16G16B16_SFLOAT;
+                    case 4: return RHI::Format::R16G16B16A16_SFLOAT;
+                    default: return RHI::Format::R16_SFLOAT;
+                }
+            } else if (basetype == 14) { // SPIRType::Double (64-bit float)
+                switch (vecsize) {
+                    case 1: return RHI::Format::R64_SFLOAT;
+                    case 2: return RHI::Format::R64G64_SFLOAT;
+                    case 3: return RHI::Format::R64G64B64_SFLOAT;
+                    case 4: return RHI::Format::R64G64B64A64_SFLOAT;
+                    default: return RHI::Format::R64_SFLOAT;
+                }
+            }
+            // ============================================================================
+            // Signed Integer types (7=Int, 5=Short, 3=SByte, 9=Int64)
+            // ============================================================================
+            else if (basetype == 7) { // SPIRType::Int (32-bit signed integer)
+                if (width == 32) {
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R32_SINT;
+                        case 2: return RHI::Format::R32G32_SINT;
+                        case 3: return RHI::Format::R32G32B32_SINT;
+                        case 4: return RHI::Format::R32G32B32A32_SINT;
+                        default: return RHI::Format::R32_SINT;
+                    }
+                } else if (width == 16) {
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R16_SINT;
+                        case 2: return RHI::Format::R16G16_SINT;
+                        case 3: return RHI::Format::R16G16B16_SINT;
+                        case 4: return RHI::Format::R16G16B16A16_SINT;
+                        default: return RHI::Format::R16_SINT;
+                    }
+                } else if (width == 8) {
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R8_SINT;
+                        case 2: return RHI::Format::R8G8_SINT;
+                        case 3: return RHI::Format::R8G8B8A8_SINT; // vec3 uses vec4 format
+                        case 4: return RHI::Format::R8G8B8A8_SINT;
+                        default: return RHI::Format::R8_SINT;
+                    }
+                } else if (width == 64) {
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R64_SINT;
+                        case 2: return RHI::Format::R64G64_SINT;
+                        case 3: return RHI::Format::R64G64B64_SINT;
+                        case 4: return RHI::Format::R64G64B64A64_SINT;
+                        default: return RHI::Format::R64_SINT;
+                    }
+                } else {
+                    // Unknown width: Default to 32-bit
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R32_SINT;
+                        case 2: return RHI::Format::R32G32_SINT;
+                        case 3: return RHI::Format::R32G32B32_SINT;
+                        case 4: return RHI::Format::R32G32B32A32_SINT;
+                        default: return RHI::Format::R32_SINT;
+                    }
+                }
+            } else if (basetype == 5) { // SPIRType::Short (16-bit signed integer)
+                switch (vecsize) {
+                    case 1: return RHI::Format::R16_SINT;
+                    case 2: return RHI::Format::R16G16_SINT;
+                    case 3: return RHI::Format::R16G16B16_SINT;
+                    case 4: return RHI::Format::R16G16B16A16_SINT;
+                    default: return RHI::Format::R16_SINT;
+                }
+            } else if (basetype == 3) { // SPIRType::SByte (8-bit signed integer)
+                switch (vecsize) {
+                    case 1: return RHI::Format::R8_SINT;
+                    case 2: return RHI::Format::R8G8_SINT;
+                    case 3: return RHI::Format::R8G8B8A8_SINT; // vec3 uses vec4 format
+                    case 4: return RHI::Format::R8G8B8A8_SINT;
+                    default: return RHI::Format::R8_SINT;
+                }
+            } else if (basetype == 9) { // SPIRType::Int64 (64-bit signed integer)
+                switch (vecsize) {
+                    case 1: return RHI::Format::R64_SINT;
+                    case 2: return RHI::Format::R64G64_SINT;
+                    case 3: return RHI::Format::R64G64B64_SINT;
+                    case 4: return RHI::Format::R64G64B64A64_SINT;
+                    default: return RHI::Format::R64_SINT;
+                }
+            }
+            // ============================================================================
+            // Unsigned Integer types (8=UInt, 6=UShort, 4=UByte, 10=UInt64)
+            // ============================================================================
+            else if (basetype == 8) { // SPIRType::UInt (32-bit unsigned integer)
+                if (width == 32) {
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R32_UINT;
+                        case 2: return RHI::Format::R32G32_UINT;
+                        case 3: return RHI::Format::R32G32B32_UINT;
+                        case 4: return RHI::Format::R32G32B32A32_UINT;
+                        default: return RHI::Format::R32_UINT;
+                    }
+                } else if (width == 16) {
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R16_UINT;
+                        case 2: return RHI::Format::R16G16_UINT;
+                        case 3: return RHI::Format::R16G16B16_UINT;
+                        case 4: return RHI::Format::R16G16B16A16_UINT;
+                        default: return RHI::Format::R16_UINT;
+                    }
+                } else if (width == 8) {
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R8_UINT;
+                        case 2: return RHI::Format::R8G8_UINT;
+                        case 3: return RHI::Format::R8G8B8A8_UINT; // vec3 uses vec4 format
+                        case 4: return RHI::Format::R8G8B8A8_UINT;
+                        default: return RHI::Format::R8_UINT;
+                    }
+                } else if (width == 64) {
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R64_UINT;
+                        case 2: return RHI::Format::R64G64_UINT;
+                        case 3: return RHI::Format::R64G64B64_UINT;
+                        case 4: return RHI::Format::R64G64B64A64_UINT;
+                        default: return RHI::Format::R64_UINT;
+                    }
+                } else {
+                    // Unknown width: Default to 32-bit
+                    switch (vecsize) {
+                        case 1: return RHI::Format::R32_UINT;
+                        case 2: return RHI::Format::R32G32_UINT;
+                        case 3: return RHI::Format::R32G32B32_UINT;
+                        case 4: return RHI::Format::R32G32B32A32_UINT;
+                        default: return RHI::Format::R32_UINT;
+                    }
+                }
+            } else if (basetype == 6) { // SPIRType::UShort (16-bit unsigned integer)
+                switch (vecsize) {
+                    case 1: return RHI::Format::R16_UINT;
+                    case 2: return RHI::Format::R16G16_UINT;
+                    case 3: return RHI::Format::R16G16B16_UINT;
+                    case 4: return RHI::Format::R16G16B16A16_UINT;
+                    default: return RHI::Format::R16_UINT;
+                }
+            } else if (basetype == 4) { // SPIRType::UByte (8-bit unsigned integer)
+                switch (vecsize) {
+                    case 1: return RHI::Format::R8_UINT;
+                    case 2: return RHI::Format::R8G8_UINT;
+                    case 3: return RHI::Format::R8G8B8A8_UINT; // vec3 uses vec4 format
+                    case 4: return RHI::Format::R8G8B8A8_UINT;
+                    default: return RHI::Format::R8_UINT;
+                }
+            } else if (basetype == 10) { // SPIRType::UInt64 (64-bit unsigned integer)
+                switch (vecsize) {
+                    case 1: return RHI::Format::R64_UINT;
+                    case 2: return RHI::Format::R64G64_UINT;
+                    case 3: return RHI::Format::R64G64B64_UINT;
+                    case 4: return RHI::Format::R64G64B64A64_UINT;
+                    default: return RHI::Format::R64_UINT;
+                }
             }
             
-            // Default fallback
-            return RHI::Format::R8G8B8A8_UNORM;
+            // ============================================================================
+            // Default fallback: use 16-bit float (2 bytes per component)
+            // This matches typical geometry data and provides good precision/performance balance
+            // ============================================================================
+            switch (vecsize) {
+                case 1: return RHI::Format::R16_SFLOAT;
+                case 2: return RHI::Format::R16G16_SFLOAT;
+                case 3: return RHI::Format::R16G16B16_SFLOAT;
+                case 4: return RHI::Format::R16G16B16A16_SFLOAT;
+                default: return RHI::Format::R16_SFLOAT;
+            }
         }
 
         // ============================================================================
-        // 辅助函数：计算格式的字节大小
+        // Helper function: Calculate format byte size
         // ============================================================================
         // 
-        // 参数说明：
-        //   - format: RHI::Format 枚举值，表示顶点属性的数据格式
+        // Parameter description:
+        //   - format: RHI::Format enum value, represents vertex attribute data format
         //
-        // 返回值：
-        //   uint32_t - 格式占用的字节数
+        // Return value:
+        //   uint32_t - Number of bytes occupied by the format
         //
-        // 格式说明：
-        //   - R8G8B8A8_UNORM: 4 个 8 位无符号归一化通道 (R, G, B, A) = 4 字节
-        //   - R8G8B8A8_SRGB: 4 个 8 位 sRGB 通道 (R, G, B, A) = 4 字节
-        //   - B8G8R8A8_UNORM: 4 个 8 位无符号归一化通道 (B, G, R, A) = 4 字节
-        //   - B8G8R8A8_SRGB: 4 个 8 位 sRGB 通道 (B, G, R, A) = 4 字节
-        //   - D32_SFLOAT: 32 位深度浮点数 = 4 字节
-        //   - D24_UNORM_S8_UINT: 24 位深度 + 8 位模板 = 4 字节（打包）
+        // Format description:
+        //   - R8G8B8A8_UNORM: 4 8-bit unsigned normalized channels (R, G, B, A) = 4 bytes
+        //   - R8G8B8A8_SRGB: 4 8-bit sRGB channels (R, G, B, A) = 4 bytes
+        //   - B8G8R8A8_UNORM: 4 8-bit unsigned normalized channels (B, G, R, A) = 4 bytes
+        //   - B8G8R8A8_SRGB: 4 8-bit sRGB channels (B, G, R, A) = 4 bytes
+        //   - D32_SFLOAT: 32-bit depth floating point = 4 bytes
+        //   - D24_UNORM_S8_UINT: 24-bit depth + 8-bit stencil = 4 bytes (packed)
         //
-        // 尺寸的用处：
-        //   - 用于计算顶点属性在缓冲区中的偏移量（offset）
-        //   - 用于计算顶点数据的 stride（步长）
-        //   - 确保 GPU 能正确读取和解释顶点数据
-        //   - 影响内存对齐和性能（某些格式可能需要特定对齐）
+        // Size usage:
+        //   - Used to calculate vertex attribute offset in buffer
+        //   - Used to calculate vertex data stride
+        //   - Ensures GPU can correctly read and interpret vertex data
+        //   - Affects memory alignment and performance (some formats may require specific alignment)
         //
-        // 注意：
-        //   - 格式尺寸必须与实际顶点数据布局匹配
-        //   - 某些格式可能需要考虑对齐要求（如 16 字节对齐）
-        //   - 当前实现中，所有格式都返回 4 字节（简化实现）
-        //     实际项目中可能需要支持更多格式（如 R32G32B32_SFLOAT = 12 字节）
+        // Note:
+        //   - Format size must match actual vertex data layout
+        //   - Some formats may need to consider alignment requirements (e.g., 16-byte alignment)
+        //   - Current implementation returns 4 bytes for all formats (simplified implementation)
+        //     Real projects may need to support more formats (e.g., R32G32B32_SFLOAT = 12 bytes)
         // ============================================================================
         static uint32_t CalculateFormatSize(RHI::Format format) {
             switch (format) {
-                case RHI::Format::R8G8B8A8_UNORM:  // 4 字节：RGBA 各 8 位无符号归一化
-                case RHI::Format::R8G8B8A8_SRGB:   // 4 字节：RGBA 各 8 位 sRGB
-                case RHI::Format::B8G8R8A8_UNORM:  // 4 字节：BGRA 各 8 位无符号归一化
-                case RHI::Format::B8G8R8A8_SRGB:   // 4 字节：BGRA 各 8 位 sRGB
+                // 8-bit formats
+                case RHI::Format::R8_UNORM:
+                case RHI::Format::R8_SNORM:
+                case RHI::Format::R8_UINT:
+                case RHI::Format::R8_SINT:
+                    return 1;
+                case RHI::Format::R8G8_UNORM:
+                case RHI::Format::R8G8_SNORM:
+                case RHI::Format::R8G8_UINT:
+                case RHI::Format::R8G8_SINT:
+                    return 2;
+                case RHI::Format::R8G8B8A8_UNORM:
+                case RHI::Format::R8G8B8A8_SNORM:
+                case RHI::Format::R8G8B8A8_UINT:
+                case RHI::Format::R8G8B8A8_SINT:
+                case RHI::Format::R8G8B8A8_SRGB:
+                case RHI::Format::B8G8R8A8_UNORM:
+                case RHI::Format::B8G8R8A8_SRGB:
                     return 4;
-                case RHI::Format::D32_SFLOAT:       // 4 字节：32 位深度浮点数
+                
+                // 16-bit integer formats
+                case RHI::Format::R16_UINT:
+                case RHI::Format::R16_SINT:
+                case RHI::Format::R16_UNORM:
+                case RHI::Format::R16_SNORM:
+                case RHI::Format::R16_SFLOAT:
+                    return 2;
+                case RHI::Format::R16G16_UINT:
+                case RHI::Format::R16G16_SINT:
+                case RHI::Format::R16G16_UNORM:
+                case RHI::Format::R16G16_SNORM:
+                case RHI::Format::R16G16_SFLOAT:
                     return 4;
-                case RHI::Format::D24_UNORM_S8_UINT: // 4 字节：24 位深度 + 8 位模板（打包）
+                case RHI::Format::R16G16B16_UINT:
+                case RHI::Format::R16G16B16_SINT:
+                case RHI::Format::R16G16B16_UNORM:
+                case RHI::Format::R16G16B16_SNORM:
+                case RHI::Format::R16G16B16_SFLOAT:
+                    return 6;
+                case RHI::Format::R16G16B16A16_UINT:
+                case RHI::Format::R16G16B16A16_SINT:
+                case RHI::Format::R16G16B16A16_UNORM:
+                case RHI::Format::R16G16B16A16_SNORM:
+                case RHI::Format::R16G16B16A16_SFLOAT:
+                    return 8;
+                
+                // 32-bit integer formats
+                case RHI::Format::R32_UINT:
+                case RHI::Format::R32_SINT:
+                case RHI::Format::R32_SFLOAT:
                     return 4;
+                case RHI::Format::R32G32_UINT:
+                case RHI::Format::R32G32_SINT:
+                case RHI::Format::R32G32_SFLOAT:
+                    return 8;
+                case RHI::Format::R32G32B32_UINT:
+                case RHI::Format::R32G32B32_SINT:
+                case RHI::Format::R32G32B32_SFLOAT:
+                    return 12;
+                case RHI::Format::R32G32B32A32_UINT:
+                case RHI::Format::R32G32B32A32_SINT:
+                case RHI::Format::R32G32B32A32_SFLOAT:
+                    return 16;
+                
+                // 64-bit integer formats
+                case RHI::Format::R64_UINT:
+                case RHI::Format::R64_SINT:
+                case RHI::Format::R64_SFLOAT:
+                    return 8;
+                case RHI::Format::R64G64_UINT:
+                case RHI::Format::R64G64_SINT:
+                case RHI::Format::R64G64_SFLOAT:
+                    return 16;
+                case RHI::Format::R64G64B64_UINT:
+                case RHI::Format::R64G64B64_SINT:
+                case RHI::Format::R64G64B64_SFLOAT:
+                    return 24;
+                case RHI::Format::R64G64B64A64_UINT:
+                case RHI::Format::R64G64B64A64_SINT:
+                case RHI::Format::R64G64B64A64_SFLOAT:
+                    return 32;
+                
+                // Depth formats
+                case RHI::Format::D32_SFLOAT:               // 32-bit depth = 4 bytes
+                    return 4;
+                case RHI::Format::D24_UNORM_S8_UINT:        // 24-bit depth + 8-bit stencil = 4 bytes (packed)
+                    return 4;
+                
                 default:
-                    return 4; // 默认 4 字节（简化实现）
+                    return 4; // Default fallback: 4 bytes
             }
         }
 
         void ShadingMaterial::ParseShaderReflection(const Shader::ShaderReflection& reflection) {
             // ============================================================================
-            // 解析 Shader Reflection 数据，将 shader 中的资源声明转换为渲染管线配置
+            // Parse Shader Reflection data, convert shader resource declarations to rendering pipeline configuration
             // ============================================================================
             // 
-            // Shader Reflection 是从编译后的 SPIR-V 代码中提取的元数据信息，
-            // 包含了 shader 中声明的所有输入、输出、uniform buffer、纹理等资源。
+            // Shader Reflection is metadata extracted from compiled SPIR-V code,
+            // contains all resources declared in shader: inputs, outputs, uniform buffers, textures, etc.
             // 
-            // 对应 Shader 语法示例：
+            // Corresponding Shader syntax example:
             // - Vertex Input:    layout(location = 0) in vec3 inPosition;
             // - Uniform Buffer:  layout(set = 0, binding = 0) uniform UniformBuffer { ... };
             // - Sampler:         layout(set = 0, binding = 1) uniform sampler2D texSampler;
@@ -297,112 +575,117 @@ namespace FirstEngine {
             // ============================================================================
 
             // ----------------------------------------------------------------------------
-            // 1. 解析 Vertex Inputs (顶点输入属性)
+            // 1. Parse Vertex Inputs (vertex input attributes)
             // ----------------------------------------------------------------------------
-            // 对应 Shader 语法：
+            // Corresponding Shader syntax:
             //   layout(location = 0) in vec3 inPosition;
             //   layout(location = 1) in vec2 inTexCoord;
             //   layout(location = 2) in vec3 inNormal;
             //
-            // 参数说明：
-            //   - location: 顶点属性的位置索引，对应 shader 中的 layout(location = N)
-            //     用于在顶点缓冲区中标识不同的属性（位置、法线、纹理坐标等）
-            //   - name: 属性在 shader 中的变量名（如 "inPosition", "inTexCoord"）
-            //   - format: 顶点属性的数据格式（如 R8G8B8A8_UNORM 表示 4 字节 RGBA）
-            //     格式决定了如何从内存中读取和解释顶点数据
-            //   - offset: 该属性在顶点缓冲区中的字节偏移量
-            //     用于计算属性在顶点数据中的起始位置（在 BuildVertexInputsFromShader 中计算）
-            //   - binding: 顶点缓冲区的绑定索引（通常为 0，表示使用第一个顶点缓冲区）
+            // Parameter description:
+            //   - location: Vertex attribute location index, corresponds to layout(location = N) in shader
+            //     Used to identify different attributes in vertex buffer (position, normal, texture coordinates, etc.)
+            //   - name: Attribute variable name in shader (e.g., "inPosition", "inTexCoord")
+            //   - format: Vertex attribute data format (e.g., R8G8B8A8_UNORM means 4-byte RGBA)
+            //     Format determines how vertex data is read and interpreted from memory
+            //   - offset: Byte offset of this attribute in vertex buffer
+            //     Used to calculate attribute start position in vertex data (calculated in BuildVertexInputsFromShader)
+            //   - binding: Vertex buffer binding index (usually 0, means using first vertex buffer)
             //
-            // 格式和尺寸的用处：
-            //   - format 决定了每个属性占用的字节数（如 R8G8B8A8_UNORM = 4 字节）
-            //   - offset 用于在顶点缓冲区中正确定位每个属性的数据
-            //   - 所有属性的 offset + format 尺寸 = 顶点数据的 stride（步长）
-            //   - 这些信息用于创建 VkVertexInputAttributeDescription 和 VkVertexInputBindingDescription
+            // Format and size usage:
+            //   - format determines bytes occupied by each attribute (e.g., R8G8B8A8_UNORM = 4 bytes)
+            //   - offset is used to correctly position each attribute's data in vertex buffer
+            //   - All attributes' offset + format size = vertex data stride
+            //   - This information is used to create VkVertexInputAttributeDescription and VkVertexInputBindingDescription
             // ----------------------------------------------------------------------------
             m_VertexInputs.clear();
             for (const auto& input : reflection.stage_inputs) {
                 VertexInput vertexInput;
-                vertexInput.location = input.location; // Shader 中的 layout(location = N) 值
-                vertexInput.name = input.name;        // Shader 变量名（如 "inPosition"）
+                vertexInput.location = input.location; // layout(location = N) value in shader
+                vertexInput.name = input.name;        // Shader variable name (e.g., "inPosition")
                 
-                // 将 shader 类型映射为 RHI Format
+                // Map shader type to RHI Format
                 // input.basetype: SPIRType basetype (3=Int, 4=UInt, 5=Float)
-                // input.width: 类型宽度 (8, 16, 32, 64 bits)
-                // input.vecsize: 向量大小 (1=scalar, 2=vec2, 3=vec3, 4=vec4)
-                // 例如：vec3 float32 -> basetype=5, width=32, vecsize=3
+                // input.width: Type width (8, 16, 32, 64 bits)
+                // input.vecsize: Vector size (1=scalar, 2=vec2, 3=vec3, 4=vec4)
+                // Example: vec3 float32 -> basetype=5, width=32, vecsize=3
                 vertexInput.format = MapTypeToFormat(input.basetype, input.width, input.vecsize);
                 
-                vertexInput.offset = 0;    // 将在 BuildVertexInputsFromShader 中根据 format 尺寸计算
-                vertexInput.binding = 0;   // 默认使用 binding 0 的顶点缓冲区
+                vertexInput.offset = 0;    // Will be calculated based on format size in BuildVertexInputsFromShader
+                vertexInput.binding = 0;   // Default to use binding 0 vertex buffer
                 m_VertexInputs.push_back(vertexInput);
             }
 
             // ----------------------------------------------------------------------------
-            // 2. 解析 Push Constants (推送常量)
+            // 2. Parse Push Constants
             // ----------------------------------------------------------------------------
-            // 对应 Shader 语法：
+            // Corresponding Shader syntax:
             //   layout(push_constant) uniform PushConstants {
             //       mat4 mvpMatrix;
             //       vec4 color;
             //   } pushConstants;
             //
-            // 参数说明：
-            //   - push_constant_size: Push constant 数据的总字节数
-            //     包含所有 push constant 成员的大小（考虑对齐）
+            // Parameter description:
+            //   - push_constant_size: Total bytes of push constant data
+            //     Contains size of all push constant members (considering alignment)
             //
-            // 格式和尺寸的用处：
-            //   - Push constant 是快速更新的小数据块（通常 < 128 字节）
-            //   - 不需要 descriptor set，直接在 command buffer 中更新
-            //   - 用于频繁变化的数据（如每帧的 MVP 矩阵）
+            // Format and size usage:
+            //   - Push constant is a small data block for fast updates (usually < 128 bytes)
+            //   - Doesn't need descriptor set, updated directly in command buffer
+            //   - Used for frequently changing data (e.g., per-frame MVP matrix)
             // ----------------------------------------------------------------------------
             m_PushConstantData.resize(reflection.push_constant_size);
             std::memset(m_PushConstantData.data(), 0, m_PushConstantData.size());
 
             // ----------------------------------------------------------------------------
-            // 3. 解析 Uniform Buffers (统一缓冲区)
+            // 3. Parse Uniform Buffers
             // ----------------------------------------------------------------------------
-            // 对应 Shader 语法：
+            // Corresponding Shader syntax:
             //   layout(set = 0, binding = 0) uniform UniformBufferObject {
             //       mat4 model;
             //       mat4 view;
             //       mat4 proj;
             //   } ubo;
             //
-            // 参数说明：
-            //   - set: Descriptor set 索引，对应 shader 中的 layout(set = N)
-            //     用于组织相关的资源（如 set 0 用于 per-object，set 1 用于 per-frame）
-            //   - binding: 在 descriptor set 中的绑定索引，对应 shader 中的 layout(binding = N)
-            //     用于在同一 set 中区分不同的资源
-            //   - name: Uniform buffer 在 shader 中的名称（如 "UniformBufferObject"）
-            //   - size: Uniform buffer 的总字节数（包含所有成员，考虑对齐）
-            //     用于创建 GPU 缓冲区并分配内存
+            // Parameter description:
+            //   - set: Descriptor set index, corresponds to layout(set = N) in shader
+            //     Used to organize related resources (e.g., set 0 for per-object, set 1 for per-frame)
+            //   - binding: Binding index in descriptor set, corresponds to layout(binding = N) in shader
+            //     Used to distinguish different resources in the same set
+            //   - name: Uniform buffer name in shader (e.g., "UniformBufferObject")
+            //   - size: Total bytes of uniform buffer (contains all members, considering alignment)
+            //     Used to create GPU buffer and allocate memory
             //
-            // 格式和尺寸的用处：
-            //   - size 决定了需要创建的 GPU buffer 大小
-            //   - set 和 binding 用于创建 descriptor set layout
-            //   - data 存储 CPU 端的数据，用于更新 GPU buffer
-            //   - 对齐规则：在 GLSL/Vulkan 中，uniform buffer 成员需要按 16 字节对齐
-            //     例如：vec3 占用 12 字节，但需要对齐到 16 字节
+            // Format and size usage:
+            //   - size determines GPU buffer size to create
+            //   - set and binding are used to create descriptor set layout
+            //   - data stores CPU-side data, used to update GPU buffer
+            //   - Alignment rules: In GLSL/Vulkan, uniform buffer members need 16-byte alignment
+            //     Example: vec3 occupies 12 bytes, but needs to be aligned to 16 bytes
             // ----------------------------------------------------------------------------
             m_UniformBuffers.clear();
             for (const auto& ub : reflection.uniform_buffers) {
                 UniformBufferBinding binding;
-                binding.set = ub.set;      // Shader 中的 layout(set = N)
-                binding.binding = ub.binding; // Shader 中的 layout(binding = N)
-                binding.name = ub.name;    // Shader 中的 uniform buffer 名称
-                binding.size = ub.size;    // Uniform buffer 总字节数（考虑对齐）
+                binding.set = ub.set;      // layout(set = N) in shader
+                binding.binding = ub.binding; // layout(binding = N) in shader
+                binding.name = ub.name;    // Uniform buffer name in shader
+                binding.size = ub.size;    // Uniform buffer total bytes (considering alignment)
                 
-                // 分配 CPU 端数据缓冲区，用于存储和更新 uniform buffer 数据
+                // Allocate CPU-side data buffer for storing and updating uniform buffer data
                 binding.data.resize(ub.size);
                 std::memset(binding.data.data(), 0, binding.data.size());
                 m_UniformBuffers.push_back(std::move(binding));
+                
+                // Debug: Print uniform buffer information
+                std::cerr << "ShadingMaterial: Parsed uniform buffer '" << binding.name 
+                          << "' at Set " << binding.set << ", Binding " << binding.binding 
+                          << ", Size: " << binding.size << " bytes" << std::endl;
             }
 
             // ----------------------------------------------------------------------------
-            // 4. 解析 Texture Bindings (纹理绑定：Samplers 和 Images)
+            // 4. Parse Texture Bindings (Samplers and Images)
             // ----------------------------------------------------------------------------
-            // 对应 Shader 语法：
+            // Corresponding Shader syntax:
             //   // Combined Image Sampler (GLSL)
             //   layout(set = 0, binding = 1) uniform sampler2D texSampler;
             //   
@@ -410,54 +693,142 @@ namespace FirstEngine {
             //   layout(set = 0, binding = 1) uniform texture2D texImage;
             //   layout(set = 0, binding = 2) uniform sampler texSampler;
             //
-            // 参数说明：
-            //   - samplers: Combined image sampler 或单独的 sampler
-            //     对应 GLSL 的 sampler2D, samplerCube 等
-            //   - images: 单独的 texture image（不包含 sampler）
-            //     对应 HLSL 的 texture2D, textureCube 等
-            //   - set: Descriptor set 索引，对应 shader 中的 layout(set = N)
-            //   - binding: 在 descriptor set 中的绑定索引，对应 shader 中的 layout(binding = N)
-            //   - name: 纹理在 shader 中的变量名（如 "texSampler", "albedoMap"）
+            // Parameter description:
+            //   - samplers: Combined image sampler or separate sampler
+            //     Corresponds to GLSL's sampler2D, samplerCube, etc.
+            //   - images: Separate texture image (doesn't include sampler)
+            //     Corresponds to HLSL's texture2D, textureCube, etc.
+            //   - set: Descriptor set index, corresponds to layout(set = N) in shader
+            //   - binding: Binding index in descriptor set, corresponds to layout(binding = N) in shader
+            //   - name: Texture variable name in shader (e.g., "texSampler", "albedoMap")
             //
-            // 格式和尺寸的用处：
-            //   - set 和 binding 用于创建 descriptor set layout
-            //   - 用于在渲染时绑定正确的纹理到 shader
-            //   - texture 指针在运行时设置（通过 SetTexture 方法）
-            //   - 支持在同一个 descriptor set 中绑定多个纹理（通过不同的 binding）
+            // Format and size usage:
+            //   - set and binding are used to create descriptor set layout
+            //   - Used to bind correct texture to shader during rendering
+            //   - texture pointer is set at runtime (via SetTexture method)
+            //   - Supports binding multiple textures in same descriptor set (via different bindings)
             // ----------------------------------------------------------------------------
             m_TextureBindings.clear();
             
-            // 解析 Samplers（Combined Image Sampler 或单独的 Sampler）
-            for (const auto& sampler : reflection.samplers) {
+            // Debug: Print reflection information
+            std::cerr << "ShadingMaterial::ParseShaderReflection: Parsing texture bindings..." << std::endl;
+            std::cerr << "  - sampled_images count: " << reflection.sampled_images.size() << std::endl;
+            std::cerr << "  - separate_images count: " << reflection.separate_images.size() << std::endl;
+            std::cerr << "  - separate_samplers count: " << reflection.separate_samplers.size() << std::endl;
+            std::cerr << "  - samplers count (legacy): " << reflection.samplers.size() << std::endl;
+            std::cerr << "  - images count (legacy): " << reflection.images.size() << std::endl;
+            
+            // IMPORTANT: If new fields are empty but legacy fields have data, use legacy fields
+            // This handles the case where ShaderCollection was cached before we added the new fields
+            bool useLegacyFields = reflection.sampled_images.empty() && 
+                                   reflection.separate_images.empty() && 
+                                   reflection.separate_samplers.empty() &&
+                                   (!reflection.samplers.empty() || !reflection.images.empty());
+            
+            if (useLegacyFields) {
+                std::cerr << "ShadingMaterial::ParseShaderReflection: Using legacy fields (samplers/images) - ShaderCollection may need to be regenerated" << std::endl;
+                
+                // Use legacy samplers list (contains both sampled_images and separate_samplers)
+                // We'll treat them all as COMBINED_IMAGE_SAMPLER for now
+                for (const auto& sampler : reflection.samplers) {
+                    TextureBinding binding;
+                    binding.set = sampler.set;
+                    binding.binding = sampler.binding;
+                    binding.name = sampler.name;
+                    binding.texture = nullptr;
+                    binding.descriptorType = RHI::DescriptorType::CombinedImageSampler;
+                    m_TextureBindings.push_back(binding);
+                    
+                    std::cerr << "ShadingMaterial: Parsed sampler (legacy) '" << binding.name 
+                              << "' at Set " << binding.set << ", Binding " << binding.binding 
+                              << ", Type: COMBINED_IMAGE_SAMPLER" << std::endl;
+                }
+                
+                // Use legacy images list (contains both separate_images and storage_images)
+                // We'll treat them as SAMPLED_IMAGE for now
+                for (const auto& image : reflection.images) {
+                    TextureBinding binding;
+                    binding.set = image.set;
+                    binding.binding = image.binding;
+                    binding.name = image.name;
+                    binding.texture = nullptr;
+                    binding.descriptorType = RHI::DescriptorType::SampledImage;
+                    m_TextureBindings.push_back(binding);
+                    
+                    std::cerr << "ShadingMaterial: Parsed image (legacy) '" << binding.name 
+                              << "' at Set " << binding.set << ", Binding " << binding.binding 
+                              << ", Type: SAMPLED_IMAGE" << std::endl;
+                }
+            } else {
+                // Use new fields (preferred)
+                // Parse Combined Image Samplers (sampler2D in GLSL)
+                // These use COMBINED_IMAGE_SAMPLER descriptor type
+                for (const auto& sampler : reflection.sampled_images) {
                 TextureBinding binding;
-                binding.set = sampler.set;      // Shader 中的 layout(set = N)
-                binding.binding = sampler.binding; // Shader 中的 layout(binding = N)
-                binding.name = sampler.name;     // Shader 中的 sampler 变量名
-                binding.texture = nullptr;       // 纹理指针，在运行时通过 SetTexture 设置
+                binding.set = sampler.set;      // layout(set = N) in shader
+                binding.binding = sampler.binding; // layout(binding = N) in shader
+                binding.name = sampler.name;     // Sampler variable name in shader
+                binding.texture = nullptr;       // Texture pointer, set at runtime via SetTexture
+                binding.descriptorType = RHI::DescriptorType::CombinedImageSampler;
                 m_TextureBindings.push_back(binding);
+                
+                // Debug: Print texture binding information
+                std::cerr << "ShadingMaterial: Parsed combined image sampler '" << binding.name 
+                          << "' at Set " << binding.set << ", Binding " << binding.binding 
+                          << ", Type: COMBINED_IMAGE_SAMPLER" << std::endl;
             }
             
-            // 解析 Images（单独的 Texture Image，不包含 Sampler）
-            for (const auto& image : reflection.images) {
+            // Parse Separate Images (texture2D in HLSL/Vulkan, used with separate samplers)
+            // These use SAMPLED_IMAGE descriptor type
+            for (const auto& image : reflection.separate_images) {
                 TextureBinding binding;
-                binding.set = image.set;         // Shader 中的 layout(set = N)
-                binding.binding = image.binding; // Shader 中的 layout(binding = N)
-                binding.name = image.name;       // Shader 中的 image 变量名
-                binding.texture = nullptr;       // 纹理指针，在运行时通过 SetTexture 设置
+                binding.set = image.set;         // layout(set = N) in shader
+                binding.binding = image.binding; // layout(binding = N) in shader
+                binding.name = image.name;       // Image variable name in shader
+                binding.texture = nullptr;       // Texture pointer, set at runtime via SetTexture
+                binding.descriptorType = RHI::DescriptorType::SampledImage;
                 m_TextureBindings.push_back(binding);
+                
+                // Debug: Print texture binding information
+                std::cerr << "ShadingMaterial: Parsed separate image '" << binding.name 
+                          << "' at Set " << binding.set << ", Binding " << binding.binding 
+                          << ", Type: SAMPLED_IMAGE" << std::endl;
+            }
+            
+            // Parse Separate Samplers (sampler in HLSL/Vulkan, used with separate images)
+            // Note: Separate samplers don't have a texture, they're just sampler states
+            // For now, we'll create a binding entry but it won't have a texture pointer
+            // The descriptor type should be SAMPLER, but our RHI layer might not support it yet
+            // So we'll use CombinedImageSampler as a fallback, but this might need to be fixed
+            for (const auto& sampler : reflection.separate_samplers) {
+                TextureBinding binding;
+                binding.set = sampler.set;      // layout(set = N) in shader
+                binding.binding = sampler.binding; // layout(binding = N) in shader
+                binding.name = sampler.name;     // Sampler variable name in shader
+                binding.texture = nullptr;       // Separate samplers don't have textures
+                // Note: RHI layer might not support SAMPLER type yet, so we'll use CombinedImageSampler
+                // This might need to be fixed when RHI layer adds SAMPLER support
+                binding.descriptorType = RHI::DescriptorType::CombinedImageSampler; // TODO: Should be SAMPLER when RHI supports it
+                m_TextureBindings.push_back(binding);
+                
+                // Debug: Print texture binding information
+                std::cerr << "ShadingMaterial: Parsed separate sampler '" << binding.name 
+                          << "' at Set " << binding.set << ", Binding " << binding.binding 
+                          << ", Type: COMBINED_IMAGE_SAMPLER (fallback, should be SAMPLER)" << std::endl;
+                }
             }
         }
 
         void ShadingMaterial::BuildVertexInputsFromShader() {
             // ============================================================================
-            // 计算顶点输入属性的偏移量（Offset）
+            // Calculate vertex input attribute offsets (Offset)
             // ============================================================================
             // 
-            // 用途：
-            //   在顶点缓冲区中，多个属性（位置、法线、纹理坐标等）通常打包在同一个缓冲区中。
-            //   每个属性需要知道它在缓冲区中的起始位置（offset），以便正确读取数据。
+            // Purpose:
+            //   In vertex buffer, multiple attributes (position, normal, texture coordinates, etc.) are usually packed in the same buffer.
+            //   Each attribute needs to know its start position (offset) in the buffer to correctly read data.
             //
-            // 示例顶点数据布局：
+            // Example vertex data layout:
             //   struct Vertex {
             //       vec3 position;   // offset = 0,   size = 12 bytes (3 * float)
             //       vec3 normal;     // offset = 12,  size = 12 bytes (3 * float)
@@ -465,36 +836,36 @@ namespace FirstEngine {
             //   };
             //   Total stride = 32 bytes
             //
-            // 计算过程：
-            //   1. 第一个属性的 offset = 0
-            //   2. 后续属性的 offset = 前一个属性的 offset + 前一个属性的 format 尺寸
-            //   3. 最后一个属性的 offset + format 尺寸 = 顶点数据的 stride（步长）
+            // Calculation process:
+            //   1. First attribute's offset = 0
+            //   2. Subsequent attributes' offset = previous attribute's offset + previous attribute's format size
+            //   3. Last attribute's offset + format size = vertex data stride
             //
-            // Format 尺寸的用处：
-            //   - 确定每个属性在内存中占用的字节数
-            //   - 用于计算属性之间的偏移量
-            //   - 用于计算顶点数据的总 stride
-            //   - 确保 GPU 能正确从顶点缓冲区中读取每个属性的数据
+            // Format size usage:
+            //   - Determines bytes occupied by each attribute in memory
+            //   - Used to calculate offsets between attributes
+            //   - Used to calculate total vertex data stride
+            //   - Ensures GPU can correctly read each attribute's data from vertex buffer
             //
-            // 注意：
-            //   - Format 尺寸必须与实际顶点数据布局匹配
-            //   - 如果 shader 中声明的是 vec3，但实际数据是 vec4，需要调整 format
-            //   - 对齐规则：某些格式可能需要特定的对齐（如 16 字节对齐）
+            // Note:
+            //   - Format size must match actual vertex data layout
+            //   - If shader declares vec3 but actual data is vec4, need to adjust format
+            //   - Alignment rules: Some formats may require specific alignment (e.g., 16-byte alignment)
             // ============================================================================
             uint32_t currentOffset = 0;
             for (auto& input : m_VertexInputs) {
-                // 设置当前属性的偏移量
+                // Set current attribute's offset
                 input.offset = currentOffset;
                 
-                // 计算当前属性的格式尺寸（字节数）
-                // 例如：R8G8B8A8_UNORM = 4 字节，D32_SFLOAT = 4 字节
+                // Calculate current attribute's format size (bytes)
+                // Example: R8G8B8A8_UNORM = 4 bytes, D32_SFLOAT = 4 bytes
                 uint32_t formatSize = CalculateFormatSize(input.format);
                 
-                // 更新下一个属性的偏移量
+                // Update next attribute's offset
                 currentOffset += formatSize;
             }
             
-            // 此时 currentOffset 就是顶点数据的 stride（步长）
+            // At this point currentOffset is the vertex data stride
             // 用于创建 VkVertexInputBindingDescription 中的 stride 字段
         }
 
@@ -578,6 +949,9 @@ namespace FirstEngine {
 
         bool ShadingMaterial::EnsurePipelineCreated(RHI::IDevice* device, RHI::IRenderPass* renderPass) {
             if (!device || !renderPass) {
+                std::cerr << "Error: ShadingMaterial::EnsurePipelineCreated: Invalid parameters. "
+                          << "Device: " << (device ? "valid" : "null") 
+                          << ", RenderPass: " << (renderPass ? "valid" : "null") << std::endl;
                 return false;
             }
 
@@ -590,6 +964,8 @@ namespace FirstEngine {
             if (m_ShadingState.shaderModules.empty()) {
                 // Shader modules should have been created in DoCreate
                 // If not, something went wrong
+                std::cerr << "Error: ShadingMaterial::EnsurePipelineCreated: Shader modules are empty. "
+                          << "ShadingMaterial may not have been properly initialized." << std::endl;
                 return false;
             }
 
@@ -633,6 +1009,10 @@ namespace FirstEngine {
 
             // Create pipeline from shading state (with descriptor set layouts)
             if (!m_ShadingState.CreatePipeline(device, renderPass, vertexBindings, vertexAttributes, descriptorSetLayouts)) {
+                std::cerr << "Error: ShadingMaterial::EnsurePipelineCreated: Failed to create pipeline via ShadingState::CreatePipeline. "
+                          << "Vertex bindings: " << vertexBindings.size() 
+                          << ", Vertex attributes: " << vertexAttributes.size()
+                          << ", Descriptor set layouts: " << descriptorSetLayouts.size() << std::endl;
                 return false;
             }
 
@@ -747,21 +1127,30 @@ namespace FirstEngine {
                     continue;
                 }
 
+                // Uniform buffers should use HostVisible memory for frequent CPU updates
+                // Use HostVisible | HostCoherent for optimal performance with frequent updates
+                RHI::MemoryPropertyFlags memoryProperties = static_cast<RHI::MemoryPropertyFlags>(
+                    static_cast<uint32_t>(RHI::MemoryPropertyFlags::HostVisible) |
+                    static_cast<uint32_t>(RHI::MemoryPropertyFlags::HostCoherent)
+                );
+
                 ub.buffer = device->CreateBuffer(
                     ub.size,
-                    RHI::BufferUsageFlags::UniformBuffer | RHI::BufferUsageFlags::TransferDst,
-                    RHI::MemoryPropertyFlags::DeviceLocal
+                    RHI::BufferUsageFlags::UniformBuffer,
+                    memoryProperties
                 );
                 if (!ub.buffer) {
                     return false;
                 }
 
-                // Upload initial data
+                // Upload initial data (now safe to map since we use HostVisible memory)
                 if (!ub.data.empty()) {
                     void* mapped = ub.buffer->Map();
                     if (mapped) {
                         std::memcpy(mapped, ub.data.data(), ub.data.size());
                         ub.buffer->Unmap();
+                    } else {
+                        std::cerr << "Warning: ShadingMaterial::CreateUniformBuffers: Failed to map buffer for initial data upload" << std::endl;
                     }
                 }
             }

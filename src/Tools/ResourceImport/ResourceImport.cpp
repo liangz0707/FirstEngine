@@ -384,7 +384,6 @@ namespace FirstEngine {
                 // Create MeshData
                 FirstEngine::Resources::ResourceXMLParser::MeshData meshData;
                 meshData.meshFile = filename;
-                meshData.vertexStride = 32; // Default vertex stride (position + normal + texcoord)
 
                 // Save XML
                 if (!FirstEngine::Resources::ResourceXMLParser::SaveMeshToXML(xmlPath, options.name, id, meshData)) {

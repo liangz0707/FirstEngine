@@ -13,11 +13,14 @@
 #include "FirstEngine/Renderer/RenderContext.h"
 #include "FirstEngine/RHI/IDevice.h"
 #include "FirstEngine/RHI/ISwapchain.h"
+#include "FirstEngine/Resources/Scene.h"
 #include <memory>
 #include <unordered_map>
 #include <string>
 #include <iostream>
+#include <sstream>
 #include <mutex>
+#include <cstdio>
 
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -28,12 +31,82 @@
 #include <windows.h>
 #endif
 
-// 全局渲染引擎管理器（单例模式）
-// RenderContext 现在管理完整的渲染引擎状态，不再需要单独的 RenderEngine 结构
+// Global rendering engine manager (singleton pattern)
+// RenderContext now manages complete rendering engine state, no longer needs separate RenderEngine structure
 static FirstEngine::Renderer::RenderContext* g_GlobalRenderContext = nullptr;
 static std::mutex g_RenderContextMutex;
 
-// Viewport 结构（简化，不再需要 engine 指针）
+#ifdef _WIN32
+// Console output redirection
+typedef void (*OutputCallback)(const char* message, int isError);
+
+static OutputCallback g_OutputCallback = nullptr;
+static std::mutex g_OutputMutex;
+
+// Custom streambuf to redirect output to callback function
+class CallbackStreamBuf : public std::streambuf {
+public:
+    CallbackStreamBuf(bool isError) : m_IsError(isError) {}
+
+protected:
+    virtual int_type overflow(int_type c) override {
+        if (c != EOF) {
+            if (c == '\n') {
+                // When encountering newline, output the buffered line immediately
+                // This handles the case where std::endl is used (which outputs \n and calls sync)
+                std::string line = m_Buffer.str();
+                if (!line.empty()) {
+                    std::lock_guard<std::mutex> lock(g_OutputMutex);
+                    // Only send to callback (C# will format it), don't also send to OutputDebugStringA to avoid duplication
+                    if (g_OutputCallback) {
+                        g_OutputCallback(line.c_str(), m_IsError ? 1 : 0);
+                    }
+                    // OutputDebugStringA is called by C# callback if needed, so we don't need it here
+                }
+                m_Buffer.str("");
+                m_Buffer.clear();
+                m_LastWasNewline = true;  // Mark that we just processed a newline
+            } else {
+                m_Buffer << static_cast<char>(c);
+                m_LastWasNewline = false;
+            }
+        }
+        return c;
+    }
+
+    virtual int sync() override {
+        // Only output if there's content in the buffer AND we didn't just process a newline
+        // This prevents duplicate output when std::endl is used (which calls both overflow('\n') and sync())
+        if (!m_LastWasNewline) {
+            std::string line = m_Buffer.str();
+            if (!line.empty()) {
+                std::lock_guard<std::mutex> lock(g_OutputMutex);
+                // Only send to callback (C# will format it), don't also send to OutputDebugStringA to avoid duplication
+                if (g_OutputCallback) {
+                    g_OutputCallback(line.c_str(), m_IsError ? 1 : 0);
+                }
+                // OutputDebugStringA is called by C# callback if needed, so we don't need it here
+                m_Buffer.str("");
+                m_Buffer.clear();
+            }
+        }
+        m_LastWasNewline = false;  // Reset flag after sync
+        return 0;
+    }
+
+private:
+    std::stringstream m_Buffer;
+    bool m_IsError;
+    bool m_LastWasNewline = false;  // Track if we just processed a newline in overflow
+};
+
+static CallbackStreamBuf* g_CoutBuf = nullptr;
+static CallbackStreamBuf* g_CerrBuf = nullptr;
+static std::streambuf* g_OriginalCout = nullptr;
+static std::streambuf* g_OriginalCerr = nullptr;
+#endif
+
+// Viewport structure (simplified, no longer needs engine pointer)
 struct RenderViewport {
     void* parentWindowHandle = nullptr;
     void* childWindowHandle = nullptr;  // Win32 HWND for child window
@@ -76,21 +149,21 @@ struct RenderViewport {
 // Engine management
 extern "C" {
 
-// 创建引擎（现在只是初始化全局 RenderContext）
+// Create engine (now just initializes global RenderContext)
 void* EditorAPI_CreateEngine(void* windowHandle, int width, int height) {
     std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
     if (g_GlobalRenderContext) {
-        // 已经存在，返回现有实例
+        // Already exists, return existing instance
         return g_GlobalRenderContext;
     }
     
-    // 创建全局 RenderContext
+    // Create global RenderContext
     g_GlobalRenderContext = new FirstEngine::Renderer::RenderContext();
     return g_GlobalRenderContext;
 }
 
-// 销毁引擎
+// Destroy engine
 void EditorAPI_DestroyEngine(void* engine) {
     std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
@@ -100,7 +173,7 @@ void EditorAPI_DestroyEngine(void* engine) {
     }
 }
 
-// 初始化引擎
+// Initialize engine
 bool EditorAPI_InitializeEngine(void* engine) {
     std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
@@ -119,9 +192,9 @@ bool EditorAPI_InitializeEngine(void* engine) {
     FirstEngine::Core::RenderDocHelper::Initialize();
 #endif
     
-    // 从 context 获取窗口句柄（如果有的话，否则使用 nullptr）
-    void* windowHandle = nullptr;  // EditorAPI_CreateEngine 时传入的，但我们现在不需要它
-    int width = 1920, height = 1080;  // 默认值，实际会通过 SetRenderConfig 设置
+    // Get window handle from context (if available, otherwise use nullptr)
+    void* windowHandle = nullptr;  // Passed in EditorAPI_CreateEngine, but we don't need it now
+    int width = 1920, height = 1080;  // Default values, will be set via SetRenderConfig
     
     return context->InitializeEngine(windowHandle, width, height);
 }
@@ -369,10 +442,12 @@ void EditorAPI_SetViewportActive(RenderViewport* viewport, bool active) {
 }
 
 // Frame rendering
-// 对应 RenderApp::OnPrepareFrameGraph() - 构建 FrameGraph
+// Corresponds to RenderApp::OnPrepareFrameGraph() - Build FrameGraph
 void EditorAPI_PrepareFrameGraph(void* engine) {
-    // Debug: 添加输出以验证函数被调用
+    // Debug: Add output to verify function is called
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
     std::cout << "[EditorAPI] EditorAPI_PrepareFrameGraph called" << std::endl;
+#endif
     
     std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
@@ -392,19 +467,23 @@ void EditorAPI_PrepareFrameGraph(void* engine) {
     FirstEngine::Core::RenderDocHelper::BeginFrame();
 #endif
     
-    // Debug: 添加输出以验证执行路径
+    // Debug: Add output to verify execution path
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
     std::cout << "[EditorAPI] EditorAPI_PrepareFrameGraph: Calling BeginFrame" << std::endl;
+#endif
     
-    // 使用 RenderContext 构建 FrameGraph（所有参数都从内部获取）
+    // Use RenderContext to build FrameGraph (all parameters are obtained internally)
     if (!context->BeginFrame()) {
         std::cerr << "Failed to prepare FrameGraph in RenderContext (editor)!" << std::endl;
         return;
     }
     
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
     std::cout << "[EditorAPI] EditorAPI_PrepareFrameGraph: BeginFrame completed" << std::endl;
+#endif
 }
 
-// 对应 RenderApp::OnCreateResources() - 处理资源
+// Corresponds to RenderApp::OnCreateResources() - Process resources
 void EditorAPI_CreateResources(void* engine) {
     std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
@@ -417,14 +496,16 @@ void EditorAPI_CreateResources(void* engine) {
         return;
     }
 
-    // 处理计划中的资源
+    // Process scheduled resources
     context->ProcessResources(context->GetDevice(), 0);
 }
 
-// 对应 RenderApp::OnRender() - 执行 FrameGraph 生成渲染命令
+// Corresponds to RenderApp::OnRender() - Execute FrameGraph to generate render commands
 void EditorAPI_Render(void* engine) {
-    // Debug: 添加输出以验证函数被调用
+    // Debug: Add output to verify function is called
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
     std::cout << "[EditorAPI] EditorAPI_Render called" << std::endl;
+#endif
     
     std::lock_guard<std::mutex> lock(g_RenderContextMutex);
     
@@ -439,22 +520,28 @@ void EditorAPI_Render(void* engine) {
         return;
     }
 
-    // Debug: 添加输出以验证执行路径
+    // Debug: Add output to verify execution path
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
     std::cout << "[EditorAPI] EditorAPI_Render: Calling ExecuteFrameGraph" << std::endl;
+#endif
     
-    // 使用 RenderContext 执行 FrameGraph（所有参数都从内部获取）
+    // Use RenderContext to execute FrameGraph (all parameters are obtained internally)
     if (!context->ExecuteFrameGraph()) {
         std::cerr << "Failed to execute FrameGraph in RenderContext (editor)!" << std::endl;
         return;
     }
     
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
     std::cout << "[EditorAPI] EditorAPI_Render: ExecuteFrameGraph completed" << std::endl;
+#endif
 }
 
-// 对应 RenderApp::OnSubmit() - 提交渲染
+// Corresponds to RenderApp::OnSubmit() - Submit rendering
 void EditorAPI_SubmitFrame(RenderViewport* viewport) {
-    // Debug: 添加输出以验证函数被调用
+    // Debug: Add output to verify function is called
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
     std::cout << "[EditorAPI] EditorAPI_SubmitFrame called" << std::endl;
+#endif
     
     if (!viewport || !viewport->active || !viewport->ready) {
         std::cerr << "[EditorAPI] EditorAPI_SubmitFrame: Viewport invalid or not ready" << std::endl;
@@ -474,20 +561,24 @@ void EditorAPI_SubmitFrame(RenderViewport* viewport) {
     
     auto* context = g_GlobalRenderContext;
     
-    // Debug: 添加输出以验证执行路径
+    // Debug: Add output to verify execution path
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
     std::cout << "[EditorAPI] EditorAPI_SubmitFrame: Calling SubmitFrame" << std::endl;
+#endif
     
-    // 使用 RenderContext 提交渲染（只需要提供 swapchain，其他都从内部获取）
+    // Use RenderContext to submit rendering (only need to provide swapchain, everything else is obtained internally)
     FirstEngine::Renderer::RenderContext::RenderParams params;
     params.swapchain = viewport->swapchain;
     
     if (!context->SubmitFrame(params)) {
-        // 提交失败（可能是图像获取失败或需要重建 swapchain）
+        // Submit failed (may be image acquisition failure or need to recreate swapchain)
         std::cerr << "[EditorAPI] EditorAPI_SubmitFrame: SubmitFrame failed" << std::endl;
         return;
     }
     
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
     std::cout << "[EditorAPI] EditorAPI_SubmitFrame: SubmitFrame completed" << std::endl;
+#endif
     
     // End RenderDoc frame capture (after frame is submitted)
 #ifdef _WIN32
@@ -495,20 +586,20 @@ void EditorAPI_SubmitFrame(RenderViewport* viewport) {
 #endif
 }
 
-// 已废弃：为了向后兼容保留，内部调用新的方法
+// Deprecated: Kept for backward compatibility, internally calls new methods
 void EditorAPI_BeginFrame(void* engine) {
-    // 调用新的分离方法
+    // Call new separated methods
     EditorAPI_PrepareFrameGraph(engine);
     EditorAPI_CreateResources(engine);
     EditorAPI_Render(engine);
 }
 
-// 已废弃：为了向后兼容保留
+// Deprecated: Kept for backward compatibility
 void EditorAPI_EndFrame(void* engine) {
     // Frame end logic - command buffer will be released at start of next frame
 }
 
-// 已废弃：为了向后兼容保留，内部调用 EditorAPI_SubmitFrame
+// Deprecated: Kept for backward compatibility, internally calls EditorAPI_SubmitFrame
 void EditorAPI_RenderViewport(RenderViewport* viewport) {
     EditorAPI_SubmitFrame(viewport);
 }
@@ -557,18 +648,89 @@ void EditorAPI_UnloadScene(void* engine) {
     context->UnloadScene();
 }
 
+bool EditorAPI_SaveScene(void* engine, const char* scenePath) {
+    std::lock_guard<std::mutex> lock(g_RenderContextMutex);
+    
+    if (!engine || g_GlobalRenderContext != engine || !scenePath) {
+        return false;
+    }
+    
+    auto* context = static_cast<FirstEngine::Renderer::RenderContext*>(engine);
+    if (!context->IsEngineInitialized()) {
+        return false;
+    }
+    
+    // Get scene from RenderContext
+    auto* scene = context->GetScene();
+    if (!scene) {
+        std::cerr << "[EditorAPI] EditorAPI_SaveScene: No scene loaded" << std::endl;
+        return false;
+    }
+    
+    // Save scene using SceneLoader
+    return FirstEngine::Resources::SceneLoader::SaveToFile(scenePath, *scene);
+}
+
 // Resource management
 void EditorAPI_LoadResource(void* engine, const char* resourcePath, int resourceType) {
-    // TODO: 实现资源加载逻辑
-    (void)engine;
-    (void)resourcePath;
-    (void)resourceType;
+    if (!resourcePath) {
+        std::cerr << "[EditorAPI] EditorAPI_LoadResource: resourcePath is nullptr" << std::endl;
+        return;
+    }
+
+    // Get ResourceManager instance
+    auto& resourceManager = FirstEngine::Resources::ResourceManager::GetInstance();
+    
+    // Convert resourceType (int) to ResourceType enum
+    FirstEngine::Resources::ResourceType type = static_cast<FirstEngine::Resources::ResourceType>(resourceType);
+    
+    // Validate resource type
+    if (type == FirstEngine::Resources::ResourceType::Unknown) {
+        // Try to detect type from file path
+        type = resourceManager.DetectResourceType(resourcePath);
+        if (type == FirstEngine::Resources::ResourceType::Unknown) {
+            std::cerr << "[EditorAPI] EditorAPI_LoadResource: Unknown resource type for path: " << resourcePath << std::endl;
+            return;
+        }
+    }
+    
+    // Load resource
+    FirstEngine::Resources::ResourceHandle handle = resourceManager.Load(type, resourcePath);
+    if (handle.ptr == nullptr) {
+        std::cerr << "[EditorAPI] EditorAPI_LoadResource: Failed to load resource: " << resourcePath << std::endl;
+    } else {
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
+        std::cout << "[EditorAPI] EditorAPI_LoadResource: Successfully loaded resource: " << resourcePath << std::endl;
+#endif
+    }
+    
+    (void)engine; // Engine parameter kept for API compatibility
 }
 
 void EditorAPI_UnloadResource(void* engine, const char* resourcePath) {
-    // TODO: 实现资源卸载逻辑
-    (void)engine;
-    (void)resourcePath;
+    if (!resourcePath) {
+        std::cerr << "[EditorAPI] EditorAPI_UnloadResource: resourcePath is nullptr" << std::endl;
+        return;
+    }
+
+    // Get ResourceManager instance
+    auto& resourceManager = FirstEngine::Resources::ResourceManager::GetInstance();
+    
+    // Try to detect resource type from path
+    FirstEngine::Resources::ResourceType type = resourceManager.DetectResourceType(resourcePath);
+    if (type == FirstEngine::Resources::ResourceType::Unknown) {
+        std::cerr << "[EditorAPI] EditorAPI_UnloadResource: Unknown resource type for path: " << resourcePath << std::endl;
+        return;
+    }
+    
+    // Unload resource
+    resourceManager.Unload(type, resourcePath);
+    
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
+    std::cout << "[EditorAPI] EditorAPI_UnloadResource: Unloaded resource: " << resourcePath << std::endl;
+#endif
+    
+    (void)engine; // Engine parameter kept for API compatibility
 }
 
 // Configuration
@@ -586,5 +748,86 @@ void EditorAPI_SetRenderConfig(void* engine, int width, int height, float render
     
     context->SetRenderConfig(width, height, renderScale);
 }
+
+// Console output redirection
+#ifdef _WIN32
+void EditorAPI_SetOutputCallback(void* callback) {
+    std::lock_guard<std::mutex> lock(g_OutputMutex);
+    g_OutputCallback = reinterpret_cast<OutputCallback>(callback);
+}
+
+void EditorAPI_EnableConsoleRedirect(int enable) {
+    std::lock_guard<std::mutex> lock(g_OutputMutex);
+    
+    if (enable != 0) {
+        if (!g_OriginalCout) {
+            g_OriginalCout = std::cout.rdbuf();
+        }
+        if (!g_OriginalCerr) {
+            g_OriginalCerr = std::cerr.rdbuf();
+        }
+
+        if (!g_CoutBuf) {
+            g_CoutBuf = new CallbackStreamBuf(false);
+        }
+        if (!g_CerrBuf) {
+            g_CerrBuf = new CallbackStreamBuf(true);
+        }
+
+        std::cout.rdbuf(g_CoutBuf);
+        std::cerr.rdbuf(g_CerrBuf);
+    } else {
+        if (g_OriginalCout) {
+            std::cout.rdbuf(g_OriginalCout);
+            g_OriginalCout = nullptr;
+        }
+        if (g_OriginalCerr) {
+            std::cerr.rdbuf(g_OriginalCerr);
+            g_OriginalCerr = nullptr;
+        }
+
+        if (g_CoutBuf) {
+            delete g_CoutBuf;
+            g_CoutBuf = nullptr;
+        }
+        if (g_CerrBuf) {
+            delete g_CerrBuf;
+            g_CerrBuf = nullptr;
+        }
+    }
+}
+
+void EditorAPI_AllocConsole() {
+    if (AllocConsole()) {
+        FILE* pCout = nullptr;
+        FILE* pCerr = nullptr;
+        FILE* pCin = nullptr;
+        freopen_s(&pCout, "CONOUT$", "w", stdout);
+        freopen_s(&pCerr, "CONOUT$", "w", stderr);
+        freopen_s(&pCin, "CONIN$", "r", stdin);
+        std::cout.clear();
+        std::cerr.clear();
+        std::cin.clear();
+    }
+}
+
+void EditorAPI_FreeConsole() {
+    FreeConsole();
+}
+#else
+void EditorAPI_SetOutputCallback(void* callback) {
+    (void)callback; // Unused
+}
+
+void EditorAPI_EnableConsoleRedirect(int enable) {
+    (void)enable; // Unused
+}
+
+void EditorAPI_AllocConsole() {
+}
+
+void EditorAPI_FreeConsole() {
+}
+#endif
 
 } // extern "C"

@@ -13,6 +13,8 @@ namespace FirstEngineEditor.Services
             Register<IProjectManager>(new ProjectManager());
             Register<IFileManager>(new FileManager());
             Register<IResourceImportService>(new ResourceImportService());
+            Register<IFolderManagementService>(new FolderManagementService());
+            Register<ISceneManagementService>(new SceneManagementService());
         }
 
         public static void Shutdown()

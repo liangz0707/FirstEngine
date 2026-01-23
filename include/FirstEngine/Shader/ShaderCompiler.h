@@ -33,7 +33,7 @@ namespace FirstEngine {
             // Type information (for vertex inputs)
             uint32_t location = 0; // Location decoration for vertex inputs
             uint32_t component = 0; // Component decoration
-            uint32_t basetype = 0; // SPIRType basetype (0 = Unknown, 1 = Void, 2 = Boolean, 3 = Int, 4 = UInt, 5 = Float, etc.)
+            uint32_t basetype = 0; // SPIRType basetype (0=Unknown, 1=Void, 2=Boolean, 3=SByte, 4=UByte, 5=Short, 6=UShort, 7=Int, 8=UInt, 12=Half, 13=Float, 14=Double, etc.)
             uint32_t width = 0; // Type width (e.g., 32 for float32, 16 for float16)
             uint32_t vecsize = 0; // Vector size (1 = scalar, 2 = vec2, 3 = vec3, 4 = vec4)
             uint32_t columns = 0; // Matrix columns (0 = not a matrix, 2 = mat2, 3 = mat3, 4 = mat4)
@@ -53,13 +53,19 @@ namespace FirstEngine {
         FE_SHADER_API struct ShaderReflection {
             ShaderLanguage language;
             std::vector<UniformBuffer> uniform_buffers;
-            std::vector<ShaderResource> samplers;
-            std::vector<ShaderResource> images;
+            std::vector<ShaderResource> samplers; // Combined image samplers (sampler2D) + separate samplers
+            std::vector<ShaderResource> images;   // Separate images (texture2D) + storage images
             std::vector<ShaderResource> storage_buffers;
             std::vector<ShaderResource> stage_inputs;
             std::vector<ShaderResource> stage_outputs;
             std::string entry_point;
             uint32_t push_constant_size;
+            
+            // Additional lists to distinguish resource types
+            // These are populated from the original SPIR-V resources
+            std::vector<ShaderResource> sampled_images;    // Combined image samplers (sampler2D in GLSL)
+            std::vector<ShaderResource> separate_images;  // Separate images (texture2D in HLSL/Vulkan)
+            std::vector<ShaderResource> separate_samplers; // Separate samplers (sampler in HLSL/Vulkan)
         };
 
         class FE_SHADER_API ShaderCompiler {

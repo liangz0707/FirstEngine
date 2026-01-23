@@ -132,8 +132,14 @@ namespace FirstEngineEditor.ViewModels.Panels
                 System.Diagnostics.Debug.WriteLine($"RefreshResources: Manifest file does not exist: {manifestPath}");
             }
 
+            // Also scan Scenes directory for scene files not in manifest
+            ScanSceneFiles(packagePath);
+            
+            // Also scan Shaders directory for shader files not in manifest
+            ScanShaderFiles(packagePath);
+
             // Build folder structure
-            BuildFolderTree(packagePath);
+            BuildFolderTree();
 
             // Apply filters
             ApplyFilters();
@@ -163,6 +169,179 @@ namespace FirstEngineEditor.ViewModels.Panels
         public void SelectResource(ResourceBrowserItem? item)
         {
             SelectedResource = item;
+        }
+
+        /// <summary>
+        /// 只刷新资源列表，不重建文件夹树（用于移动资源等操作）
+        /// </summary>
+        public void RefreshResourcesOnly()
+        {
+            var project = _projectManager.CurrentProject;
+            if (project == null) return;
+
+            string? packagePath = ProjectManager.GetPackagePath(project.ProjectPath);
+            if (string.IsNullOrEmpty(packagePath) || !Directory.Exists(packagePath))
+                return;
+
+            string manifestPath = Path.Combine(packagePath, "resource_manifest.json");
+            if (!File.Exists(manifestPath))
+                return;
+
+            try
+            {
+                string jsonContent = File.ReadAllText(manifestPath);
+                var manifest = JsonConvert.DeserializeObject<ResourceManifest>(jsonContent);
+                
+                // Store current selection
+                int? selectedId = SelectedResource?.Id;
+                
+                Resources.Clear();
+                FilteredResources.Clear();
+
+                if (manifest?.Resources != null)
+                {
+                    foreach (var resource in manifest.Resources)
+                    {
+                        var item = new ResourceBrowserItem
+                        {
+                            Id = resource.Id,
+                            Name = GetResourceDisplayName(resource),
+                            VirtualPath = resource.VirtualPath ?? resource.Path,
+                            Path = resource.Path,
+                            Type = resource.Type,
+                            ThumbnailPath = GetThumbnailPath(resource, packagePath)
+                        };
+
+                        Resources.Add(item);
+                    }
+                }
+
+                // Restore selection if possible
+                if (selectedId.HasValue)
+                {
+                    var restoredResource = Resources.FirstOrDefault(r => r.Id == selectedId.Value);
+                    if (restoredResource != null)
+                    {
+                        SelectedResource = restoredResource;
+                    }
+                }
+
+                // Apply filters
+                ApplyFilters();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error refreshing resources: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 只更新文件夹树结构，不刷新资源列表
+        /// </summary>
+        public void UpdateFolderTree()
+        {
+            Folders.Clear();
+            BuildFolderTree();
+        }
+
+        private void BuildFolderTree()
+        {
+            var rootFolder = new FolderItem
+            {
+                Name = "Package",
+                Path = "",
+                Children = new ObservableCollection<FolderItem>()
+            };
+
+            var project = _projectManager.CurrentProject;
+            if (project == null)
+            {
+                Folders.Add(rootFolder);
+                return;
+            }
+
+            string? packagePath = ProjectManager.GetPackagePath(project.ProjectPath);
+            if (string.IsNullOrEmpty(packagePath) || !Directory.Exists(packagePath))
+            {
+                Folders.Add(rootFolder);
+                return;
+            }
+
+            // Load manifest to get empty folders
+            string manifestPath = Path.Combine(packagePath, "resource_manifest.json");
+            List<string> emptyFolders = new List<string>();
+            if (File.Exists(manifestPath))
+            {
+                try
+                {
+                    string jsonContent = File.ReadAllText(manifestPath);
+                    var manifest = JsonConvert.DeserializeObject<ResourceManifest>(jsonContent);
+                    if (manifest?.EmptyFolders != null)
+                    {
+                        emptyFolders = manifest.EmptyFolders;
+                    }
+                }
+                catch
+                {
+                    // Ignore errors
+                }
+            }
+
+            // Build folder structure from virtual paths
+            var folderSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            
+            // Add folders from resources
+            foreach (var resource in Resources)
+            {
+                if (string.IsNullOrEmpty(resource.VirtualPath))
+                    continue;
+
+                string[] parts = resource.VirtualPath.Split('/');
+                string currentPath = "";
+
+                for (int i = 0; i < parts.Length - 1; i++) // Exclude file name
+                {
+                    if (string.IsNullOrEmpty(parts[i]))
+                        continue;
+
+                    currentPath = string.IsNullOrEmpty(currentPath) ? parts[i] : currentPath + "/" + parts[i];
+                    
+                    if (!folderSet.Contains(currentPath))
+                    {
+                        folderSet.Add(currentPath);
+                        AddFolderToTree(rootFolder, currentPath, parts[i]);
+                    }
+                }
+            }
+
+            // Add empty folders that don't have resources
+            foreach (var emptyFolderPath in emptyFolders)
+            {
+                if (string.IsNullOrEmpty(emptyFolderPath))
+                    continue;
+
+                // Check if folder already exists (has resources)
+                if (!folderSet.Contains(emptyFolderPath))
+                {
+                    string[] parts = emptyFolderPath.Split('/');
+                    string currentPath = "";
+                    for (int i = 0; i < parts.Length; i++)
+                    {
+                        if (string.IsNullOrEmpty(parts[i]))
+                            continue;
+
+                        currentPath = string.IsNullOrEmpty(currentPath) ? parts[i] : currentPath + "/" + parts[i];
+                        
+                        if (!folderSet.Contains(currentPath))
+                        {
+                            folderSet.Add(currentPath);
+                            AddFolderToTree(rootFolder, currentPath, parts[i]);
+                        }
+                    }
+                }
+            }
+
+            Folders.Add(rootFolder);
         }
 
         private void OnProjectChanged(object? sender, EventArgs e)
@@ -215,42 +394,6 @@ namespace FirstEngineEditor.ViewModels.Panels
             }
         }
 
-        private void BuildFolderTree(string packagePath)
-        {
-            var rootFolder = new FolderItem
-            {
-                Name = "Package",
-                Path = "",
-                Children = new ObservableCollection<FolderItem>()
-            };
-
-            // Build folder structure from virtual paths
-            var folderSet = new HashSet<string>();
-            foreach (var resource in Resources)
-            {
-                if (string.IsNullOrEmpty(resource.VirtualPath))
-                    continue;
-
-                string[] parts = resource.VirtualPath.Split('/');
-                string currentPath = "";
-
-                for (int i = 0; i < parts.Length - 1; i++) // Exclude file name
-                {
-                    if (string.IsNullOrEmpty(parts[i]))
-                        continue;
-
-                    currentPath = string.IsNullOrEmpty(currentPath) ? parts[i] : currentPath + "/" + parts[i];
-                    
-                    if (!folderSet.Contains(currentPath))
-                    {
-                        folderSet.Add(currentPath);
-                        AddFolderToTree(rootFolder, currentPath, parts[i]);
-                    }
-                }
-            }
-
-            Folders.Add(rootFolder);
-        }
 
         private void AddFolderToTree(FolderItem parent, string fullPath, string folderName)
         {
@@ -262,17 +405,44 @@ namespace FirstEngineEditor.ViewModels.Panels
                 if (string.IsNullOrEmpty(part))
                     continue;
 
+                // Build current path to check if this is the target folder
+                string currentPath = string.IsNullOrEmpty(current.Path) ? part : current.Path + "/" + part;
+                
                 var child = current.Children?.FirstOrDefault(c => c.Name == part);
                 if (child == null)
                 {
                     child = new FolderItem
                     {
                         Name = part,
-                        Path = fullPath,
+                        Path = currentPath,
                         Children = new ObservableCollection<FolderItem>()
                     };
-                    current.Children?.Add(child);
+                    
+                    // Insert in sorted order to maintain consistent display order
+                    if (current.Children == null)
+                        current.Children = new ObservableCollection<FolderItem>();
+                    
+                    // Find insertion point to maintain alphabetical order
+                    int insertIndex = 0;
+                    for (int i = 0; i < current.Children.Count; i++)
+                    {
+                        if (string.Compare(current.Children[i].Name, part, StringComparison.OrdinalIgnoreCase) > 0)
+                        {
+                            insertIndex = i;
+                            break;
+                        }
+                        insertIndex = i + 1;
+                    }
+                    
+                    current.Children.Insert(insertIndex, child);
                 }
+                
+                // Update path if it's not correct (for nested folders)
+                if (child.Path != currentPath)
+                {
+                    child.Path = currentPath;
+                }
+                
                 current = child;
             }
         }
@@ -317,6 +487,141 @@ namespace FirstEngineEditor.ViewModels.Panels
             // Return default icon path based on type
             return null; // Will use default icon
         }
+
+        /// <summary>
+        /// 扫描Shaders目录中的Shader文件并添加到资源列表
+        /// </summary>
+        private void ScanShaderFiles(string packagePath)
+        {
+            try
+            {
+                string shadersPath = Path.Combine(packagePath, "Shaders");
+                if (!Directory.Exists(shadersPath))
+                    return;
+
+                // Supported shader extensions
+                var shaderExtensions = new[] { ".hlsl", ".glsl", ".vert", ".frag", ".comp", ".geom", ".tesc", ".tese" };
+                var shaderFiles = Directory.GetFiles(shadersPath, "*.*", SearchOption.AllDirectories)
+                    .Where(f => shaderExtensions.Contains(Path.GetExtension(f).ToLower()))
+                    .ToList();
+
+                foreach (var shaderFile in shaderFiles)
+                {
+                    // Check if already in Resources (from manifest)
+                    string relativePath = Path.GetRelativePath(packagePath, shaderFile).Replace('\\', '/');
+                    bool alreadyExists = Resources.Any(r => 
+                        r.Path.Equals(relativePath, StringComparison.OrdinalIgnoreCase) ||
+                        r.Path.Equals(shaderFile, StringComparison.OrdinalIgnoreCase));
+
+                    if (alreadyExists)
+                        continue;
+
+                    // Generate virtual path based on directory structure
+                    string fileName = Path.GetFileNameWithoutExtension(shaderFile);
+                    string parentDir = Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? "Shaders";
+                    string virtualPath;
+                    
+                    if (parentDir == "Shaders" || parentDir.EndsWith("/Shaders"))
+                    {
+                        virtualPath = $"shaders/{fileName.ToLower()}";
+                    }
+                    else
+                    {
+                        // Preserve subdirectory structure
+                        string subPath = parentDir.Replace("Shaders/", "").Replace("Shaders", "");
+                        if (string.IsNullOrEmpty(subPath))
+                            virtualPath = $"shaders/{fileName.ToLower()}";
+                        else
+                            virtualPath = $"{subPath}/{fileName.ToLower()}";
+                    }
+
+                    // Generate a temporary ID (will be replaced when added to manifest)
+                    int tempId = 9000 + Resources.Count;
+
+                    var item = new ResourceBrowserItem
+                    {
+                        Id = tempId,
+                        Name = fileName,
+                        VirtualPath = virtualPath,
+                        Path = relativePath,
+                        Type = "Shader"
+                    };
+
+                    Resources.Add(item);
+                    System.Diagnostics.Debug.WriteLine($"ScanShaderFiles: Added shader: {item.Name} (Path={item.Path}, VirtualPath={item.VirtualPath})");
+                }
+
+                Console.WriteLine($"ScanShaderFiles: Scanned {shaderFiles.Count} shader files");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error scanning shader files: {ex.Message}");
+                Console.WriteLine($"Error scanning shader files: {ex.Message}");
+            }
+        }
+
+        private void ScanSceneFiles(string packagePath)
+        {
+            try
+            {
+                string scenesPath = Path.Combine(packagePath, "Scenes");
+                if (!Directory.Exists(scenesPath))
+                    return;
+
+                var sceneFiles = Directory.GetFiles(scenesPath, "*.json", SearchOption.AllDirectories);
+                foreach (var sceneFile in sceneFiles)
+                {
+                    try
+                    {
+                        // Check if already in resources
+                        string relativePath = Path.GetRelativePath(packagePath, sceneFile).Replace('\\', '/');
+                        bool alreadyExists = Resources.Any(r => r.Path.Equals(relativePath, StringComparison.OrdinalIgnoreCase));
+                        
+                        if (alreadyExists)
+                            continue;
+
+                        // Try to parse as scene data
+                        string jsonContent = File.ReadAllText(sceneFile);
+                        var sceneData = JsonConvert.DeserializeObject<SceneData>(jsonContent);
+                        if (sceneData != null)
+                        {
+                            // Determine if it's a scene or scene level
+                            string resourceType = (sceneData.Levels != null && sceneData.Levels.Count > 0) ? "Scene" : "SceneLevel";
+                            string sceneName = sceneData.Name ?? Path.GetFileNameWithoutExtension(sceneFile);
+                            
+                            // Build virtual path
+                            string virtualPath = $"Scenes/{sceneName}";
+                            string parentDir = Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? "Scenes";
+                            if (parentDir != "Scenes")
+                            {
+                                virtualPath = $"{parentDir}/{sceneName}";
+                            }
+
+                            var item = new ResourceBrowserItem
+                            {
+                                Id = -1, // Temporary ID, should be assigned when imported
+                                Name = sceneName,
+                                VirtualPath = virtualPath,
+                                Path = relativePath,
+                                Type = resourceType,
+                                ThumbnailPath = null
+                            };
+
+                            Resources.Add(item);
+                            System.Diagnostics.Debug.WriteLine($"Added scene file: {item.Name} (Type={item.Type}, Path={item.Path})");
+                        }
+                    }
+                    catch
+                    {
+                        // Skip invalid scene files
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error scanning scene files: {ex.Message}");
+            }
+        }
     }
 
     public class ResourceBrowserItem
@@ -338,6 +643,7 @@ namespace FirstEngineEditor.ViewModels.Panels
                     "Mesh" => "📐",
                     "Material" => "🎨",
                     "Scene" => "🌍",
+                    "SceneLevel" => "📚",
                     "Shader" => "💻",
                     _ => "📄"
                 };

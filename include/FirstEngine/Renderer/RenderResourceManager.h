@@ -7,6 +7,13 @@
 #include <mutex>
 #include <memory>
 #include <cstdint>
+#include <string>
+
+namespace FirstEngine {
+    namespace Resources {
+        class ResourceManager;
+    }
+}
 
 namespace FirstEngine {
     namespace Renderer {
@@ -53,6 +60,20 @@ namespace FirstEngine {
             };
             ResourceStatistics GetStatistics() const;
 
+            // Package resource loading methods
+            // Load Package resources from configuration file
+            // configPath: Path to engine.ini configuration file
+            // Returns true if successful
+            bool LoadPackageResources(const std::string& configPath);
+
+            // Load Package resources from explicit package path
+            // packagePath: Path to Package directory
+            // Returns true if successful
+            bool LoadPackageResourcesFromPath(const std::string& packagePath);
+
+            // Get current Package path (from last successful load)
+            std::string GetCurrentPackagePath() const { return m_CurrentPackagePath; }
+
         private:
             RenderResourceManager() = default;
             
@@ -69,6 +90,12 @@ namespace FirstEngine {
 
             mutable std::mutex m_ResourcesMutex;
             std::vector<IRenderResource*> m_Resources;
+
+            // Package resource management
+            std::string m_CurrentPackagePath;
+
+            // Helper function to resolve path (try multiple locations)
+            static std::string ResolvePath(const std::string& relativePath);
         };
 
     } // namespace Renderer

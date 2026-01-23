@@ -5,8 +5,11 @@
 #include "FirstEngine/Renderer/DeferredRenderPipeline.h"
 #include "FirstEngine/Renderer/SceneRenderer.h"
 #include "FirstEngine/Renderer/RenderFlags.h"
+#include "FirstEngine/Renderer/RenderCommandList.h"
 #include "FirstEngine/RHI/Types.h"
 #include "FirstEngine/RHI/IDevice.h"
+#include "FirstEngine/RHI/IRenderPass.h"
+#include "FirstEngine/RHI/IFramebuffer.h"
 
 namespace FirstEngine {
     namespace Renderer {
@@ -78,8 +81,25 @@ namespace FirstEngine {
         RenderCommandList GeometryPass::OnDraw(FrameGraphBuilder& builder, const RenderCommandList* sceneCommands) {
             RenderCommandList cmdList;
 
-            // TODO: Add BeginRenderPass command for G-Buffer
-            // TODO: Add resource layout transitions if needed
+            // Get render pass and framebuffer from builder
+            RHI::IRenderPass* renderPass = builder.GetRenderPass();
+            RHI::IFramebuffer* framebuffer = builder.GetFramebuffer();
+
+            // Add BeginRenderPass command if we have valid render pass and framebuffer
+            if (renderPass && framebuffer) {
+                RenderCommand beginCmd;
+                beginCmd.type = RenderCommandType::BeginRenderPass;
+                beginCmd.params.beginRenderPass.renderPass = renderPass;
+                beginCmd.params.beginRenderPass.framebuffer = framebuffer;
+                beginCmd.params.beginRenderPass.width = framebuffer->GetWidth();
+                beginCmd.params.beginRenderPass.height = framebuffer->GetHeight();
+                // Clear colors for G-Buffer attachments (albedo, normal)
+                beginCmd.params.beginRenderPass.clearColors = {0.0f, 0.0f, 0.0f, 0.0f,  // Albedo: black
+                                                                0.0f, 0.0f, 0.0f, 0.0f}; // Normal: black
+                beginCmd.params.beginRenderPass.clearDepth = 1.0f;  // Clear depth to 1.0 (far plane)
+                beginCmd.params.beginRenderPass.clearStencil = 0;
+                cmdList.AddCommand(beginCmd);
+            }
 
             // Merge scene rendering commands into this pass
             // Scene commands contain BindPipeline, BindVertexBuffers, DrawIndexed, etc.
@@ -90,7 +110,12 @@ namespace FirstEngine {
                 }
             }
 
-            // TODO: Add EndRenderPass command
+            // Add EndRenderPass command if we started a render pass
+            if (renderPass && framebuffer) {
+                RenderCommand endCmd;
+                endCmd.type = RenderCommandType::EndRenderPass;
+                cmdList.AddCommand(endCmd);
+            }
 
             return cmdList;
         }

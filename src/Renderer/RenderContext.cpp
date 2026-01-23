@@ -5,6 +5,7 @@
 #include "FirstEngine/Device/VulkanDevice.h"
 #include "FirstEngine/Device/VulkanRenderer.h"
 #include <iostream>
+#include <algorithm>
 
 #ifdef _WIN32
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -94,7 +95,10 @@ namespace FirstEngine {
                 return false;
             }
 
-            m_FrameGraph->ReleaseResources();
+            // Don't immediately release resources - they may still be in use by the previous frame
+            // Instead, mark nodes that are being removed for destruction
+            // Resources will be destroyed in ProcessResources after the frame is submitted
+            m_FrameGraph->MarkRemovedNodesForDestruction();
 
             m_FrameGraph->Clear();
 
@@ -127,6 +131,18 @@ namespace FirstEngine {
 
             m_RenderCommands = m_FrameGraph->Execute(m_ExecutionPlan, m_Scene, m_RenderConfig);
 
+            // Debug: Check if commands were generated
+            if (m_RenderCommands.IsEmpty()) {
+                std::cerr << "Warning: RenderContext::ExecuteFrameGraph: FrameGraph::Execute returned empty command list!" << std::endl;
+                std::cerr << "  Execution plan has " << m_ExecutionPlan.GetExecutionOrder().size() << " nodes" << std::endl;
+                std::cerr << "  FrameGraph has " << m_FrameGraph->GetNodeCount() << " nodes" << std::endl;
+            } else {
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
+                std::cout << "[EditorAPI] RenderContext::ExecuteFrameGraph: Generated " 
+                          << m_RenderCommands.GetCommands().size() << " commands" << std::endl;
+#endif
+            }
+
             return true;
         }
 
@@ -136,7 +152,110 @@ namespace FirstEngine {
             if (!targetDevice) {
                 return;
             }
+            
+            // IMPORTANT: Process resources in the correct order
+            // 1. First, process create/update operations (these don't require waiting)
+            // 2. Then, wait for GPU to finish before destroying resources
+            // 3. Finally, process destroy operations
+            
+            // Process resources managed by RenderResourceManager (create/update operations)
             RenderResourceManager::GetInstance().ProcessScheduledResources(targetDevice, maxResourcesPerFrame);
+            
+            // Process create/update operations for FrameGraph node resources
+            if (m_FrameGraph) {
+                uint32_t nodeCount = m_FrameGraph->GetNodeCount();
+                
+                for (uint32_t i = 0; i < nodeCount; ++i) {
+                    auto* node = m_FrameGraph->GetNode(i);
+                    if (!node) continue;
+                    
+                    // Process framebuffer resource (create/update operations only)
+                    auto* framebufferResource = node->GetFramebufferResource();
+                    if (framebufferResource && framebufferResource->IsScheduled()) {
+                        ScheduleState scheduleState = framebufferResource->GetScheduleState();
+                        // Process create/update operations (not destroy)
+                        if (scheduleState == ScheduleState::ScheduledCreate || scheduleState == ScheduleState::ScheduledUpdate) {
+                            framebufferResource->ProcessScheduled(targetDevice);
+                        }
+                    }
+                    
+                    // Process render pass resource (create/update operations only)
+                    auto* renderPassResource = node->GetRenderPassResource();
+                    if (renderPassResource && renderPassResource->IsScheduled()) {
+                        ScheduleState scheduleState = renderPassResource->GetScheduleState();
+                        // Process create/update operations (not destroy)
+                        if (scheduleState == ScheduleState::ScheduledCreate || scheduleState == ScheduleState::ScheduledUpdate) {
+                            renderPassResource->ProcessScheduled(targetDevice);
+                        }
+                    }
+                }
+            }
+            
+            // IMPORTANT: Wait for GPU to finish before destroying resources
+            // This ensures that resources marked for destruction are no longer in use by command buffers
+            // Resources scheduled for destruction in MarkRemovedNodesForDestruction() will be destroyed here
+            // but only after the previous frame's command buffer has completed execution
+            // Note: This should be called AFTER frame submission, not before
+            // For now, we'll check if there are any resources scheduled for destruction before waiting
+            bool hasResourcesToDestroy = false;
+            if (m_FrameGraph) {
+                uint32_t nodeCount = m_FrameGraph->GetNodeCount();
+                for (uint32_t i = 0; i < nodeCount; ++i) {
+                    auto* node = m_FrameGraph->GetNode(i);
+                    if (!node) continue;
+                    
+                    auto* framebufferResource = node->GetFramebufferResource();
+                    if (framebufferResource && framebufferResource->GetScheduleState() == ScheduleState::ScheduledDestroy) {
+                        hasResourcesToDestroy = true;
+                        break;
+                    }
+                    
+                    auto* renderPassResource = node->GetRenderPassResource();
+                    if (renderPassResource && renderPassResource->GetScheduleState() == ScheduleState::ScheduledDestroy) {
+                        hasResourcesToDestroy = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Only wait if there are resources to destroy
+            if (hasResourcesToDestroy) {
+                targetDevice->WaitIdle();
+            }
+            
+            // Process destroy operations for FrameGraph node resources
+            // Only destroy resources that are scheduled for destruction (not resources that are being reused)
+            if (m_FrameGraph) {
+                uint32_t nodeCount = m_FrameGraph->GetNodeCount();
+                uint32_t processedCount = 0;
+                
+                for (uint32_t i = 0; i < nodeCount && processedCount < maxResourcesPerFrame; ++i) {
+                    auto* node = m_FrameGraph->GetNode(i);
+                    if (!node) continue;
+                    
+                    // Process framebuffer resource (only if scheduled for destruction)
+                    auto* framebufferResource = node->GetFramebufferResource();
+                    if (framebufferResource && framebufferResource->IsScheduled()) {
+                        ScheduleState scheduleState = framebufferResource->GetScheduleState();
+                        // Only process if scheduled for destruction (not for create/update)
+                        if (scheduleState == ScheduleState::ScheduledDestroy) {
+                            framebufferResource->ProcessScheduled(targetDevice);
+                            processedCount++;
+                        }
+                    }
+                    
+                    // Process render pass resource (only if scheduled for destruction)
+                    auto* renderPassResource = node->GetRenderPassResource();
+                    if (renderPassResource && renderPassResource->IsScheduled()) {
+                        ScheduleState scheduleState = renderPassResource->GetScheduleState();
+                        // Only process if scheduled for destruction (not for create/update)
+                        if (scheduleState == ScheduleState::ScheduledDestroy) {
+                            renderPassResource->ProcessScheduled(targetDevice);
+                            processedCount++;
+                        }
+                    }
+                }
+            }
         }
 
         bool RenderContext::SubmitFrame(const RenderParams& params) {
@@ -145,7 +264,7 @@ namespace FirstEngine {
                 return false;
             }
 
-            // 使用内部管理的对象
+            // Use internally managed objects
             if (!m_Device) {
                 std::cerr << "RenderContext::SubmitFrame: No device available" << std::endl;
                 return false;
@@ -156,29 +275,29 @@ namespace FirstEngine {
                 return false;
             }
 
-            // 等待上一帧完成
+            // Wait for previous frame to complete
             m_Device->WaitForFence(m_InFlightFence, UINT64_MAX);
             m_Device->ResetFence(m_InFlightFence);
 
-            // 使用内部管理的命令缓冲区
+            // Use internally managed command buffer
             m_CommandBuffer.reset();
 
-            // 获取下一帧的 swapchain 图像
+            // Acquire next frame's swapchain image
             if (!params.swapchain->AcquireNextImage(m_ImageAvailableSemaphore, nullptr, m_CurrentImageIndex)) {
-                // 图像获取失败或需要重建 swapchain
+                // Image acquisition failed or need to recreate swapchain
                 return false;
             }
 
-            // 创建命令缓冲区
+            // Create command buffer
             m_CommandBuffer = m_Device->CreateCommandBuffer();
             if (!m_CommandBuffer) {
                 return false;
             }
 
-            // 开始记录
+            // Begin recording
             m_CommandBuffer->Begin();
 
-            // 转换 swapchain 图像布局：Undefined → Color Attachment
+            // Transition swapchain image layout: Undefined → Color Attachment
             auto* swapchainImage = params.swapchain->GetImage(m_CurrentImageIndex);
             if (swapchainImage) {
                 m_CommandBuffer->TransitionImageLayout(
@@ -189,12 +308,18 @@ namespace FirstEngine {
                 );
             }
 
-            // 记录渲染命令（使用内部管理的命令记录器）
-            if (!m_RenderCommands.IsEmpty()) {
+            // Record render commands (using internally managed command recorder)
+            if (m_RenderCommands.IsEmpty()) {
+                std::cerr << "Warning: RenderContext::SubmitFrame: RenderCommandList is empty! No commands to record." << std::endl;
+            } else {
+#ifdef FE_EDITOR_API_VERBOSE_LOGGING
+                std::cout << "[EditorAPI] RenderContext::SubmitFrame: Recording " 
+                          << m_RenderCommands.GetCommands().size() << " commands" << std::endl;
+#endif
                 m_CommandRecorder.RecordCommands(m_CommandBuffer.get(), m_RenderCommands);
             }
 
-            // 转换 swapchain 图像布局：Color Attachment → Present
+            // Transition swapchain image layout: Color Attachment → Present
             if (swapchainImage) {
                 m_CommandBuffer->TransitionImageLayout(
                     swapchainImage,
@@ -204,22 +329,28 @@ namespace FirstEngine {
                 );
             }
 
-            // 结束记录
+            // End recording
             m_CommandBuffer->End();
 
-            // 提交命令缓冲区
+            // Submit command buffer
             std::vector<RHI::SemaphoreHandle> waitSemaphores = {m_ImageAvailableSemaphore};
             std::vector<RHI::SemaphoreHandle> signalSemaphores = {m_RenderFinishedSemaphore};
             m_Device->SubmitCommandBuffer(m_CommandBuffer.get(), waitSemaphores, signalSemaphores, m_InFlightFence);
 
-            // 呈现图像
+            // Present image
             std::vector<RHI::SemaphoreHandle> presentWaitSemaphores = {m_RenderFinishedSemaphore};
             params.swapchain->Present(m_CurrentImageIndex, presentWaitSemaphores);
+
+            // IMPORTANT: Process resource destruction AFTER frame submission
+            // This ensures resources are destroyed only after the command buffer has been submitted
+            // The fence will ensure GPU completion before destruction in ProcessResources
+            // Note: We process resources here instead of in OnCreateResources to ensure proper timing
+            ProcessResources(nullptr, 0);
 
             return true;
         }
 
-        // ========== 渲染引擎状态管理（用于 EditorAPI） ==========
+        // ========== Rendering Engine State Management (for EditorAPI) ==========
 
         bool RenderContext::InitializeEngine(void* windowHandle, int width, int height) {
             if (m_EngineInitialized) {
@@ -229,25 +360,6 @@ namespace FirstEngine {
             try {
                 // Initialize singleton managers
                 RenderResourceManager::Initialize();
-                
-                // Initialize ShaderCollectionsTools with shader directory
-                auto& collectionsTools = ShaderCollectionsTools::GetInstance();
-                std::string shaderDir = "build/Package/Shaders";
-                if (!collectionsTools.Initialize(shaderDir)) {
-                    std::cerr << "Warning: Failed to initialize ShaderCollectionsTools, shaders may not be available." << std::endl;
-                } else {
-                    // Load all shaders from Package/Shaders directory at startup
-                    if (fs::exists(shaderDir)) {
-                        std::cout << "Loading all shaders from: " << shaderDir << std::endl;
-                        if (collectionsTools.LoadAllShadersFromDirectory(shaderDir)) {
-                            std::cout << "Successfully loaded all shaders from Package/Shaders directory" << std::endl;
-                        } else {
-                            std::cerr << "Warning: Failed to load some shaders from Package/Shaders directory" << std::endl;
-                        }
-                    } else {
-                        std::cout << "Package/Shaders directory not found, shaders will be loaded on demand" << std::endl;
-                    }
-                }
                 
 #ifdef _WIN32
                 // For editor mode, we need a GLFW window for Vulkan initialization
@@ -324,19 +436,17 @@ namespace FirstEngine {
                     return false;
                 }
                 
-                // Initialize ResourceManager
-                FirstEngine::Resources::ResourceManager::Initialize();
-                FirstEngine::Resources::ResourceManager& resourceManager = FirstEngine::Resources::ResourceManager::GetInstance();
-                
-                // Add Package directory as search path
-                std::string packageBase = "build/Package";
-                if (fs::exists(packageBase)) {
-                    resourceManager.AddSearchPath(packageBase);
-                    resourceManager.AddSearchPath(packageBase + "/Models");
-                    resourceManager.AddSearchPath(packageBase + "/Materials");
-                    resourceManager.AddSearchPath(packageBase + "/Textures");
-                    resourceManager.AddSearchPath(packageBase + "/Shaders");
-                    resourceManager.AddSearchPath(packageBase + "/Scenes");
+                // Load Package resources through RenderResourceManager
+                // Try to load from config file first, then fallback to default path
+                auto& resourceManager = RenderResourceManager::GetInstance();
+                std::string configPath = "engine.ini";
+                if (!resourceManager.LoadPackageResources(configPath)) {
+                    // Fallback: try to load from default Package path
+                    std::cout << "RenderContext: Config file not found or invalid, trying default Package path" << std::endl;
+                    std::string defaultPackagePath = "build/Package";
+                    if (!resourceManager.LoadPackageResourcesFromPath(defaultPackagePath)) {
+                        std::cerr << "RenderContext: Failed to load Package resources from default path" << std::endl;
+                    }
                 }
                 
                 // Create a default scene
@@ -363,25 +473,8 @@ namespace FirstEngine {
             if (m_EngineInitialized) {
                 return true;
             }
-            // RenderApp 模式：使用给定 windowHandle，不创建隐藏 GLFW 窗口
+            // RenderApp mode: Use given windowHandle, don't create hidden GLFW window
             RenderResourceManager::Initialize();
-            auto& collectionsTools = ShaderCollectionsTools::GetInstance();
-            std::string shaderDir = "build/Package/Shaders";
-            if (!collectionsTools.Initialize(shaderDir)) {
-                std::cerr << "Warning: Failed to initialize ShaderCollectionsTools." << std::endl;
-            } else {
-                // Load all shaders from Package/Shaders directory at startup
-                if (fs::exists(shaderDir)) {
-                    std::cout << "Loading all shaders from: " << shaderDir << std::endl;
-                    if (collectionsTools.LoadAllShadersFromDirectory(shaderDir)) {
-                        std::cout << "Successfully loaded all shaders from Package/Shaders directory" << std::endl;
-                    } else {
-                        std::cerr << "Warning: Failed to load some shaders from Package/Shaders directory" << std::endl;
-                    }
-                } else {
-                    std::cout << "Package/Shaders directory not found, shaders will be loaded on demand" << std::endl;
-                }
-            }
             m_Device = new FirstEngine::Device::VulkanDevice();
             if (!m_Device->Initialize(windowHandle)) {
                 delete m_Device;
@@ -407,15 +500,19 @@ namespace FirstEngine {
                 m_Device = nullptr;
                 return false;
             }
-            FirstEngine::Resources::ResourceManager::Initialize();
-            auto& rm = FirstEngine::Resources::ResourceManager::GetInstance();
-            std::string base = "build/Package";
-            rm.AddSearchPath(base);
-            rm.AddSearchPath(base + "/Models");
-            rm.AddSearchPath(base + "/Materials");
-            rm.AddSearchPath(base + "/Textures");
-            rm.AddSearchPath(base + "/Shaders");
-            rm.AddSearchPath(base + "/Scenes");
+            // Load Package resources through RenderResourceManager
+            // Try to load from config file first, then fallback to default path
+            auto& resourceManager = RenderResourceManager::GetInstance();
+            std::string configPath = "engine.ini";
+            if (!resourceManager.LoadPackageResources(configPath)) {
+                // Fallback: try to load from default Package path
+                std::cout << "RenderContext: Config file not found or invalid, trying default Package path" << std::endl;
+                std::string defaultPackagePath = "build/Package";
+                if (!resourceManager.LoadPackageResourcesFromPath(defaultPackagePath)) {
+                    std::cerr << "RenderContext: Failed to load Package resources from default path" << std::endl;
+                }
+            }
+            
             m_Scene = new FirstEngine::Resources::Scene("Example Scene");
             m_WindowHandle = windowHandle;
             m_EngineInitialized = true;
@@ -451,7 +548,7 @@ namespace FirstEngine {
                 }
             }
 
-            // Cleanup scene, FrameGraph, Pipeline, Device（RenderContext 拥有并删除）
+            // Cleanup scene, FrameGraph, Pipeline, Device (RenderContext owns and deletes)
             if (m_Scene) {
                 delete m_Scene;
                 m_Scene = nullptr;
@@ -471,7 +568,7 @@ namespace FirstEngine {
             }
 
 #ifdef _WIN32
-            // 仅 Editor 模式：销毁隐藏 GLFW 窗口；ResourceManager 仅在 Editor 路径 Shutdown
+            // Editor mode only: Destroy hidden GLFW window; ResourceManager only Shutdown in Editor path
             if (m_HiddenGLFWWindow) {
                 glfwDestroyWindow(static_cast<GLFWwindow*>(m_HiddenGLFWWindow));
                 m_HiddenGLFWWindow = nullptr;
@@ -479,7 +576,7 @@ namespace FirstEngine {
             }
 #endif
 
-            // 单例 Shutdown（两种模式均需）
+            // Singleton Shutdown (required for both modes)
             ShaderModuleTools::Shutdown();
             ShaderCollectionsTools::Shutdown();
             RenderResourceManager::Shutdown();

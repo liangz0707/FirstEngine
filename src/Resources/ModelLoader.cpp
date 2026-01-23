@@ -28,29 +28,45 @@ namespace FirstEngine {
             // Get resolved path from ResourceManager (internal cache usage)
             std::string resolvedPath = resourceManager.GetResolvedPath(id);
             if (resolvedPath.empty()) {
+                std::cerr << "ModelLoader::Load: Failed to get resolved path for model ID " << id << std::endl;
+                std::cerr << "  Make sure the model is registered in resource_manifest.json" << std::endl;
                 return result;
             }
+            std::cout << "ModelLoader::Load: Resolved path for model ID " << id << ": " << resolvedPath << std::endl;
 
-            // Check cache first (ResourceManager internal cache)
-            ResourceHandle cached = resourceManager.Get(id);
-            if (cached.model) {
-                // Return cached data - dependencies are stored in metadata.dependencies
-                IModel* model = cached.model;
-                result.metadata = model->GetMetadata();
-                result.success = true;
-                return result;
-            }
+            // NOTE: Do NOT check cache here - ResourceManager handles caching
+            // If we check cache here, we might return incomplete metadata (before dependencies are loaded)
+            // ResourceManager::LoadInternal stores resource in cache BEFORE calling Resource::Load
+            // to prevent circular dependencies, but the resource is not fully loaded yet
+            // Cache checking should only happen at ResourceManager level, not in Loader
 
             // Resolve XML file path
             std::string xmlFilePath = resolvedPath;
-            std::string ext = fs::path(xmlFilePath).extension().string();
-            if (ext != ".xml") {
-                xmlFilePath = fs::path(xmlFilePath).replace_extension(".xml").string();
+            try {
+                std::string ext = fs::path(xmlFilePath).extension().string();
+                if (ext != ".xml") {
+                    xmlFilePath = fs::path(xmlFilePath).replace_extension(".xml").string();
+                }
+            } catch (const std::filesystem::filesystem_error& e) {
+                std::cerr << "ModelLoader::Load: Filesystem error resolving XML path for ID " << id << ": " << e.what() << std::endl;
+                return result;
+            } catch (const std::exception& e) {
+                std::cerr << "ModelLoader::Load: Exception resolving XML path for ID " << id << ": " << e.what() << std::endl;
+                return result;
             }
 
             // Parse XML file
             ResourceXMLParser parser;
-            if (!parser.ParseFromFile(xmlFilePath)) {
+            try {
+                if (!parser.ParseFromFile(xmlFilePath)) {
+                    std::cerr << "ModelLoader::Load: Failed to parse XML file: " << xmlFilePath << " for model ID " << id << std::endl;
+                    return result;
+                }
+            } catch (const std::filesystem::filesystem_error& e) {
+                std::cerr << "ModelLoader::Load: Filesystem error parsing XML file " << xmlFilePath << " for ID " << id << ": " << e.what() << std::endl;
+                return result;
+            } catch (const std::exception& e) {
+                std::cerr << "ModelLoader::Load: Exception parsing XML file " << xmlFilePath << " for ID " << id << ": " << e.what() << std::endl;
                 return result;
             }
 
@@ -64,11 +80,20 @@ namespace FirstEngine {
             // Get model-specific data from XML (only ResourceID references, no actual geometry)
             ResourceXMLParser::ModelData modelData;
             if (!parser.GetModelData(modelData)) {
+                std::cerr << "ModelLoader::Load: Failed to get model data from XML file: " << xmlFilePath << " for model ID " << id << std::endl;
+                std::cerr << "  This usually means the XML file doesn't have a <Model> root node or is malformed" << std::endl;
                 return result;
             }
 
             // Convert ResourceID references to dependencies (stored in metadata)
             // Dependencies will be loaded by Resource::Load, Loader only records them
+            if (modelData.meshIndices.empty()) {
+                std::cerr << "ModelLoader::Load: Model ID " << id << " has no mesh indices in XML file: " << xmlFilePath << std::endl;
+                std::cerr << "  Check if the XML file has a <Meshes> section with <Mesh> entries" << std::endl;
+            } else {
+                std::cout << "ModelLoader::Load: Found " << modelData.meshIndices.size() << " mesh dependencies for model ID " << id << std::endl;
+            }
+            
             for (const auto& pair : modelData.meshIndices) {
                 ResourceDependency dep;
                 dep.type = ResourceDependency::DependencyType::Mesh;
@@ -138,6 +163,9 @@ namespace FirstEngine {
                             aiMesh->mNormals[j].y,
                             aiMesh->mNormals[j].z
                         );
+                    } else {
+                        // Default normal if not present
+                        vertex.normal = glm::vec3(0.0f, 1.0f, 0.0f);
                     }
 
                     if (aiMesh->mTextureCoords[0]) {
@@ -145,6 +173,47 @@ namespace FirstEngine {
                             aiMesh->mTextureCoords[0][j].x,
                             aiMesh->mTextureCoords[0][j].y
                         );
+                    } else {
+                        // Default texture coordinates if not present
+                        vertex.texCoord = glm::vec2(0.0f, 0.0f);
+                    }
+
+                    // Load tangent (required for PBR and Geometry shaders)
+                    if (aiMesh->mTangents) {
+                        vertex.tangent = glm::vec4(
+                            aiMesh->mTangents[j].x,
+                            aiMesh->mTangents[j].y,
+                            aiMesh->mTangents[j].z,
+                            1.0f  // Default handedness
+                        );
+                        
+                        // Use bitangent to determine handedness if available
+                        if (aiMesh->mBitangents) {
+                            glm::vec3 normal = vertex.normal;
+                            glm::vec3 tangent = glm::vec3(vertex.tangent);
+                            glm::vec3 bitangent = glm::vec3(
+                                aiMesh->mBitangents[j].x,
+                                aiMesh->mBitangents[j].y,
+                                aiMesh->mBitangents[j].z
+                            );
+                            
+                            // Calculate handedness: cross(normal, tangent) should match bitangent direction
+                            glm::vec3 calculatedBitangent = glm::cross(normal, tangent);
+                            float handedness = (glm::dot(calculatedBitangent, bitangent) < 0.0f) ? -1.0f : 1.0f;
+                            vertex.tangent.w = handedness;
+                        }
+                    } else {
+                        // Calculate tangent if not present (simple orthogonal basis)
+                        glm::vec3 normal = vertex.normal;
+                        glm::vec3 tangent = glm::vec3(1.0f, 0.0f, 0.0f);
+                        
+                        // Make tangent orthogonal to normal
+                        if (glm::abs(glm::dot(normal, tangent)) > 0.9f) {
+                            tangent = glm::vec3(0.0f, 1.0f, 0.0f);
+                        }
+                        tangent = glm::normalize(tangent - glm::dot(tangent, normal) * normal);
+                        
+                        vertex.tangent = glm::vec4(tangent, 1.0f);
                     }
 
                     mesh.vertices.push_back(vertex);

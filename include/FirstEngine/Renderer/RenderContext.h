@@ -22,14 +22,14 @@
 namespace FirstEngine {
     namespace Renderer {
 
-        // RenderContext - 统一的渲染上下文，提取 RenderApp 和 EditorAPI 的公共渲染逻辑
-        // 这个类封装了 FrameGraph 构建、渲染命令生成和提交的通用流程
+        // RenderContext - Unified rendering context, extracts common rendering logic from RenderApp and EditorAPI
+        // This class encapsulates the common flow of FrameGraph building, render command generation, and submission
         class FE_RENDERER_API RenderContext {
         public:
-            // 渲染上下文参数结构（简化：只保留与窗口相关的 swapchain）
-            // 其他所有渲染相关参数都由 RenderContext 内部管理
+            // Render context parameter structure (simplified: only keeps window-related swapchain)
+            // All other rendering-related parameters are managed internally by RenderContext
             struct RenderParams {
-                RHI::ISwapchain* swapchain = nullptr;  // 必须提供，因为每个 viewport 可能有不同的 swapchain
+                RHI::ISwapchain* swapchain = nullptr;  // Must be provided, as each viewport may have different swapchain
             };
 
             RenderContext();
@@ -40,65 +40,65 @@ namespace FirstEngine {
             RenderContext(RenderContext&&) = delete;
             RenderContext& operator=(RenderContext&&) = delete;
 
-            // 开始一帧的渲染准备
-            // 包括：释放资源、重建 FrameGraph、构建执行计划、编译 FrameGraph
-            // 注意：不包含 Execute FrameGraph，这应该在 OnRender 阶段调用
-            // 所有渲染相关参数都从内部获取（device, pipeline, frameGraph, renderConfig 等）
-            // 返回：是否成功
+            // Begin frame rendering preparation
+            // Includes: release resources, rebuild FrameGraph, build execution plan, compile FrameGraph
+            // Note: Does not include Execute FrameGraph, this should be called in OnRender phase
+            // All rendering-related parameters are obtained internally (device, pipeline, frameGraph, renderConfig, etc.)
+            // Returns: whether successful
             bool BeginFrame();
 
-            // 执行 FrameGraph 生成渲染命令
-            // 应该在 BeginFrame 之后、SubmitFrame 之前调用
-            // 所有渲染相关参数都从内部获取（frameGraph, scene, renderConfig 等）
-            // 返回：是否成功
+            // Execute FrameGraph to generate render commands
+            // Should be called after BeginFrame and before SubmitFrame
+            // All rendering-related parameters are obtained internally (frameGraph, scene, renderConfig, etc.)
+            // Returns: whether successful
             bool ExecuteFrameGraph();
 
-            // 处理计划中的资源（可选，可以在 ExecuteFrameGraph 之后调用）
-            // 参数：
-            //   - device: 设备指针
-            //   - maxResourcesPerFrame: 每帧最大处理资源数（0 = 无限制）
+            // Process scheduled resources (optional, can be called after ExecuteFrameGraph)
+            // Parameters:
+            //   - device: Device pointer
+            //   - maxResourcesPerFrame: Maximum resources to process per frame (0 = unlimited)
             void ProcessResources(RHI::IDevice* device, uint32_t maxResourcesPerFrame = 0);
 
-            // 提交一帧的渲染
-            // 包括：等待上一帧、获取图像、记录命令、提交、呈现
-            // 参数：
-            //   - params: 渲染参数结构（只需要 swapchain，其他都从内部获取）
-            // 返回：是否成功
+            // Submit frame rendering
+            // Includes: wait for previous frame, acquire image, record commands, submit, present
+            // Parameters:
+            //   - params: Render parameter structure (only need swapchain, everything else is obtained internally)
+            // Returns: whether successful
             bool SubmitFrame(const RenderParams& params);
 
-            // 获取内部管理的同步对象（如果使用内部管理）
+            // Get internally managed sync objects (if using internal management)
             RHI::FenceHandle GetInFlightFence() const { return m_InFlightFence; }
             RHI::SemaphoreHandle GetImageAvailableSemaphore() const { return m_ImageAvailableSemaphore; }
             RHI::SemaphoreHandle GetRenderFinishedSemaphore() const { return m_RenderFinishedSemaphore; }
 
-            // 创建内部管理的同步对象（如果外部没有提供）
+            // Create internally managed sync objects (if not provided externally)
             bool CreateSyncObjects(RHI::IDevice* device);
             
-            // 销毁内部管理的同步对象
+            // Destroy internally managed sync objects
             void DestroySyncObjects(RHI::IDevice* device);
 
-            // 获取渲染命令列表（用于调试或自定义处理）
+            // Get render command list (for debugging or custom processing)
             const RenderCommandList& GetRenderCommands() const { return m_RenderCommands; }
             RenderCommandList& GetRenderCommands() { return m_RenderCommands; }
 
-            // 获取执行计划（用于需要访问执行计划的情况）
+            // Get execution plan (for cases that need to access execution plan)
             const FrameGraphExecutionPlan& GetExecutionPlan() const { return m_ExecutionPlan; }
             FrameGraphExecutionPlan& GetExecutionPlan() { return m_ExecutionPlan; }
 
-            // ========== 渲染引擎状态管理（用于 EditorAPI） ==========
+            // ========== Rendering Engine State Management (for EditorAPI) ==========
             
-            // 初始化渲染引擎（EditorAPI：使用隐藏 GLFW 窗口）
-            // 参数：windowHandle 可选；width, height 初始分辨率
+            // Initialize rendering engine (EditorAPI: uses hidden GLFW window)
+            // Parameters: windowHandle optional; width, height initial resolution
             bool InitializeEngine(void* windowHandle, int width, int height);
             
-            // 初始化渲染上下文（RenderApp：使用给定窗口，不创建隐藏窗口）
-            // 创建 device、pipeline、frameGraph、同步对象、scene、resource 路径等；不创建 swapchain
+            // Initialize rendering context (RenderApp: uses given window, doesn't create hidden window)
+            // Creates device, pipeline, frameGraph, sync objects, scene, resource paths, etc.; doesn't create swapchain
             bool InitializeForWindow(void* windowHandle, int width, int height);
             
-            // 关闭渲染引擎/上下文
+            // Shutdown rendering engine/context
             void ShutdownEngine();
             
-            // 检查是否已初始化
+            // Check if initialized
             bool IsEngineInitialized() const { return m_EngineInitialized; }
             
             RHI::IDevice* GetDevice() const { return m_Device; }

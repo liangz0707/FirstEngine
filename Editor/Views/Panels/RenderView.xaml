@@ -11,19 +11,24 @@
         </Grid.RowDefinitions>
 
         <!-- Toolbar -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="DarkGray" Margin="5">
-            <Button Content="▶" Width="40" Click="OnStartRender"/>
-            <Button Content="⏸" Width="40" Click="OnPauseRender" Margin="5,0,0,0"/>
-            <Button Content="⏹" Width="40" Click="OnStopRender" Margin="5,0,0,0"/>
-        </StackPanel>
+        <Border Grid.Row="0" Style="{StaticResource ToolbarBorderStyle}">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="▶" Width="36" Height="28" Click="OnStartRender"/>
+                <Button Content="⏸" Width="36" Height="28" Click="OnPauseRender" Margin="4,0,0,0"/>
+                <Button Content="⏹" Width="36" Height="28" Click="OnStopRender" Margin="4,0,0,0"/>
+            </StackPanel>
+        </Border>
 
         <!-- Render Surface -->
         <Border Grid.Row="1" 
-                BorderBrush="Gray" 
+                BorderBrush="{StaticResource BorderBrush}" 
                 BorderThickness="1"
                 Background="Black"
-                Margin="5"
-                Name="RenderSurface">
+                Margin="2"
+                Name="RenderSurface"
+                AllowDrop="True"
+                DragOver="OnRenderSurfaceDragOver"
+                Drop="OnRenderSurfaceDrop">
             <Grid Name="RenderHostContainer"
                   Loaded="OnRenderHostLoaded"
                   SizeChanged="OnRenderHostSizeChanged">

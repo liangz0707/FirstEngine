@@ -70,6 +70,14 @@ namespace FirstEngine {
             // Buffer copy
             virtual void CopyBuffer(IBuffer* src, IBuffer* dst, uint64_t size) = 0;
             virtual void CopyBufferToImage(IBuffer* buffer, IImage* image, uint32_t width, uint32_t height) = 0;
+
+            // Push constants
+            virtual void PushConstants(
+                IPipeline* pipeline,
+                ShaderStage stageFlags,
+                uint32_t offset,
+                uint32_t size,
+                const void* data) = 0;
         };
 
     } // namespace RHI

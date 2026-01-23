@@ -31,8 +31,6 @@ namespace FirstEngine {
 
             virtual ResourceLoadResult Load(ResourceID id) = 0;
 
-            virtual ResourceLoadResult LoadFromMemory(const void* data, size_t size) = 0;
-
             // Load dependencies for this resource (recursively loads dependent resources by ID)
             // This method is called by Load() after dependencies are collected in m_Metadata.dependencies
             // Dependencies are loaded through ResourceManager singleton and stored with reference counting
@@ -121,7 +119,9 @@ namespace FirstEngine {
             std::unordered_map<ResourceID, ITexture*> m_LoadedTextures;
             std::unordered_map<ResourceID, IModel*> m_LoadedModels;
 
-            // Legacy path-based cache (for backwards compatibility)
+            // Legacy path-based cache (for backward compatibility)
+            // NOTE: This cache is kept for backward compatibility with path-based API.
+            // TODO: Consider removing this in a future version when all code migrates to ResourceID-based API
             std::unordered_map<std::string, ResourceID> m_PathToIDCache;
 
             // Resource search paths (for resolving relative paths)

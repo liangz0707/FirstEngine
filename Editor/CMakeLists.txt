@@ -51,6 +51,15 @@ if(WIN32 AND MSVC)
             EXCLUDE_FROM_DEFAULT_BUILD FALSE
         )
         
+        # Configure Visual Studio debugger properties so VS can run this project
+        # Use $(Configuration) which is Visual Studio's configuration variable (Debug/Release)
+        # This allows Visual Studio to recognize FirstEngineEditor as a runnable project
+        set_target_properties(FirstEngineEditor PROPERTIES
+            VS_DEBUGGER_COMMAND "${EDITOR_PROJECT_DIR}/bin/$(Configuration)/net8.0-windows/FirstEngineEditor.exe"
+            VS_DEBUGGER_WORKING_DIRECTORY "${EDITOR_PROJECT_DIR}/bin/$(Configuration)/net8.0-windows"
+            VS_DEBUGGER_ENVIRONMENT "PATH=${EDITOR_PROJECT_DIR}/bin/$(Configuration)/net8.0-windows;%PATH%"
+        )
+        
         # Add dependency: Editor should build after C++ libraries
         add_dependencies(FirstEngineEditor
             FirstEngine_Core

@@ -3,6 +3,7 @@
 #include "FirstEngine/Resources/LightComponent.h"
 #include "FirstEngine/Resources/EffectComponent.h"
 #include "FirstEngine/Resources/ModelComponent.h"
+#include "FirstEngine/Resources/CameraComponent.h"
 #include "FirstEngine/Resources/ResourceProvider.h"
 #include <algorithm>
 #include <cmath>
@@ -10,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace FirstEngine {
@@ -605,6 +607,39 @@ namespace FirstEngine {
             return components;
         }
 
+        std::vector<CameraComponent*> Scene::GetCameraComponents() const {
+            std::vector<CameraComponent*> components;
+            std::vector<Entity*> entities = GetAllEntities();
+            for (Entity* entity : entities) {
+                auto cameras = entity->GetComponents<CameraComponent>();
+                components.insert(components.end(), cameras.begin(), cameras.end());
+            }
+            return components;
+        }
+
+        CameraComponent* Scene::GetMainCamera() const {
+            // First, try to find a camera marked as main
+            std::vector<Entity*> entities = GetAllEntities();
+            for (Entity* entity : entities) {
+                auto cameras = entity->GetComponents<CameraComponent>();
+                for (CameraComponent* camera : cameras) {
+                    if (camera && camera->IsMainCamera()) {
+                        return camera;
+                    }
+                }
+            }
+            
+            // If no main camera found, return the first camera
+            for (Entity* entity : entities) {
+                auto cameras = entity->GetComponents<CameraComponent>();
+                if (!cameras.empty() && cameras[0] != nullptr) {
+                    return cameras[0];
+                }
+            }
+            
+            return nullptr;
+        }
+
         void Scene::RebuildOctree() {
             if (!m_Octree) {
                 m_Octree = std::make_unique<OctreeNode>(m_OctreeBounds);
@@ -801,6 +836,17 @@ namespace FirstEngine {
                                         ResourceID modelID = model->GetMetadata().resourceID;
                                         file << "              \"modelID\": " << modelID << ",\n";
                                     }
+                                }
+                            }
+                            
+                            // Save CameraComponent
+                            // Editor uses type 3 for Camera
+                            if (comp->GetType() == ComponentType::Camera) {
+                                if (auto* cameraComp = dynamic_cast<const CameraComponent*>(comp.get())) {
+                                    file << "              \"fov\": " << cameraComp->GetFOV() << ",\n";
+                                    file << "              \"near\": " << cameraComp->GetNear() << ",\n";
+                                    file << "              \"far\": " << cameraComp->GetFar() << ",\n";
+                                    file << "              \"isMainCamera\": " << (cameraComp->IsMainCamera() ? "true" : "false") << ",\n";
                                 }
                             }
 
@@ -1047,6 +1093,10 @@ namespace FirstEngine {
                                                         // Parse component type
                                                         size_t typePos = compStr.find("\"type\"");
                                                         size_t modelIDPos = compStr.find("\"modelID\"");
+                                                        size_t fovPos = compStr.find("\"fov\"");
+                                                        size_t nearPos = compStr.find("\"near\"");
+                                                        size_t farPos = compStr.find("\"far\"");
+                                                        size_t isMainCameraPos = compStr.find("\"isMainCamera\"");
 
                                                         if (typePos != std::string::npos) {
                                                             size_t colonPos = compStr.find(':', typePos);
@@ -1059,9 +1109,74 @@ namespace FirstEngine {
                                                                 } catch (...) {}
                                                             }
 
+                                                            // Create CameraComponent
+                                                            // Editor uses type 3 for Camera, which maps to ComponentType::Camera (4)
+                                                            // But we check for both 3 and 4 for compatibility
+                                                            if (componentType == 3 || componentType == static_cast<int>(ComponentType::Camera)) {
+                                                                CameraComponent* cameraComp = entity->AddComponent<CameraComponent>();
+                                                                
+                                                                // Parse FOV
+                                                                if (fovPos != std::string::npos) {
+                                                                    size_t colonPos2 = compStr.find(':', fovPos);
+                                                                    size_t valueStart2 = compStr.find_first_not_of(" \t\n\r", colonPos2 + 1);
+                                                                    size_t valueEnd2 = compStr.find_first_of(",}\n\r", valueStart2);
+                                                                    if (valueStart2 != std::string::npos && valueEnd2 != std::string::npos) {
+                                                                        try {
+                                                                            float fov = std::stof(compStr.substr(valueStart2, valueEnd2 - valueStart2));
+                                                                            cameraComp->SetFOV(fov);
+                                                                        } catch (...) {}
+                                                                    }
+                                                                }
+                                                                
+                                                                // Parse Near
+                                                                if (nearPos != std::string::npos) {
+                                                                    size_t colonPos2 = compStr.find(':', nearPos);
+                                                                    size_t valueStart2 = compStr.find_first_not_of(" \t\n\r", colonPos2 + 1);
+                                                                    size_t valueEnd2 = compStr.find_first_of(",}\n\r", valueStart2);
+                                                                    if (valueStart2 != std::string::npos && valueEnd2 != std::string::npos) {
+                                                                        try {
+                                                                            float nearPlane = std::stof(compStr.substr(valueStart2, valueEnd2 - valueStart2));
+                                                                            cameraComp->SetNear(nearPlane);
+                                                                        } catch (...) {}
+                                                                    }
+                                                                }
+                                                                
+                                                                // Parse Far
+                                                                if (farPos != std::string::npos) {
+                                                                    size_t colonPos2 = compStr.find(':', farPos);
+                                                                    size_t valueStart2 = compStr.find_first_not_of(" \t\n\r", colonPos2 + 1);
+                                                                    size_t valueEnd2 = compStr.find_first_of(",}\n\r", valueStart2);
+                                                                    if (valueStart2 != std::string::npos && valueEnd2 != std::string::npos) {
+                                                                        try {
+                                                                            float farPlane = std::stof(compStr.substr(valueStart2, valueEnd2 - valueStart2));
+                                                                            cameraComp->SetFar(farPlane);
+                                                                        } catch (...) {}
+                                                                    }
+                                                                }
+                                                                
+                                                                // Parse IsMainCamera
+                                                                if (isMainCameraPos != std::string::npos) {
+                                                                    size_t colonPos2 = compStr.find(':', isMainCameraPos);
+                                                                    size_t valueStart2 = compStr.find_first_not_of(" \t\n\r", colonPos2 + 1);
+                                                                    size_t valueEnd2 = compStr.find_first_of(",}\n\r", valueStart2);
+                                                                    if (valueStart2 != std::string::npos && valueEnd2 != std::string::npos) {
+                                                                        std::string boolStr = compStr.substr(valueStart2, valueEnd2 - valueStart2);
+                                                                        // Remove quotes if present
+                                                                        boolStr.erase(std::remove(boolStr.begin(), boolStr.end(), '\"'), boolStr.end());
+                                                                        bool isMain = (boolStr == "true" || boolStr == "True" || boolStr == "1");
+                                                                        cameraComp->SetIsMainCamera(isMain);
+                                                                    }
+                                                                }
+                                                                
+                                                                std::cout << "SceneLoader: Created CameraComponent for entity " << entity->GetName() 
+                                                                          << " (FOV=" << cameraComp->GetFOV() 
+                                                                          << ", Near=" << cameraComp->GetNear() 
+                                                                          << ", Far=" << cameraComp->GetFar()
+                                                                          << ", IsMain=" << (cameraComp->IsMainCamera() ? "true" : "false") << ")" << std::endl;
+                                                            }
                                                             // Create ModelComponent
                                                             // Note: ModelComponent uses ComponentType::Mesh (not ComponentType::Model)
-                                                            if (componentType == static_cast<int>(ComponentType::Mesh) && modelIDPos != std::string::npos) {
+                                                            else if (componentType == static_cast<int>(ComponentType::Mesh) && modelIDPos != std::string::npos) {
                                                                 size_t colonPos2 = compStr.find(':', modelIDPos);
                                                                 size_t valueStart = compStr.find_first_not_of(" \t\n\r", colonPos2 + 1);
                                                                 size_t valueEnd = compStr.find_first_of(",}\n\r", valueStart);
@@ -1069,15 +1184,59 @@ namespace FirstEngine {
                                                                 if (valueStart != std::string::npos && valueEnd != std::string::npos) {
                                                                     try {
                                                                         modelID = std::stoull(compStr.substr(valueStart, valueEnd - valueStart));
+                                                                        std::cout << "SceneLoader: Loading model with ID " << modelID << " for entity " << entity->GetName() << std::endl;
+                                                                        
+                                                                        // Check if resource ID is valid
+                                                                        if (modelID == 0 || modelID == InvalidResourceID) {
+                                                                            std::cerr << "SceneLoader: Invalid model ID " << modelID << " for entity " << entity->GetName() << std::endl;
+                                                                            continue; // Skip this component
+                                                                        }
+                                                                        
+                                                                        // Check if resource path exists in manifest
+                                                                        std::string modelPath = resourceManager.GetResolvedPath(modelID);
+                                                                        if (modelPath.empty()) {
+                                                                            std::cerr << "SceneLoader: Model ID " << modelID << " not found in resource manifest for entity " << entity->GetName() << std::endl;
+                                                                            std::cerr << "  Make sure the model is registered in resource_manifest.json" << std::endl;
+                                                                            continue; // Skip this component
+                                                                        }
+                                                                        
                                                                         // Load model resource through ResourceManager
                                                                         // ResourceManager internally creates ModelResource and calls ModelResource::Load
                                                                         // This ensures unified loading interface using ModelResource's Load method
                                                                         ResourceHandle modelHandle = resourceManager.Load(modelID);
+                                                                        
+                                                                        // Check if model loaded successfully
+                                                                        // Note: ResourceHandle is a union, so ptr and model point to the same memory
                                                                         if (modelHandle.ptr != nullptr && modelHandle.model != nullptr) {
+                                                                            // Verify model is valid (has at least one mesh)
+                                                                            uint32_t meshCount = modelHandle.model->GetMeshCount();
+                                                                            if (meshCount == 0) {
+                                                                                std::cerr << "SceneLoader: Model ID " << modelID << " loaded but has no meshes for entity " << entity->GetName() << std::endl;
+                                                                                std::cerr << "  Model path: " << modelPath << std::endl;
+                                                                                std::cerr << "  This usually means the model's mesh dependencies failed to load" << std::endl;
+                                                                                continue; // Skip this component
+                                                                            }
+                                                                            
                                                                             ModelComponent* modelComp = entity->AddComponent<ModelComponent>();
-                                                                            modelComp->SetModel(modelHandle.model);
+                                                                            if (modelComp) {
+                                                                                modelComp->SetModel(modelHandle.model);
+                                                                                std::cout << "SceneLoader: Successfully loaded model ID " << modelID << " with " << modelHandle.model->GetMeshCount() << " mesh(es) for entity " << entity->GetName() << std::endl;
+                                                                            } else {
+                                                                                std::cerr << "SceneLoader: Failed to create ModelComponent for entity " << entity->GetName() << std::endl;
+                                                                            }
+                                                                        } else {
+                                                                            std::cerr << "SceneLoader: Failed to load model ID " << modelID << " for entity " << entity->GetName() << std::endl;
+                                                                            std::cerr << "  Model path: " << modelPath << std::endl;
+                                                                            std::cerr << "  Check if the model file exists and is valid" << std::endl;
+                                                                            // Don't create ModelComponent if model failed to load
                                                                         }
-                                                                    } catch (...) {}
+                                                                    } catch (const std::exception& e) {
+                                                                        std::cerr << "SceneLoader: Exception loading model ID " << modelID << " for entity " << entity->GetName() << ": " << e.what() << std::endl;
+                                                                    } catch (...) {
+                                                                        std::cerr << "SceneLoader: Unknown exception loading model ID " << modelID << " for entity " << entity->GetName() << std::endl;
+                                                                    }
+                                                                } else {
+                                                                    std::cerr << "SceneLoader: Failed to parse modelID from component string for entity " << entity->GetName() << std::endl;
                                                                 }
                                                             }
                                                         }

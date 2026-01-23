@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:sys="clr-namespace:System;assembly=mscorlib"
              xmlns:converters="clr-namespace:FirstEngineEditor.Converters"
+             xmlns:local="clr-namespace:FirstEngineEditor.Views.Panels"
              mc:Ignorable="d"
              AllowDrop="True"
              Drop="OnDrop"
@@ -13,8 +14,11 @@
         <!-- Converters -->
         <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
         <converters:InverseStringToVisibilityConverter x:Key="InverseStringToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:InverseNullToVisibilityConverter x:Key="InverseNullToVisibilityConverter"/>
+        <converters:NullToImageSourceConverter x:Key="NullToImageSourceConverter"/>
     </UserControl.Resources>
-    <Grid Background="#FF2D2D30">
+    <Grid Background="{StaticResource SecondaryBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -22,73 +26,65 @@
         </Grid.RowDefinitions>
 
         <!-- Toolbar -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="DarkGray" Margin="5">
-            <Button Content="📁" Width="30" ToolTip="Import Resource" Click="OnImportResource"/>
-            <Button Content="➕" Width="30" ToolTip="Create Resource" Click="OnCreateResource"/>
-            <Button Content="↻" Width="30" ToolTip="Refresh" Click="OnRefresh" Margin="5,0,0,0"/>
-            <Separator Margin="10,0"/>
-            <ComboBox x:Name="TypeFilterComboBox" Width="120" Margin="5,0,0,0"
-                      SelectionChanged="OnTypeFilterChanged">
-                <ComboBoxItem Content="All Types" IsSelected="True"/>
-                <ComboBoxItem Content="Texture"/>
-                <ComboBoxItem Content="Model"/>
-                <ComboBoxItem Content="Mesh"/>
-                <ComboBoxItem Content="Material"/>
-                <ComboBoxItem Content="Scene"/>
-                <ComboBoxItem Content="Shader"/>
-            </ComboBox>
-            <TextBox x:Name="SearchTextBox" Width="200" Margin="10,0,0,0" 
-                     TextChanged="OnSearchTextChanged">
-                <TextBox.Style>
-                    <Style TargetType="TextBox">
-                        <Style.Triggers>
-                            <Trigger Property="Text" Value="">
-                                <Setter Property="Foreground" Value="Gray"/>
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBox.Style>
-            </TextBox>
-        </StackPanel>
+        <Border Grid.Row="0" Style="{StaticResource ToolbarBorderStyle}">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="📁" Width="32" Height="28" ToolTip="Import Resource" Click="OnImportResource"/>
+                <Button Content="➕" Width="32" Height="28" ToolTip="Create Resource" Click="OnCreateResource"/>
+                <Button Content="↻" Width="32" Height="28" ToolTip="Refresh" Click="OnRefresh" Margin="4,0,0,0"/>
+                <Separator Margin="8,0"/>
+                <ComboBox x:Name="TypeFilterComboBox" Width="120" Height="28" Margin="4,0,0,0"
+                          SelectionChanged="OnTypeFilterChanged">
+                    <ComboBoxItem Content="All Types" IsSelected="True"/>
+                    <ComboBoxItem Content="Texture"/>
+                    <ComboBoxItem Content="Model"/>
+                    <ComboBoxItem Content="Mesh"/>
+                    <ComboBoxItem Content="Material"/>
+                    <ComboBoxItem Content="Scene"/>
+                    <ComboBoxItem Content="Shader"/>
+                </ComboBox>
+                <TextBox x:Name="SearchTextBox" Width="200" Height="28" Margin="8,0,0,0" 
+                         TextChanged="OnSearchTextChanged">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox">
+                            <Style.Triggers>
+                                <Trigger Property="Text" Value="">
+                                    <Setter Property="Foreground" Value="{StaticResource TertiaryForegroundBrush}"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+            </StackPanel>
+        </Border>
 
         <!-- Breadcrumb Navigation -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="5,2" x:Name="BreadcrumbPanel">
-            <Button Content="📦 Package" Click="OnNavigateToRoot">
-                <Button.Style>
-                    <Style TargetType="Button">
-                        <Setter Property="Background" Value="Transparent"/>
-                        <Setter Property="Foreground" Value="#FF0078D4"/>
-                        <Setter Property="BorderThickness" Value="0"/>
-                        <Setter Property="Padding" Value="5,2"/>
-                        <Setter Property="Margin" Value="2,0"/>
-                        <Setter Property="Cursor" Value="Hand"/>
-                        <Style.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="#FF1C97EA"/>
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </Button.Style>
-            </Button>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="4,2" x:Name="BreadcrumbPanel">
+            <Button Content="📦 Package" Click="OnNavigateToRoot" Style="{StaticResource LinkButtonStyle}"/>
         </StackPanel>
 
         <!-- Resource Browser Content -->
-        <Grid Grid.Row="2" Margin="5">
+        <Grid Grid.Row="2" Margin="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="200"/>
-                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="3"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="3"/>
+                <ColumnDefinition Width="250"/>
             </Grid.ColumnDefinitions>
 
             <!-- Folder Tree -->
             <TreeView Grid.Column="0" x:Name="FolderTreeView" 
                       SelectedItemChanged="OnFolderSelected"
                       ItemsSource="{Binding Folders}"
-                      Background="#FF252526"
-                      Foreground="White">
+                      AllowDrop="True"
+                      DragOver="OnFolderTreeDragOver"
+                      Drop="OnFolderTreeDrop"
+                      ContextMenuOpening="OnFolderTreeContextMenuOpening">
                 <TreeView.ItemTemplate>
                     <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel Orientation="Horizontal"
+                                    MouseMove="OnFolderTreeItemMouseMove"
+                                    MouseLeftButtonDown="OnFolderTreeItemMouseLeftButtonDown">
                             <TextBlock Text="📁" Margin="0,0,5,0"/>
                             <TextBlock Text="{Binding Name}"/>
                         </StackPanel>
@@ -96,7 +92,7 @@
                 </TreeView.ItemTemplate>
             </TreeView>
 
-            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Gray"/>
+                <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"/>
 
             <!-- Resource Grid -->
             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -108,28 +104,41 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Width="120" Height="140" Margin="5" 
-                                Background="#FF3F3F46" 
-                                BorderBrush="Gray" 
+                        <Border Width="120" Height="140" Margin="4" 
+                                Background="{StaticResource TertiaryBackgroundBrush}" 
+                                BorderBrush="{StaticResource BorderBrush}" 
                                 BorderThickness="1"
+                                CornerRadius="2"
                                 Cursor="Hand"
                                 MouseLeftButtonDown="OnResourceItemClicked"
+                                MouseMove="OnResourceItemMouseMove"
+                                MouseLeftButtonUp="OnResourceItemMouseLeftButtonUp"
                                 ToolTip="{Binding VirtualPath}">
-                                <StackPanel VerticalAlignment="Center" Margin="5">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource SelectionHoverBrush}"/>
+                                            <Setter Property="BorderBrush" Value="{StaticResource BorderHoverBrush}"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                                <StackPanel VerticalAlignment="Center" Margin="4">
                                     <!-- Thumbnail -->
-                                    <Border Width="100" Height="100" Background="Black" Margin="0,0,0,5">
+                                    <Border Width="100" Height="100" Background="{StaticResource SecondaryBackgroundBrush}" Margin="0,0,0,4" CornerRadius="2">
                                         <Grid>
-                                            <Image Source="{Binding ThumbnailPath}" 
-                                                   Stretch="Uniform"
+                                            <Image Stretch="Uniform"
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center"
-                                                   Visibility="{Binding ThumbnailPath, Converter={StaticResource StringToVisibilityConverter}}"/>
+                                                   Visibility="{Binding ThumbnailPath, Converter={StaticResource StringToVisibilityConverter}}"
+                                                   Source="{Binding ThumbnailPath, Converter={StaticResource NullToImageSourceConverter}}"/>
                                             <!-- Fallback icon if no thumbnail -->
                                             <TextBlock Text="{Binding TypeIcon}" 
                                                        FontSize="40"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center"
-                                                       Foreground="Gray"
+                                                       Foreground="{StaticResource TertiaryForegroundBrush}"
                                                        Visibility="{Binding ThumbnailPath, Converter={StaticResource InverseStringToVisibilityConverter}}"/>
                                         </Grid>
                                     </Border>
@@ -137,8 +146,8 @@
                                     <TextBlock Text="{Binding Name}" 
                                                TextWrapping="Wrap"
                                                TextAlignment="Center"
-                                               Foreground="White"
-                                               FontSize="10"
+                                               Foreground="{StaticResource PrimaryForegroundBrush}"
+                                               FontSize="11"
                                                MaxHeight="30"/>
                                 </StackPanel>
                             </Border>
@@ -146,6 +155,60 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
+
+                <GridSplitter Grid.Column="3" Width="3" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"/>
+
+            <!-- Property Panel -->
+            <Border Grid.Column="4" Background="{StaticResource TertiaryBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,0" Padding="6">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="Resource Properties" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" Margin="0,0,0,8"/>
+                        
+                        <!-- Selected Resource Info -->
+                        <StackPanel Visibility="{Binding SelectedResource, Converter={StaticResource NullToVisibilityConverter}}">
+                            <TextBlock Text="Name:" Foreground="{StaticResource SecondaryForegroundBrush}" FontSize="10" Margin="0,4,0,2"/>
+                            <TextBlock Text="{Binding SelectedResource.Name}" Foreground="{StaticResource PrimaryForegroundBrush}" FontSize="11" Margin="0,0,0,8"/>
+                            
+                            <TextBlock Text="ID:" Foreground="{StaticResource SecondaryForegroundBrush}" FontSize="10" Margin="0,4,0,2"/>
+                            <TextBlock Text="{Binding SelectedResource.Id}" Foreground="{StaticResource PrimaryForegroundBrush}" FontSize="11" Margin="0,0,0,8"/>
+                            
+                            <TextBlock Text="Type:" Foreground="{StaticResource SecondaryForegroundBrush}" FontSize="10" Margin="0,4,0,2"/>
+                            <TextBlock Text="{Binding SelectedResource.Type}" Foreground="{StaticResource PrimaryForegroundBrush}" FontSize="11" Margin="0,0,0,8"/>
+                            
+                            <TextBlock Text="Virtual Path:" Foreground="{StaticResource SecondaryForegroundBrush}" FontSize="10" Margin="0,4,0,2"/>
+                            <TextBlock Text="{Binding SelectedResource.VirtualPath}" 
+                                       TextWrapping="Wrap" 
+                                       Foreground="{StaticResource TertiaryForegroundBrush}" 
+                                       FontSize="10" 
+                                       Margin="0,0,0,8"/>
+                            
+                            <TextBlock Text="Physical Path:" Foreground="{StaticResource SecondaryForegroundBrush}" FontSize="10" Margin="0,4,0,2"/>
+                            <TextBlock Text="{Binding SelectedResource.Path}" 
+                                       TextWrapping="Wrap" 
+                                       Foreground="{StaticResource TertiaryForegroundBrush}" 
+                                       FontSize="10" 
+                                       Margin="0,0,0,8"/>
+                            
+                            <Separator Margin="0,8,0,8"/>
+                            <TextBlock Text="Actions" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" Margin="0,0,0,4"/>
+                            <Button Content="Change Virtual Path" 
+                                    Click="OnChangeVirtualPath" 
+                                    Margin="0,4,0,0"
+                                    HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                        
+                        <!-- No Selection Message -->
+                        <TextBlock Text="No resource selected" 
+                                   Foreground="{StaticResource TertiaryForegroundBrush}" 
+                                   FontSize="11" 
+                                   FontStyle="Italic"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Margin="0,30,0,0"
+                                   Visibility="{Binding SelectedResource, Converter={StaticResource InverseNullToVisibilityConverter}}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
         </Grid>
     </Grid>
 </UserControl>

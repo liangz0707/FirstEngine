@@ -46,6 +46,7 @@ namespace FirstEngine {
             VkDeviceSize m_Size;
             MemoryAllocation m_Allocation;
             void* m_MappedData;
+            VkMemoryPropertyFlags m_MemoryProperties; // Store memory properties to check if mapping is allowed
         };
 
         // Image wrapper

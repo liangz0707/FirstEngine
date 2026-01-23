@@ -191,6 +191,8 @@ namespace FirstEngineEditor.Services
                 ResourceType.Model => new[] { ".fbx", ".obj", ".dae", ".3ds", ".blend", ".gltf", ".glb" },
                 ResourceType.Mesh => new[] { ".obj", ".fbx", ".dae" },
                 ResourceType.Shader => new[] { ".hlsl", ".glsl", ".vert", ".frag", ".comp" },
+                ResourceType.Scene => new[] { ".json" },
+                ResourceType.SceneLevel => new[] { ".json" },
                 _ => Array.Empty<string>()
             };
         }
@@ -265,6 +267,29 @@ namespace FirstEngineEditor.Services
             
             if (new[] { ".hlsl", ".glsl", ".vert", ".frag", ".comp" }.Contains(ext))
                 return ResourceType.Shader;
+
+            // Detect scene files
+            if (ext == ".json")
+            {
+                try
+                {
+                    // Try to parse JSON to determine if it's a scene or scene level
+                    string jsonContent = File.ReadAllText(filePath);
+                    var sceneData = JsonConvert.DeserializeObject<SceneData>(jsonContent);
+                    if (sceneData != null)
+                    {
+                        // Check if it has levels (scene) or is a level itself
+                        if (sceneData.Levels != null && sceneData.Levels.Count > 0)
+                            return ResourceType.Scene;
+                        else
+                            return ResourceType.SceneLevel;
+                    }
+                }
+                catch
+                {
+                    // Not a valid scene JSON, continue detection
+                }
+            }
 
             // Try to detect from file name pattern
             string fileName = Path.GetFileNameWithoutExtension(filePath).ToLower();
@@ -424,7 +449,13 @@ namespace FirstEngineEditor.Services
                 try
                 {
                     string json = File.ReadAllText(manifestPath);
-                    manifest = JsonConvert.DeserializeObject<ResourceManifest>(json) ?? new ResourceManifest();
+                    manifest = JsonConvert.DeserializeObject<ResourceManifest>(json) ?? new ResourceManifest 
+                    { 
+                        Version = 1, 
+                        NextID = 5000, 
+                        Resources = new List<ResourceEntry>(),
+                        EmptyFolders = new List<string>()
+                    };
                     System.Diagnostics.Debug.WriteLine($"UpdateResourceManifest: Loaded existing manifest with {manifest.Resources?.Count ?? 0} resources");
                 }
                 catch (Exception ex)
@@ -436,11 +467,20 @@ namespace FirstEngineEditor.Services
             else
             {
                 System.Diagnostics.Debug.WriteLine("UpdateResourceManifest: Creating new manifest");
-                manifest = new ResourceManifest { Version = 1, NextID = 5000, Resources = new List<ResourceEntry>() };
+                manifest = new ResourceManifest 
+                { 
+                    Version = 1, 
+                    NextID = 5000, 
+                    Resources = new List<ResourceEntry>(),
+                    EmptyFolders = new List<string>()
+                };
             }
 
             if (manifest.Resources == null)
                 manifest.Resources = new List<ResourceEntry>();
+            
+            if (manifest.EmptyFolders == null)
+                manifest.EmptyFolders = new List<string>();
 
             // Check if resource already exists
             var existing = manifest.Resources.FirstOrDefault(r => r.Id == resourceID || r.VirtualPath == virtualPath);
@@ -459,6 +499,19 @@ namespace FirstEngineEditor.Services
                     VirtualPath = virtualPath,
                     Type = resourceType.ToString()
                 });
+            }
+
+            // 如果资源被导入到某个文件夹，从空文件夹列表中移除该文件夹
+            if (!string.IsNullOrEmpty(virtualPath))
+            {
+                // 提取父文件夹路径
+                int lastSlash = virtualPath.LastIndexOf('/');
+                if (lastSlash >= 0)
+                {
+                    string parentFolder = virtualPath.Substring(0, lastSlash);
+                    manifest.EmptyFolders.RemoveAll(f => 
+                        f.Equals(parentFolder, StringComparison.OrdinalIgnoreCase));
+                }
             }
 
             manifest.NextID = Math.Max(manifest.NextID, resourceID + 1);

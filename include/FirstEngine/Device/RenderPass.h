@@ -37,10 +37,14 @@ namespace FirstEngine {
 
             VkRenderPass GetRenderPass() const { return m_RenderPass; }
             bool IsValid() const { return m_RenderPass != VK_NULL_HANDLE; }
+            
+            // Get color attachment count for subpass 0 (used for pipeline creation)
+            uint32_t GetColorAttachmentCount() const { return m_ColorAttachmentCount; }
 
         private:
             DeviceContext* m_Context;
             VkRenderPass m_RenderPass;
+            uint32_t m_ColorAttachmentCount; // Store color attachment count for subpass 0
         };
 
     } // namespace Device

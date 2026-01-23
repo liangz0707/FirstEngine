@@ -58,26 +58,31 @@ namespace FirstEngine {
             void TransitionImageLayout(RHI::IImage* image, RHI::Format oldLayout, RHI::Format newLayout, uint32_t mipLevels) override;
             void CopyBuffer(RHI::IBuffer* src, RHI::IBuffer* dst, uint64_t size) override;
             void CopyBufferToImage(RHI::IBuffer* buffer, RHI::IImage* image, uint32_t width, uint32_t height) override;
+            void PushConstants(RHI::IPipeline* pipeline, RHI::ShaderStage stageFlags, uint32_t offset, uint32_t size, const void* data) override;
 
             VkCommandBuffer GetVkCommandBuffer() const { return m_VkCommandBuffer; }
+            VkPipelineLayout GetCurrentPipelineLayout() const { return m_CurrentPipelineLayout; }
 
         private:
             DeviceContext* m_Context;
             VkCommandBuffer m_VkCommandBuffer;
             bool m_IsRecording;
             VkPipelineLayout m_CurrentPipelineLayout; // Track current pipeline layout for descriptor set binding
+            RHI::IPipeline* m_CurrentPipeline = nullptr; // Track current pipeline for PushConstants
         };
 
         class FE_DEVICE_API VulkanRenderPass : public RHI::IRenderPass {
         public:
-            VulkanRenderPass(DeviceContext* context, VkRenderPass renderPass);
+            VulkanRenderPass(DeviceContext* context, VkRenderPass renderPass, uint32_t colorAttachmentCount);
             ~VulkanRenderPass() override;
 
             VkRenderPass GetVkRenderPass() const { return m_RenderPass; }
+            uint32_t GetColorAttachmentCount() const { return m_ColorAttachmentCount; }
 
         private:
             DeviceContext* m_Context;
             VkRenderPass m_RenderPass;
+            uint32_t m_ColorAttachmentCount;
         };
 
         class FE_DEVICE_API VulkanFramebuffer : public RHI::IFramebuffer {
@@ -157,6 +162,9 @@ namespace FirstEngine {
             // Layout tracking
             VkImageLayout GetCurrentLayout() const { return m_CurrentLayout; }
             void SetCurrentLayout(VkImageLayout layout) { m_CurrentLayout = layout; }
+            
+            // Check if this is a swapchain image
+            bool IsSwapchainImage() const { return m_Image == nullptr; }
 
         private:
             DeviceContext* m_Context;

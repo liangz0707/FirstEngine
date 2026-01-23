@@ -8,7 +8,8 @@
         mc:Ignorable="d"
         Title="{Binding WindowTitle}" 
         Height="800" Width="1400"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource PrimaryBackgroundBrush}">
     <Window.DataContext>
         <vm:MainViewModel/>
     </Window.DataContext>
@@ -21,7 +22,7 @@
         </Grid.RowDefinitions>
 
         <!-- Menu Bar -->
-        <Menu Grid.Row="0">
+        <Menu Grid.Row="0" Background="{StaticResource SecondaryBackgroundBrush}">
             <MenuItem Header="_File">
                 <MenuItem Header="_New Project" Click="OnNewProject"/>
                 <MenuItem Header="_Open Project" Click="OnOpenProject"/>
@@ -50,72 +51,82 @@
         </Menu>
 
         <!-- Main Content Area -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="1" Background="{StaticResource PrimaryBackgroundBrush}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
-                <RowDefinition Height="5"/>
+                <RowDefinition Height="3"/>
                 <RowDefinition Height="250"/>
             </Grid.RowDefinitions>
 
             <!-- Top: Main Editor Area -->
-            <Grid Grid.Row="0">
+            <Grid Grid.Row="0" Margin="1">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="250"/>
+                    <ColumnDefinition Width="3"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="3"/>
                     <ColumnDefinition Width="300"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Left Panel: Scene List and Resource List -->
-                <Grid Grid.Column="0">
+                <!-- Left Panel: Scene Resources and Resource List -->
+                <Grid Grid.Column="0" Background="{StaticResource SecondaryBackgroundBrush}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
-                        <RowDefinition Height="5"/>
+                        <RowDefinition Height="3"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Scene List -->
-                    <GroupBox Grid.Row="0" Header="Scenes" Margin="5">
-                        <panels:SceneListView DataContext="{Binding SceneListViewModel}"/>
+                    <!-- Scene Resource List -->
+                    <GroupBox Grid.Row="0" Header="Scene Resources">
+                        <panels:SceneResourceListView DataContext="{Binding SceneResourceListViewModel}"/>
                     </GroupBox>
 
                     <!-- Resource List (Legacy) -->
-                    <GroupBox Grid.Row="2" Header="Resources (Legacy)" Margin="5">
+                    <GroupBox Grid.Row="2" Header="Resources (Legacy)">
                         <panels:ResourceListView DataContext="{Binding ResourceListViewModel}"/>
                     </GroupBox>
                 </Grid>
 
+                <!-- Vertical Splitter -->
+                <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"/>
+
                 <!-- Center: Render View -->
-                <Grid Grid.Column="1" Margin="5">
+                <Grid Grid.Column="2" Background="{StaticResource SecondaryBackgroundBrush}">
                     <GroupBox Header="Render View">
                         <panels:RenderView DataContext="{Binding RenderViewModel}"/>
                     </GroupBox>
                 </Grid>
 
+                <!-- Vertical Splitter -->
+                <GridSplitter Grid.Column="3" Width="3" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"/>
+
                 <!-- Right Panel: Property Panel -->
-                <Grid Grid.Column="2">
-                    <GroupBox Header="Properties" Margin="5">
+                <Grid Grid.Column="4" Background="{StaticResource SecondaryBackgroundBrush}">
+                    <GroupBox Header="Properties">
                         <panels:PropertyPanelView DataContext="{Binding PropertyPanelViewModel}"/>
                     </GroupBox>
                 </Grid>
             </Grid>
 
-            <!-- Splitter -->
-            <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="Gray"/>
+            <!-- Horizontal Splitter -->
+            <GridSplitter Grid.Row="1" Height="3" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}"/>
 
-            <!-- Bottom: Resource Browser (UE5 style) -->
-            <GroupBox Grid.Row="2" Header="Content Browser" Margin="5">
-                <panels:ResourceBrowserView DataContext="{Binding ResourceBrowserViewModel}"/>
-            </GroupBox>
+            <!-- Bottom: Resource Browser -->
+            <Grid Grid.Row="2" Background="{StaticResource SecondaryBackgroundBrush}">
+                <GroupBox Header="Content Browser">
+                    <panels:ResourceBrowserView DataContext="{Binding ResourceBrowserViewModel}"/>
+                </GroupBox>
+            </Grid>
         </Grid>
 
         <!-- Status Bar -->
-        <StatusBar Grid.Row="2">
+        <StatusBar Grid.Row="2" Background="{StaticResource SecondaryBackgroundBrush}">
             <StatusBarItem>
-                <TextBlock Text="{Binding RenderViewModel.RenderStatus}"/>
+                <TextBlock Text="{Binding RenderViewModel.RenderStatus}" Foreground="{StaticResource SecondaryForegroundBrush}"/>
             </StatusBarItem>
             <Separator/>
             <StatusBarItem>
-                <TextBlock Text="Ready"/>
+                <TextBlock Text="Ready" Foreground="{StaticResource SecondaryForegroundBrush}"/>
             </StatusBarItem>
         </StatusBar>
     </Grid>

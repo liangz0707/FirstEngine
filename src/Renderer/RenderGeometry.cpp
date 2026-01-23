@@ -2,6 +2,7 @@
 #include "FirstEngine/Renderer/RenderResourceManager.h"
 #include "FirstEngine/Resources/ResourceTypes.h"
 #include "FirstEngine/RHI/IDevice.h"
+#include "FirstEngine/RHI/ICommandBuffer.h"  // Need complete definition for Begin(), CopyBuffer(), End()
 #include "FirstEngine/RHI/IBuffer.h"
 #include "FirstEngine/RHI/Types.h"
 #include <cstring>
@@ -77,46 +78,96 @@ namespace FirstEngine {
                 return false;
             }
 
-            // Create vertex buffer
+            // Create vertex buffer (device-local, optimal for GPU access)
             uint64_t vertexBufferSize = m_VertexCount * m_VertexStride;
-            RHI::BufferUsageFlags usage = static_cast<RHI::BufferUsageFlags>(
+            RHI::BufferUsageFlags vertexUsage = static_cast<RHI::BufferUsageFlags>(
                 static_cast<uint32_t>(RHI::BufferUsageFlags::VertexBuffer) |
                 static_cast<uint32_t>(RHI::BufferUsageFlags::TransferDst)
             );
-            RHI::MemoryPropertyFlags properties = RHI::MemoryPropertyFlags::DeviceLocal;
+            RHI::MemoryPropertyFlags vertexProperties = RHI::MemoryPropertyFlags::DeviceLocal;
 
-            m_VertexBuffer = device->CreateBuffer(vertexBufferSize, usage, properties);
+            m_VertexBuffer = device->CreateBuffer(vertexBufferSize, vertexUsage, vertexProperties);
             if (!m_VertexBuffer) {
                 return false;
             }
 
-            // Upload vertex data (TODO: Use staging buffer for proper upload)
-            void* mapped = m_VertexBuffer->Map();
+            // Create staging buffer for vertex data upload
+            RHI::BufferUsageFlags stagingUsage = RHI::BufferUsageFlags::TransferSrc;
+            RHI::MemoryPropertyFlags stagingProperties = static_cast<RHI::MemoryPropertyFlags>(
+                static_cast<uint32_t>(RHI::MemoryPropertyFlags::HostVisible) |
+                static_cast<uint32_t>(RHI::MemoryPropertyFlags::HostCoherent)
+            );
+
+            auto stagingVertexBuffer = device->CreateBuffer(vertexBufferSize, stagingUsage, stagingProperties);
+            if (!stagingVertexBuffer) {
+                return false;
+            }
+
+            // Upload vertex data to staging buffer
+            void* mapped = stagingVertexBuffer->Map();
             if (mapped) {
                 std::memcpy(mapped, vertexData, vertexBufferSize);
-                m_VertexBuffer->Unmap();
+                stagingVertexBuffer->Unmap();
+            } else {
+                return false;
             }
+
+            // Copy from staging buffer to device-local buffer
+            auto cmdBuffer = device->CreateCommandBuffer();
+            if (!cmdBuffer) {
+                return false;
+            }
+
+            cmdBuffer->Begin();
+            cmdBuffer->CopyBuffer(stagingVertexBuffer.get(), m_VertexBuffer.get(), vertexBufferSize);
+            cmdBuffer->End();
+
+            // Submit and wait for completion
+            device->SubmitCommandBuffer(cmdBuffer.get(), {}, {}, nullptr);
+            device->WaitIdle();
 
             // Create index buffer if needed
             if (m_IndexCount > 0 && indexData != nullptr) {
                 uint64_t indexBufferSize = m_IndexCount * sizeof(uint32_t);
-                RHI::BufferUsageFlags usage = static_cast<RHI::BufferUsageFlags>(
+                RHI::BufferUsageFlags indexUsage = static_cast<RHI::BufferUsageFlags>(
                     static_cast<uint32_t>(RHI::BufferUsageFlags::IndexBuffer) |
                     static_cast<uint32_t>(RHI::BufferUsageFlags::TransferDst)
                 );
-                RHI::MemoryPropertyFlags properties = RHI::MemoryPropertyFlags::DeviceLocal;
+                RHI::MemoryPropertyFlags indexProperties = RHI::MemoryPropertyFlags::DeviceLocal;
 
-                m_IndexBuffer = device->CreateBuffer(indexBufferSize, usage, properties);
+                m_IndexBuffer = device->CreateBuffer(indexBufferSize, indexUsage, indexProperties);
                 if (!m_IndexBuffer) {
                     return false;
                 }
 
-                // Upload index data
-                void* mappedIndex = m_IndexBuffer->Map();
+                // Create staging buffer for index data upload
+                auto stagingIndexBuffer = device->CreateBuffer(indexBufferSize, stagingUsage, stagingProperties);
+                if (!stagingIndexBuffer) {
+                    return false;
+                }
+
+                // Upload index data to staging buffer
+                void* mappedIndex = stagingIndexBuffer->Map();
                 if (mappedIndex) {
                     std::memcpy(mappedIndex, indexData, indexBufferSize);
-                    m_IndexBuffer->Unmap();
+                    stagingIndexBuffer->Unmap();
+                } else {
+                    return false;
                 }
+
+                // Copy from staging buffer to device-local buffer
+                auto indexCmdBuffer = device->CreateCommandBuffer();
+                if (!indexCmdBuffer) {
+                    return false;
+                }
+
+                indexCmdBuffer->Begin();
+                indexCmdBuffer->CopyBuffer(stagingIndexBuffer.get(), m_IndexBuffer.get(), indexBufferSize);
+                indexCmdBuffer->End();
+
+                // Submit and wait for completion
+                device->SubmitCommandBuffer(indexCmdBuffer.get(), {}, {}, nullptr);
+                device->WaitIdle();
             }
 
             return true;

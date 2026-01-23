@@ -1,4 +1,4 @@
-﻿# Note: This is a subdirectory, project is already defined in root CMakeLists.txt
+# Note: This is a subdirectory, project is already defined in root CMakeLists.txt
 # Application is the main executable
 
 # Source files
@@ -45,12 +45,11 @@ else()
 endif()
 
 # Copy DLLs to output directory on Windows
-# Note: FirstEngine_Renderer and FirstEngine_Resources are now STATIC, so they don't need to be copied
+# Note: FirstEngine_Renderer, FirstEngine_Resources, and FirstEngine_Device are now STATIC, so they don't need to be copied
 if(WIN32)
     add_custom_command(TARGET FirstEngine POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:FirstEngine_Core>
-        $<TARGET_FILE:FirstEngine_Device>
         $<TARGET_FILE:FirstEngine_Shader>
         $<TARGET_FILE:FirstEngine_RHI>
         $<TARGET_FILE_DIR:FirstEngine>

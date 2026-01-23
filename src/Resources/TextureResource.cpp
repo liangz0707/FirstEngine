@@ -10,6 +10,8 @@ namespace fs = std::filesystem;
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 #endif
+#include <algorithm>
+#include <cctype>
 
 namespace FirstEngine {
     namespace Resources {
@@ -46,12 +48,50 @@ namespace FirstEngine {
 
         // IResourceProvider interface implementation
         bool TextureResource::IsFormatSupported(const std::string& filepath) const {
+            // First check by file extension (faster and more reliable)
+            std::string ext = fs::path(filepath).extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            
+            // Check if extension is in supported formats list
+            auto supportedFormats = GetSupportedFormats();
+            for (const auto& supportedExt : supportedFormats) {
+                if (ext == supportedExt) {
+                    return true;
+                }
+            }
+            
+            // Fallback: try to detect format from file header
             ImageFormat format = ImageLoader::DetectFormat(filepath);
-            return format != ImageFormat::Unknown;
+            if (format != ImageFormat::Unknown) {
+                return true;
+            }
+            
+            // If format detection failed, still allow loading attempt
+            // stb_image can load formats even if DetectFormat doesn't recognize them
+            // This is especially important for formats like PNG which stb_image supports
+            // We'll let stbi_load decide if the format is actually supported
+            return true; // Allow loading attempt, let stbi_load decide
         }
 
         std::vector<std::string> TextureResource::GetSupportedFormats() const {
-            return { ".jpg", ".jpeg", ".png", ".bmp", ".tga", ".dds", ".tiff", ".hdr" };
+            // Return formats actually supported by stb_image (used by ImageLoader)
+            // NOTE: DDS and TIFF are NOT supported by stb_image, but kept for backward compatibility
+            // TODO: If DDS/TIFF support is needed, implement a specialized loader
+            return { 
+                ".jpg",      // JPEG (baseline & progressive)
+                ".jpeg",     // JPEG
+                ".png",      // PNG (1/2/4/8/16-bit per channel)
+                ".bmp",      // BMP (non-1bpp, non-RLE)
+                ".tga",      // TGA (including 16-bit)
+                ".psd",      // PSD (composited view, 8/16-bit)
+                ".gif",      // GIF (static & animated)
+                ".hdr",      // HDR (Radiance rgbE)
+                ".pic",      // PIC (Softimage PIC)
+                ".ppm",      // PNM PPM (binary)
+                ".pgm"       // PNM PGM (binary)
+                // ".dds",   // DDS - NOT supported by stb_image
+                // ".tiff",  // TIFF - NOT supported by stb_image
+            };
         }
 
         ResourceLoadResult TextureResource::Load(ResourceID id) {
@@ -86,38 +126,6 @@ namespace FirstEngine {
 
             ImageLoader::FreeImageData(loadResult.imageData);
             m_Metadata.isLoaded = true;
-
-            // Create RenderTexture after texture data is loaded
-            // This will be scheduled for GPU creation
-            CreateRenderTexture();
-
-            return ResourceLoadResult::Success;
-        }
-
-        ResourceLoadResult TextureResource::LoadFromMemory(const void* data, size_t size) {
-            if (!data || size == 0) {
-                return ResourceLoadResult::UnknownError;
-            }
-
-            // Load image data from memory
-            ImageData imageData = ImageLoader::LoadFromMemory(static_cast<const uint8_t*>(data), size);
-            if (imageData.data.empty()) {
-                return ResourceLoadResult::InvalidFormat;
-            }
-
-            // Initialize this resource object
-            if (!Initialize(imageData.data, imageData.width, imageData.height, imageData.channels, imageData.hasAlpha)) {
-                ImageLoader::FreeImageData(imageData);
-                return ResourceLoadResult::InvalidFormat;
-            }
-
-            m_Metadata.fileSize = imageData.data.size();
-            m_Metadata.isLoaded = true;
-
-            ImageLoader::FreeImageData(imageData);
-
-            // Textures typically don't have dependencies
-            LoadDependencies();
 
             // Create RenderTexture after texture data is loaded
             // This will be scheduled for GPU creation

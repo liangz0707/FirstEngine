@@ -5,58 +5,92 @@ namespace FirstEngine {
     namespace Renderer {
 
         IRenderResource::IRenderResource() 
-            : m_State(ResourceState::Uninitialized)
+            : m_ResourceState(ResourceState::Uninitialized)
+            , m_ScheduleState(ScheduleState::None)
+            , m_OperationState(OperationState::Idle)
             , m_Device(nullptr) {
         }
 
-        ResourceState IRenderResource::GetState() const {
-            return m_State.load(std::memory_order_acquire);
+        ResourceState IRenderResource::GetResourceState() const {
+            return m_ResourceState.load(std::memory_order_acquire);
+        }
+
+        ScheduleState IRenderResource::GetScheduleState() const {
+            return m_ScheduleState.load(std::memory_order_acquire);
+        }
+
+        OperationState IRenderResource::GetOperationState() const {
+            return m_OperationState.load(std::memory_order_acquire);
         }
 
         bool IRenderResource::IsCreated() const {
-            return m_State.load(std::memory_order_acquire) == ResourceState::Created;
+            return m_ResourceState.load(std::memory_order_acquire) == ResourceState::Created;
         }
 
         bool IRenderResource::IsInitialized() const {
-            ResourceState state = m_State.load(std::memory_order_acquire);
-            return state != ResourceState::Uninitialized && 
-                   state != ResourceState::ScheduledCreate &&
-                   state != ResourceState::Destroyed;
+            ResourceState state = m_ResourceState.load(std::memory_order_acquire);
+            return state != ResourceState::Uninitialized;
         }
 
         bool IRenderResource::IsScheduled() const {
-            ResourceState state = m_State.load(std::memory_order_acquire);
-            return state == ResourceState::ScheduledCreate ||
-                   state == ResourceState::ScheduledUpdate ||
-                   state == ResourceState::ScheduledDestroy;
+            ScheduleState scheduleState = m_ScheduleState.load(std::memory_order_acquire);
+            return scheduleState != ScheduleState::None;
         }
 
-        void IRenderResource::ScheduleCreate() {
-            ResourceState currentState = m_State.load(std::memory_order_acquire);
-            
-            // Only schedule if not already created or scheduled
-            if (currentState == ResourceState::Uninitialized || 
-                currentState == ResourceState::Destroyed) {
-                m_State.store(ResourceState::ScheduledCreate, std::memory_order_release);
+        bool IRenderResource::IsOperationInProgress() const {
+            OperationState opState = m_OperationState.load(std::memory_order_acquire);
+            return opState != OperationState::Idle;
+        }
+
+        bool IRenderResource::ScheduleCreate() {
+            ResourceState resourceState = m_ResourceState.load(std::memory_order_acquire);
+            ScheduleState scheduleState = m_ScheduleState.load(std::memory_order_acquire);
+
+            // Only schedule create if:
+            // 1. Resource is Uninitialized or Destroyed (can be recreated)
+            // 2. No operation is currently scheduled
+            if ((resourceState == ResourceState::Uninitialized || resourceState == ResourceState::Destroyed) &&
+                scheduleState == ScheduleState::None) {
+                m_ScheduleState.store(ScheduleState::ScheduledCreate, std::memory_order_release);
+                return true;
             }
+            return false;
         }
 
-        void IRenderResource::ScheduleUpdate() {
-            ResourceState currentState = m_State.load(std::memory_order_acquire);
-            
-            // Only schedule if resource is already created
-            if (currentState == ResourceState::Created) {
-                m_State.store(ResourceState::ScheduledUpdate, std::memory_order_release);
+        bool IRenderResource::ScheduleUpdate() {
+            ResourceState resourceState = m_ResourceState.load(std::memory_order_acquire);
+            ScheduleState scheduleState = m_ScheduleState.load(std::memory_order_acquire);
+
+            // Only schedule update if:
+            // 1. Resource is Created (must exist to be updated)
+            // 2. No operation is currently scheduled
+            if (resourceState == ResourceState::Created &&
+                scheduleState == ScheduleState::None) {
+                m_ScheduleState.store(ScheduleState::ScheduledUpdate, std::memory_order_release);
+                return true;
             }
+            return false;
         }
 
-        void IRenderResource::ScheduleDestroy() {
-            ResourceState currentState = m_State.load(std::memory_order_acquire);
-            
-            // Schedule destroy from any state except already destroyed or destroying
-            if (currentState != ResourceState::Destroyed && 
-                currentState != ResourceState::Destroying) {
-                m_State.store(ResourceState::ScheduledDestroy, std::memory_order_release);
+        bool IRenderResource::ScheduleDestroy() {
+            ResourceState resourceState = m_ResourceState.load(std::memory_order_acquire);
+            ScheduleState scheduleState = m_ScheduleState.load(std::memory_order_acquire);
+
+            // Only schedule destroy if:
+            // 1. Resource is not already Destroyed
+            // 2. No operation is currently scheduled
+            if (resourceState != ResourceState::Destroyed &&
+                scheduleState == ScheduleState::None) {
+                m_ScheduleState.store(ScheduleState::ScheduledDestroy, std::memory_order_release);
+                return true;
+            }
+            return false;
+        }
+
+        void IRenderResource::CancelScheduledDestroy() {
+            ScheduleState scheduleState = m_ScheduleState.load(std::memory_order_acquire);
+            if (scheduleState == ScheduleState::ScheduledDestroy) {
+                m_ScheduleState.store(ScheduleState::None, std::memory_order_release);
             }
         }
 
@@ -65,56 +99,87 @@ namespace FirstEngine {
                 return false;
             }
 
-            ResourceState currentState = m_State.load(std::memory_order_acquire);
+            ScheduleState scheduleState = m_ScheduleState.load(std::memory_order_acquire);
             
+            // No operation scheduled
+            if (scheduleState == ScheduleState::None) {
+                return false;
+            }
+
             // Process scheduled create
-            if (currentState == ResourceState::ScheduledCreate) {
-                m_State.store(ResourceState::Creating, std::memory_order_release);
+            if (scheduleState == ScheduleState::ScheduledCreate) {
+                // Clear schedule state first to prevent re-scheduling during operation
+                m_ScheduleState.store(ScheduleState::None, std::memory_order_release);
+                m_OperationState.store(OperationState::Creating, std::memory_order_release);
                 
-                // Set device (protected member, can be accessed directly in implementation)
+                // Set device
                 m_Device = device;
                 
+                // Perform creation
                 bool success = DoCreate(device);
+                
                 if (success) {
-                    m_State.store(ResourceState::Created, std::memory_order_release);
+                    m_ResourceState.store(ResourceState::Created, std::memory_order_release);
                 } else {
-                    m_State.store(ResourceState::Uninitialized, std::memory_order_release);
+                    // Creation failed, reset to uninitialized
+                    m_ResourceState.store(ResourceState::Uninitialized, std::memory_order_release);
                     m_Device = nullptr;
                 }
+                
+                // Clear operation state
+                m_OperationState.store(OperationState::Idle, std::memory_order_release);
                 return true;
             }
             
             // Process scheduled update
-            if (currentState == ResourceState::ScheduledUpdate) {
-                m_State.store(ResourceState::Updating, std::memory_order_release);
+            if (scheduleState == ScheduleState::ScheduledUpdate) {
+                // Clear schedule state first
+                m_ScheduleState.store(ScheduleState::None, std::memory_order_release);
+                m_OperationState.store(OperationState::Updating, std::memory_order_release);
                 
+                // Perform update
                 bool success = DoUpdate(device);
-                if (success) {
-                    m_State.store(ResourceState::Created, std::memory_order_release);
-                } else {
-                    // Update failed, but resource might still be usable
-                    m_State.store(ResourceState::Created, std::memory_order_release);
-                }
+                
+                // Update operation doesn't change resource state (stays Created)
+                // If update fails, resource might still be usable, so we keep it as Created
+                (void)success; // Suppress unused variable warning
+                
+                // Clear operation state
+                m_OperationState.store(OperationState::Idle, std::memory_order_release);
                 return true;
             }
             
             // Process scheduled destroy
-            if (currentState == ResourceState::ScheduledDestroy) {
-                m_State.store(ResourceState::Destroying, std::memory_order_release);
+            if (scheduleState == ScheduleState::ScheduledDestroy) {
+                // Clear schedule state first
+                m_ScheduleState.store(ScheduleState::None, std::memory_order_release);
+                m_OperationState.store(OperationState::Destroying, std::memory_order_release);
                 
+                // Perform destruction
                 DoDestroy();
                 
-                m_State.store(ResourceState::Destroyed, std::memory_order_release);
+                // Update resource state
+                m_ResourceState.store(ResourceState::Destroyed, std::memory_order_release);
                 m_Device = nullptr;
+                
+                // Clear operation state
+                m_OperationState.store(OperationState::Idle, std::memory_order_release);
                 return true;
             }
             
-            return false; // No scheduled operation
+            return false; // Unknown schedule state (should not happen)
         }
 
+        void IRenderResource::SetResourceState(ResourceState state) {
+            m_ResourceState.store(state, std::memory_order_release);
+        }
 
-        void IRenderResource::SetState(ResourceState state) {
-            m_State.store(state, std::memory_order_release);
+        void IRenderResource::SetScheduleState(ScheduleState state) {
+            m_ScheduleState.store(state, std::memory_order_release);
+        }
+
+        void IRenderResource::SetOperationState(OperationState state) {
+            m_OperationState.store(state, std::memory_order_release);
         }
 
     } // namespace Renderer

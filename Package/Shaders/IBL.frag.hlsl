@@ -13,17 +13,8 @@ struct FragmentOutput {
     float4 color : SV_Target0;
 };
 
-Texture2D albedoMap : register(t0);
-Texture2D normalMap : register(t1);
-Texture2D metallicRoughnessMap : register(t2);
-TextureCube irradianceMap : register(t3);
-TextureCube prefilterMap : register(t4);
-Texture2D brdfLUT : register(t5);
-
-SamplerState textureSampler : register(s0);
-SamplerState cubeSampler : register(s1);
-
-cbuffer MaterialParams : register(b0) {
+// Uniform Buffers - Set 0, Binding 0 and 1
+[[vk::binding(0, 0)]] cbuffer MaterialParams {
     float4 baseColor;
     float metallic;
     float roughness;
@@ -33,10 +24,22 @@ cbuffer MaterialParams : register(b0) {
     int useMetallicRoughnessMap;
 };
 
-cbuffer IBLParams : register(b1) {
+[[vk::binding(1, 0)]] cbuffer IBLParams {
     float iblIntensity;
     float prefilterLOD;
 };
+
+// Separate Images - Set 0, Binding 2, 3, 4, 5, 6, 7
+[[vk::binding(2, 0)]] Texture2D albedoMap;
+[[vk::binding(3, 0)]] Texture2D normalMap;
+[[vk::binding(4, 0)]] Texture2D metallicRoughnessMap;
+[[vk::binding(5, 0)]] TextureCube irradianceMap;
+[[vk::binding(6, 0)]] TextureCube prefilterMap;
+[[vk::binding(7, 0)]] Texture2D brdfLUT;
+
+// Separate Samplers - Set 0, Binding 8, 9
+[[vk::binding(8, 0)]] SamplerState textureSampler;
+[[vk::binding(9, 0)]] SamplerState cubeSampler;
 
 // PBR Functions
 float3 fresnelSchlickRoughness(float cosTheta, float3 F0, float roughness) {

@@ -11,6 +11,7 @@ namespace fs = std::experimental::filesystem;
 #endif
 #include <algorithm>
 #include <cctype>
+#include <iostream>
 
 namespace FirstEngine {
     namespace Resources {
@@ -25,22 +26,16 @@ namespace FirstEngine {
             // Get resolved path from ResourceManager (internal cache usage)
             std::string resolvedPath = resourceManager.GetResolvedPath(id);
             if (resolvedPath.empty()) {
+                std::cerr << "MaterialLoader::Load: Failed to get resolved path for material ID " << id << std::endl;
+                std::cerr << "  Make sure the material is registered in resource_manifest.json" << std::endl;
                 return result;
             }
-
-            // Check cache first (ResourceManager internal cache)
-            ResourceHandle cached = resourceManager.Get(id);
-            if (cached.material) {
-                // Return cached data
-                IMaterial* material = cached.material;
-                result.metadata = material->GetMetadata();
-                result.shaderName = material->GetShaderName();
-                
-                // Copy parameters (would need to reconstruct from parameter data)
-                // For now, just mark success
-                result.success = true;
-                return result;
-            }
+             
+            // NOTE: Do NOT check cache here - ResourceManager handles caching
+            // If we check cache here, we might return incomplete metadata (before dependencies are loaded)
+            // ResourceManager::LoadInternal stores resource in cache BEFORE calling Resource::Load
+            // to prevent circular dependencies, but the resource is not fully loaded yet
+            // Cache checking should only happen at ResourceManager level, not in Loader
 
             // Resolve XML file path
             std::string xmlFilePath = resolvedPath;

@@ -25,6 +25,8 @@ set(RESOURCES_SOURCES
     MeshLoader.cpp
     ModelLoader.cpp
     ResourceXMLParser.cpp
+    VertexFormat.cpp
+    VertexShaderMatcher.cpp
     Scene.cpp
     Component.cpp
     SceneLevel.cpp
@@ -36,6 +38,7 @@ set(RESOURCES_SOURCES
     ResourceProvider.cpp
     ModelComponent.cpp
     EffectComponent.cpp
+    CameraComponent.cpp
     ResourceDependency.cpp
     ResourceID.cpp
 )
@@ -67,6 +70,8 @@ set(RESOURCES_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceDependency.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceID.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MaterialParameter.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/VertexFormat.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/VertexShaderMatcher.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/Icon.h
 )
 
@@ -107,12 +112,16 @@ source_group("Loader" FILES
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/MeshLoader.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ModelLoader.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ResourceXMLParser.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/VertexFormat.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/VertexShaderMatcher.h
     ImageLoader.cpp
     TextureLoader.cpp
     MaterialLoader.cpp
     MeshLoader.cpp
     ModelLoader.cpp
     ResourceXMLParser.cpp
+    VertexFormat.cpp
+    VertexShaderMatcher.cpp
 )
 
 # Scene management
@@ -123,11 +132,14 @@ source_group("Scene" FILES
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/ModelComponent.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/LightComponent.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/EffectComponent.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Resources/CameraComponent.h
     Scene.cpp
     SceneLevel.cpp
     Component.cpp
     ModelComponent.cpp
     EffectComponent.cpp
+    CameraComponent.cpp
+    CameraComponent.cpp
 )
 
 # Common headers

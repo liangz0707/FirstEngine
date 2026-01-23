@@ -4,17 +4,14 @@
 #include "FirstEngine/Resources/ResourceID.h"
 #include "FirstEngine/Resources/ResourceTypes.h"
 #include "FirstEngine/Resources/ResourceDependency.h"
+#include "FirstEngine/Resources/MeshLoader.h"  // For Vertex definition
 #include <string>
 #include <vector>
 #include <glm/glm.hpp>
 
 namespace FirstEngine {
     namespace Resources {
-        FE_RESOURCES_API struct Vertex {
-            glm::vec3 position;
-            glm::vec3 normal;
-            glm::vec2 texCoord;
-        };
+        // Vertex is now defined in MeshLoader.h
 
         FE_RESOURCES_API struct Mesh {
             std::vector<Vertex> vertices;
@@ -62,7 +59,8 @@ namespace FirstEngine {
                            const std::vector<ResourceDependency>& dependencies);
 
             // Utility function: Load model geometry from file (for tools/import, not used by Resource system)
-            // Note: This is a legacy utility function. MeshLoader now handles mesh geometry loading.
+            // NOTE: This is a legacy utility function. MeshLoader now handles mesh geometry loading.
+            // TODO: Consider deprecating this in a future version - use MeshLoader instead
             static Model LoadFromFile(const std::string& filepath);
 
             static bool IsFormatSupported(const std::string& filepath);

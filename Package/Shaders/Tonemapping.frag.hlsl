@@ -10,14 +10,18 @@ struct FragmentOutput {
     float4 color : SV_Target0;
 };
 
-Texture2D hdrTexture : register(t0);
-SamplerState textureSampler : register(s0);
-
-cbuffer TonemappingParams : register(b0) {
+// Uniform Buffer - Set 0, Binding 0
+[[vk::binding(0, 0)]] cbuffer TonemappingParams {
     float exposure;
     float gamma;
     int tonemapMode; // 0: Reinhard, 1: ACES, 2: Uncharted2, 3: None
 };
+
+// Separate Image - Set 0, Binding 1
+[[vk::binding(1, 0)]] Texture2D hdrTexture;
+
+// Separate Sampler - Set 0, Binding 2
+[[vk::binding(2, 0)]] SamplerState textureSampler;
 
 // Reinhard tone mapping
 float3 reinhard(float3 color) {

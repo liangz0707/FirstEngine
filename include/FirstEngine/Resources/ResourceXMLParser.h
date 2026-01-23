@@ -54,7 +54,7 @@ namespace FirstEngine {
             // Mesh-specific data
             struct MeshData {
                 std::string meshFile;  // Source mesh file (fbx, obj, etc.) - similar to TextureData::imageFile
-                uint32_t vertexStride = 0;  // Vertex stride (optional, can be inferred from file)
+                // Note: vertexStride is no longer stored in XML - it's calculated from mesh file data
             };
             bool GetMeshData(MeshData& outData) const;
 

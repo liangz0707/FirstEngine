@@ -1,4 +1,4 @@
-﻿#include "FirstEngine/Core/Application.h"
+#include "FirstEngine/Core/Application.h"
 #include <chrono>
 #include <iostream>
 
@@ -40,8 +40,8 @@ namespace FirstEngine {
                 OnUpdate(deltaTime);
                 OnPrepareFrameGraph(); // Build FrameGraph execution plan (before OnRender)
                 OnRender();  // Collect render data
-                OnCreateResources(); // Create GPU resources (after OnRender, processes scheduled resources)
-                OnSubmit();  // Submit command buffers
+                OnCreateResources(); // Create GPU resources (after OnRender, processes scheduled create/update operations)
+                OnSubmit();  // Submit command buffers (ProcessResources for destruction is called inside SubmitFrame after submission)
             }
         }
     }

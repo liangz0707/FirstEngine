@@ -47,15 +47,15 @@ public:
     }
 
     ~RenderApp() override {
-        // 等待 GPU 完成
+        // Wait for GPU to complete
         if (m_pRenderContext && m_pRenderContext->GetDevice()) {
             m_pRenderContext->GetDevice()->WaitIdle();
         }
 
-        // 销毁 swapchain（窗口相关，RenderApp 管理）
+        // Destroy swapchain (window-related, managed by RenderApp)
         m_Swapchain.reset();
 
-        // 关闭并销毁 RenderContext（它会清理所有内部管理的资源）
+        // Shutdown and destroy RenderContext (it will clean up all internally managed resources)
         if (m_pRenderContext) {
             m_pRenderContext->ShutdownEngine();
             delete m_pRenderContext;
@@ -70,28 +70,28 @@ public:
         FirstEngine::Core::RenderDocHelper::Initialize();
 #endif
 
-        // 创建 RenderContext 实例
+        // Create RenderContext instance
         m_pRenderContext = new FirstEngine::Renderer::RenderContext();
 
-        // 获取窗口句柄
+        // Get window handle
         void* windowHandle = GetWindow() ? GetWindow()->GetHandle() : nullptr;
         if (!windowHandle) {
             std::cerr << "Error: No window handle available!" << std::endl;
             return false;
         }
 
-        // 获取窗口尺寸
+        // Get window dimensions
         int width = GetWindow() ? GetWindow()->GetWidth() : 1280;
         int height = GetWindow() ? GetWindow()->GetHeight() : 720;
 
-        // 使用 RenderContext::InitializeForWindow 初始化渲染引擎
-        // 这会创建 device、pipeline、frameGraph、同步对象、scene 等
+        // Use RenderContext::InitializeForWindow to initialize rendering engine
+        // This creates device, pipeline, frameGraph, sync objects, scene, etc.
         if (!m_pRenderContext->InitializeForWindow(windowHandle, width, height)) {
             std::cerr << "Failed to initialize RenderContext!" << std::endl;
             return false;
         }
 
-        // 创建 swapchain（窗口相关，RenderApp 管理）
+        // Create swapchain (window-related, managed by RenderApp)
         if (GetWindow()) {
             const auto& resolution = m_pRenderContext->GetRenderConfig().GetResolution();
             FirstEngine::RHI::SwapchainDescription swapchainDesc;
@@ -104,7 +104,7 @@ public:
             }
         }
 
-        // 加载场景（如果存在）
+        // Load scene (if exists)
         FirstEngine::Resources::ResourceManager& resourceManager = FirstEngine::Resources::ResourceManager::GetInstance();
 
         // Helper function to resolve path (try multiple locations)
@@ -195,7 +195,7 @@ public:
             std::cout << "Will register resources on demand." << std::endl;
         }
 
-        // 加载场景（如果存在）
+        // Load scene (if exists)
         std::string scenePath = resolvePath("build/Package/Scenes/example_scene.json");
         if (fs::exists(scenePath)) {
             if (m_pRenderContext->LoadScene(scenePath)) {
@@ -227,7 +227,7 @@ protected:
         FirstEngine::Core::RenderDocHelper::BeginFrame();
 #endif
 
-        // 使用 RenderContext 构建 FrameGraph（所有参数都从内部获取）
+        // Use RenderContext to build FrameGraph (all parameters are obtained internally)
         if (!m_pRenderContext->BeginFrame()) {
             std::cerr << "Failed to begin frame in RenderContext!" << std::endl;
             return;
@@ -239,7 +239,10 @@ protected:
             return;
         }
 
-        // 使用 RenderContext 处理资源（device 参数为 nullptr 时使用内部管理的 device）
+        // Use RenderContext to process resources (create/update operations only)
+        // Destroy operations are handled in SubmitFrame after frame submission
+        // This ensures resources are not destroyed while still in use by command buffers
+        // Note: ProcessResources now handles create/update and destroy separately
         m_pRenderContext->ProcessResources(nullptr, 0);
     }
 
@@ -248,7 +251,7 @@ protected:
             return;
         }
 
-        // 更新渲染配置（如果窗口尺寸改变）
+        // Update render config (if window size changed)
         if (GetWindow()) {
             m_pRenderContext->SetRenderConfig(
                 GetWindow()->GetWidth(),
@@ -257,7 +260,7 @@ protected:
             );
         }
 
-        // 使用 RenderContext 执行 FrameGraph（所有参数都从内部获取）
+        // Use RenderContext to execute FrameGraph (all parameters are obtained internally)
         if (!m_pRenderContext->ExecuteFrameGraph()) {
             std::cerr << "Failed to execute FrameGraph in RenderContext!" << std::endl;
             return;
@@ -269,12 +272,12 @@ protected:
             return;
         }
 
-        // 使用 RenderContext 提交渲染（只需要提供 swapchain，其他都从内部获取）
+        // Use RenderContext to submit rendering (only need to provide swapchain, everything else is obtained internally)
         FirstEngine::Renderer::RenderContext::RenderParams params;
         params.swapchain = m_Swapchain.get();
         
         if (!m_pRenderContext->SubmitFrame(params)) {
-            // 提交失败（可能是图像获取失败或需要重建 swapchain）
+            // Submit failed (may be image acquisition failure or need to recreate swapchain)
             return;
         }
 
@@ -294,15 +297,15 @@ protected:
             return;
         }
 
-        // 更新 RenderContext 的渲染配置
+        // Update RenderContext's render config
         m_pRenderContext->SetRenderConfig(width, height, 1.0f);
 
-        // 等待 GPU 完成
+        // Wait for GPU to complete
         auto* device = m_pRenderContext->GetDevice();
         if (device) {
             device->WaitIdle();
 
-            // 重建 swapchain（窗口相关，RenderApp 管理）
+            // Recreate swapchain (window-related, managed by RenderApp)
             if (m_Swapchain) {
                 try {
                     if (!m_Swapchain->Recreate()) {
@@ -314,7 +317,7 @@ protected:
                     return;
                 }
             } else if (GetWindow()) {
-                // 如果 swapchain 不存在，创建它
+                // If swapchain doesn't exist, create it
                 try {
                     FirstEngine::RHI::SwapchainDescription swapchainDesc;
                     swapchainDesc.width = width;
@@ -334,10 +337,10 @@ protected:
     }
 
 private:
-    // RenderContext 指针（管理所有渲染相关资源：device、pipeline、frameGraph、scene、同步对象等）
+    // RenderContext pointer (manages all rendering-related resources: device, pipeline, frameGraph, scene, sync objects, etc.)
     FirstEngine::Renderer::RenderContext* m_pRenderContext = nullptr;
     
-    // Swapchain（窗口相关，RenderApp 管理）
+    // Swapchain (window-related, managed by RenderApp)
     std::unique_ptr<FirstEngine::RHI::ISwapchain> m_Swapchain;
     
     std::chrono::high_resolution_clock::time_point m_LastTime;

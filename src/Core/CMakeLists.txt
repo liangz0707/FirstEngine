@@ -10,6 +10,7 @@ set(CORE_SOURCES
     Thread.cpp
     ThreadManager.cpp
     Barrier.cpp
+    ConfigFile.cpp
     # RenderDoc.cpp - removed, implementation is now in header file (RenderDoc.h)
     # This avoids circular dependency: EditorAPI can use RenderDocHelper without linking FirstEngine_Core
     # EditorAPI.cpp - added directly to avoid circular dependency
@@ -29,6 +30,7 @@ set(CORE_HEADERS
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/Barrier.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/MathTypes.h
     ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/RenderDoc.h
+    ${CMAKE_SOURCE_DIR}/include/FirstEngine/Core/ConfigFile.h
 )
 
 # Create shared library

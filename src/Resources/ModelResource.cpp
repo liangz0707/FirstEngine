@@ -4,6 +4,7 @@
 #include "FirstEngine/Resources/MeshResource.h"
 #include "FirstEngine/Resources/MaterialResource.h"
 #include "FirstEngine/Resources/ModelLoader.h"
+#include "FirstEngine/Resources/MeshLoader.h"  // For Vertex definition
 #include <memory>
 #include <stdexcept>
 #if __has_include(<filesystem>)
@@ -13,6 +14,7 @@ namespace fs = std::filesystem;
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 #endif
+#include <iostream>
 
 namespace FirstEngine {
     namespace Resources {
@@ -69,46 +71,102 @@ namespace FirstEngine {
             m_Metadata = loadResult.metadata;
             m_Metadata.resourceID = id; // Ensure ID matches
 
-            // Load dependencies from metadata.dependencies
-            // Dependencies contain Mesh, Material, and Texture ResourceIDs
+            // Clear existing data
             m_Meshes.clear();
             m_Materials.clear();
             m_MeshNames.clear();
 
+            // Load dependencies using unified LoadDependencies() method
+            // This ensures consistent dependency loading logic across all Resource types
+            LoadDependencies();
+
+            // Verify that at least one mesh was loaded
+            if (m_Meshes.empty()) {
+                std::cerr << "ModelResource::Load: Model ID " << id << " has no meshes after loading dependencies" << std::endl;
+                std::cerr << "  Total dependencies: " << m_Metadata.dependencies.size() << std::endl;
+                size_t meshDepCount = 0;
+                for (const auto& dep : m_Metadata.dependencies) {
+                    if (dep.type == ResourceDependency::DependencyType::Mesh) {
+                        meshDepCount++;
+                    }
+                }
+                std::cerr << "  Mesh dependencies: " << meshDepCount << std::endl;
+                return ResourceLoadResult::InvalidFormat;
+            }
+
+            m_Metadata.isLoaded = true;
+            m_Metadata.fileSize = 0; // Model file size is not tracked (model is logical)
+
+            return ResourceLoadResult::Success;
+        }
+
+        void ModelResource::LoadDependencies() {
             // Get ResourceManager singleton for loading dependencies
             ResourceManager& resourceManager = ResourceManager::GetInstance();
 
             // Load and connect dependencies based on type
             // Use ResourceManager::Load which internally calls the appropriate Resource::Load method
             // (e.g., ModelResource::Load for models, MeshResource::Load for meshes, etc.)
+            // ResourceManager's cache mechanism prevents duplicate loading
+            size_t meshCount = 0;
+            size_t materialCount = 0;
+            
             for (const auto& dep : m_Metadata.dependencies) {
                 if (dep.resourceID == InvalidResourceID) {
-                    continue;
+                    std::cerr << "ModelResource::LoadDependencies: Skipping invalid dependency (ID=0) for model ID " << m_Metadata.resourceID << std::endl;
+                    continue; // Skip invalid dependencies
                 }
 
                 // ResourceManager::Load internally uses ModelResource::Load, MeshResource::Load, etc.
-                ResourceHandle depHandle = resourceManager.Load(dep.resourceID);
+                // If the dependency is already loaded, it will be returned from cache (with ref count incremented)
+                ResourceHandle depHandle;
+                try {
+                    depHandle = resourceManager.Load(dep.resourceID);
+                } catch (const std::exception& e) {
+                    std::cerr << "ModelResource::LoadDependencies: Exception loading dependency ID " << dep.resourceID << " for model ID " << m_Metadata.resourceID << ": " << e.what() << std::endl;
+                    continue;
+                } catch (...) {
+                    std::cerr << "ModelResource::LoadDependencies: Unknown exception loading dependency ID " << dep.resourceID << " for model ID " << m_Metadata.resourceID << std::endl;
+                    continue;
+                }
+                
+                if (!depHandle.ptr) {
+                    std::cerr << "ModelResource::LoadDependencies: Failed to load dependency ID " << dep.resourceID << " (type=" << static_cast<int>(dep.type) << ") for model ID " << m_Metadata.resourceID << std::endl;
+                    continue; // Skip failed dependencies
+                }
                 
                 switch (dep.type) {
                     case ResourceDependency::DependencyType::Mesh: {
-                        if (depHandle.mesh && !dep.slot.empty()) {
-                            // Slot contains mesh index
-                            try {
-                                uint32_t meshIndex = static_cast<uint32_t>(std::stoul(dep.slot));
-                                
-                                // Ensure we have enough slots
-                                while (m_Meshes.size() <= meshIndex) {
-                                    m_Meshes.push_back(nullptr);
-                                    m_Materials.push_back(nullptr);
-                                    m_MeshNames.push_back("");
-                                }
-                                
-                                depHandle.mesh->AddRef();
-                                m_Meshes[meshIndex] = depHandle.mesh;
-                            } catch (...) {
-                                // Invalid slot index, skip
-                            }
+                        if (!depHandle.mesh) {
+                            std::cerr << "ModelResource::LoadDependencies: Dependency ID " << dep.resourceID << " is not a mesh for model ID " << m_Metadata.resourceID << std::endl;
+                            break;
                         }
+                        
+                        // Slot contains mesh index - if empty, use current mesh count
+                        uint32_t meshIndex = 0;
+                        if (!dep.slot.empty()) {
+                            try {
+                                meshIndex = static_cast<uint32_t>(std::stoul(dep.slot));
+                            } catch (...) {
+                                std::cerr << "ModelResource::LoadDependencies: Invalid mesh slot index: " << dep.slot << ", using index " << meshCount << std::endl;
+                                meshIndex = static_cast<uint32_t>(meshCount);
+                            }
+                        } else {
+                            meshIndex = static_cast<uint32_t>(meshCount);
+                        }
+                        
+                        // Ensure we have enough slots
+                        while (m_Meshes.size() <= meshIndex) {
+                            m_Meshes.push_back(nullptr);
+                            m_Materials.push_back(nullptr);
+                            m_MeshNames.push_back("");
+                        }
+                        
+                        // AddRef is already called by ResourceManager::Load
+                        // But we need to add another ref since we're storing it
+                        depHandle.mesh->AddRef();
+                        m_Meshes[meshIndex] = depHandle.mesh;
+                        meshCount++;
                         break;
                     }
                     case ResourceDependency::DependencyType::Material: {
@@ -126,7 +184,7 @@ namespace FirstEngine {
                                 
                                 SetMaterial(materialIndex, depHandle.material);
                             } catch (...) {
-                                // Invalid slot index, skip
+                                std::cerr << "ModelResource::LoadDependencies: Invalid material slot index: " << dep.slot << std::endl;
                             }
                         }
                         break;
@@ -138,66 +196,8 @@ namespace FirstEngine {
                         break;
                     }
                     default:
+                        // Unknown dependency type, skip
                         break;
-                }
-            }
-
-            m_Metadata.isLoaded = true;
-            m_Metadata.fileSize = 0; // Model file size is not tracked (model is logical)
-
-            return ResourceLoadResult::Success;
-        }
-
-        ResourceLoadResult ModelResource::LoadFromMemory(const void* data, size_t size) {
-            // TODO: Implement model loading from memory
-            (void)data;
-            (void)size;
-            return ResourceLoadResult::UnknownError;
-        }
-
-        void ModelResource::LoadDependencies() {
-            // Get ResourceManager singleton
-            ResourceManager& resourceManager = ResourceManager::GetInstance();
-
-            // Load all dependencies from metadata using ResourceID only
-            for (const auto& dep : m_Metadata.dependencies) {
-                if (dep.resourceID == InvalidResourceID) {
-                    continue; // Skip invalid dependencies
-                }
-
-                ResourceType depType = dep.type == ResourceDependency::DependencyType::Mesh ? ResourceType::Mesh :
-                                      dep.type == ResourceDependency::DependencyType::Material ? ResourceType::Material :
-                                      dep.type == ResourceDependency::DependencyType::Texture ? ResourceType::Texture :
-                                      dep.type == ResourceDependency::DependencyType::Model ? ResourceType::Model :
-                                      ResourceType::Unknown;
-
-                if (depType != ResourceType::Unknown) {
-                    // Load dependency by ID (ResourceManager singleton handles path resolution internally)
-                    // ResourceManager::Load internally uses ModelResource::Load, MeshResource::Load, etc.
-                    ResourceHandle depHandle = resourceManager.Load(dep.resourceID);
-                    
-                    if (depHandle.ptr) {
-                        // Set the loaded resource to the appropriate slot
-                        switch (depType) {
-                            case ResourceType::Material: {
-                                if (!dep.slot.empty()) {
-                                    try {
-                                        uint32_t meshIndex = static_cast<uint32_t>(std::stoul(dep.slot));
-                                        SetMaterial(meshIndex, depHandle.material);
-                                    } catch (...) {
-                                        // Invalid slot index, skip
-                                    }
-                                }
-                                break;
-                            }
-                            case ResourceType::Texture: {
-                                SetTexture(dep.slot.empty() ? "lightmap" : dep.slot, depHandle.texture);
-                                break;
-                            }
-                            default:
-                                break;
-                        }
-                    }
                 }
             }
         }

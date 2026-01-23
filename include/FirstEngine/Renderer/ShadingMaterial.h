@@ -95,6 +95,7 @@ namespace FirstEngine {
                 uint32_t binding;
                 std::string name;
                 RHI::IImage* texture = nullptr; // Texture reference (not owned)
+                RHI::DescriptorType descriptorType = RHI::DescriptorType::CombinedImageSampler; // Descriptor type from shader reflection
             };
             TextureBinding* GetTextureBinding(uint32_t set, uint32_t binding);
             const std::vector<TextureBinding>& GetTextureBindings() const { return m_TextureBindings; }

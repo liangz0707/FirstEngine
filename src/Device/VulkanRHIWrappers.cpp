@@ -12,12 +12,83 @@ namespace FirstEngine {
         // Type conversion function implementations
         VkFormat ConvertFormat(RHI::Format format) {
             switch (format) {
+                // 8-bit formats
+                case RHI::Format::R8_UNORM: return VK_FORMAT_R8_UNORM;
+                case RHI::Format::R8_SNORM: return VK_FORMAT_R8_SNORM;
+                case RHI::Format::R8_UINT: return VK_FORMAT_R8_UINT;
+                case RHI::Format::R8_SINT: return VK_FORMAT_R8_SINT;
+                case RHI::Format::R8G8_UNORM: return VK_FORMAT_R8G8_UNORM;
+                case RHI::Format::R8G8_SNORM: return VK_FORMAT_R8G8_SNORM;
+                case RHI::Format::R8G8_UINT: return VK_FORMAT_R8G8_UINT;
+                case RHI::Format::R8G8_SINT: return VK_FORMAT_R8G8_SINT;
                 case RHI::Format::R8G8B8A8_UNORM: return VK_FORMAT_R8G8B8A8_UNORM;
+                case RHI::Format::R8G8B8A8_SNORM: return VK_FORMAT_R8G8B8A8_SNORM;
+                case RHI::Format::R8G8B8A8_UINT: return VK_FORMAT_R8G8B8A8_UINT;
+                case RHI::Format::R8G8B8A8_SINT: return VK_FORMAT_R8G8B8A8_SINT;
                 case RHI::Format::R8G8B8A8_SRGB: return VK_FORMAT_R8G8B8A8_SRGB;
                 case RHI::Format::B8G8R8A8_UNORM: return VK_FORMAT_B8G8R8A8_UNORM;
                 case RHI::Format::B8G8R8A8_SRGB: return VK_FORMAT_B8G8R8A8_SRGB;
+                
+                // 16-bit integer formats
+                case RHI::Format::R16_UINT: return VK_FORMAT_R16_UINT;
+                case RHI::Format::R16_SINT: return VK_FORMAT_R16_SINT;
+                case RHI::Format::R16_UNORM: return VK_FORMAT_R16_UNORM;
+                case RHI::Format::R16_SNORM: return VK_FORMAT_R16_SNORM;
+                case RHI::Format::R16G16_UINT: return VK_FORMAT_R16G16_UINT;
+                case RHI::Format::R16G16_SINT: return VK_FORMAT_R16G16_SINT;
+                case RHI::Format::R16G16_UNORM: return VK_FORMAT_R16G16_UNORM;
+                case RHI::Format::R16G16_SNORM: return VK_FORMAT_R16G16_SNORM;
+                case RHI::Format::R16G16B16_UINT: return VK_FORMAT_R16G16B16_UINT;
+                case RHI::Format::R16G16B16_SINT: return VK_FORMAT_R16G16B16_SINT;
+                case RHI::Format::R16G16B16_UNORM: return VK_FORMAT_R16G16B16_UNORM;
+                case RHI::Format::R16G16B16_SNORM: return VK_FORMAT_R16G16B16_SNORM;
+                case RHI::Format::R16G16B16A16_UINT: return VK_FORMAT_R16G16B16A16_UINT;
+                case RHI::Format::R16G16B16A16_SINT: return VK_FORMAT_R16G16B16A16_SINT;
+                case RHI::Format::R16G16B16A16_UNORM: return VK_FORMAT_R16G16B16A16_UNORM;
+                case RHI::Format::R16G16B16A16_SNORM: return VK_FORMAT_R16G16B16A16_SNORM;
+                
+                // 16-bit float formats (half float)
+                case RHI::Format::R16_SFLOAT: return VK_FORMAT_R16_SFLOAT;
+                case RHI::Format::R16G16_SFLOAT: return VK_FORMAT_R16G16_SFLOAT;
+                case RHI::Format::R16G16B16_SFLOAT: return VK_FORMAT_R16G16B16_SFLOAT;
+                case RHI::Format::R16G16B16A16_SFLOAT: return VK_FORMAT_R16G16B16A16_SFLOAT;
+                
+                // 32-bit integer formats
+                case RHI::Format::R32_UINT: return VK_FORMAT_R32_UINT;
+                case RHI::Format::R32_SINT: return VK_FORMAT_R32_SINT;
+                case RHI::Format::R32G32_UINT: return VK_FORMAT_R32G32_UINT;
+                case RHI::Format::R32G32_SINT: return VK_FORMAT_R32G32_SINT;
+                case RHI::Format::R32G32B32_UINT: return VK_FORMAT_R32G32B32_UINT;
+                case RHI::Format::R32G32B32_SINT: return VK_FORMAT_R32G32B32_SINT;
+                case RHI::Format::R32G32B32A32_UINT: return VK_FORMAT_R32G32B32A32_UINT;
+                case RHI::Format::R32G32B32A32_SINT: return VK_FORMAT_R32G32B32A32_SINT;
+                
+                // 32-bit float formats (full float)
+                case RHI::Format::R32_SFLOAT: return VK_FORMAT_R32_SFLOAT;
+                case RHI::Format::R32G32_SFLOAT: return VK_FORMAT_R32G32_SFLOAT;
+                case RHI::Format::R32G32B32_SFLOAT: return VK_FORMAT_R32G32B32_SFLOAT;
+                case RHI::Format::R32G32B32A32_SFLOAT: return VK_FORMAT_R32G32B32A32_SFLOAT;
+                
+                // 64-bit integer formats
+                case RHI::Format::R64_UINT: return VK_FORMAT_R64_UINT;
+                case RHI::Format::R64_SINT: return VK_FORMAT_R64_SINT;
+                case RHI::Format::R64G64_UINT: return VK_FORMAT_R64G64_UINT;
+                case RHI::Format::R64G64_SINT: return VK_FORMAT_R64G64_SINT;
+                case RHI::Format::R64G64B64_UINT: return VK_FORMAT_R64G64B64_UINT;
+                case RHI::Format::R64G64B64_SINT: return VK_FORMAT_R64G64B64_SINT;
+                case RHI::Format::R64G64B64A64_UINT: return VK_FORMAT_R64G64B64A64_UINT;
+                case RHI::Format::R64G64B64A64_SINT: return VK_FORMAT_R64G64B64A64_SINT;
+                
+                // 64-bit float formats (double)
+                case RHI::Format::R64_SFLOAT: return VK_FORMAT_R64_SFLOAT;
+                case RHI::Format::R64G64_SFLOAT: return VK_FORMAT_R64G64_SFLOAT;
+                case RHI::Format::R64G64B64_SFLOAT: return VK_FORMAT_R64G64B64_SFLOAT;
+                case RHI::Format::R64G64B64A64_SFLOAT: return VK_FORMAT_R64G64B64A64_SFLOAT;
+                
+                // Depth formats
                 case RHI::Format::D32_SFLOAT: return VK_FORMAT_D32_SFLOAT;
                 case RHI::Format::D24_UNORM_S8_UINT: return VK_FORMAT_D24_UNORM_S8_UINT;
+                
                 default: return VK_FORMAT_UNDEFINED;
             }
         }
@@ -117,7 +188,8 @@ namespace FirstEngine {
 
         VkImageLayout ConvertImageLayout(RHI::Format format) {
             // Temporary implementation: infer layout from format
-            // TODO: Should use dedicated Layout enum
+            // TODO: Create dedicated Layout enum and use it instead of Format enum
+            // This is a design issue - Format and Layout are different concepts
             if (format == RHI::Format::Undefined) {
                 return VK_IMAGE_LAYOUT_UNDEFINED;
             }
@@ -167,7 +239,8 @@ namespace FirstEngine {
 
         // VulkanCommandBuffer implementation
         VulkanCommandBuffer::VulkanCommandBuffer(DeviceContext* context)
-            : m_Context(context), m_VkCommandBuffer(VK_NULL_HANDLE), m_IsRecording(false), m_CurrentPipelineLayout(VK_NULL_HANDLE) {
+            : m_Context(context), m_VkCommandBuffer(VK_NULL_HANDLE), m_IsRecording(false), 
+              m_CurrentPipelineLayout(VK_NULL_HANDLE), m_CurrentPipeline(nullptr) {
             VkCommandBufferAllocateInfo allocInfo{};
             allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
             allocInfo.commandPool = context->GetCommandPool();
@@ -208,8 +281,29 @@ namespace FirstEngine {
 
         void VulkanCommandBuffer::BeginRenderPass(RHI::IRenderPass* renderPass, RHI::IFramebuffer* framebuffer,
                                                   const std::vector<float>& clearColors, float clearDepth, uint32_t clearStencil) {
+            if (!renderPass) {
+                std::cerr << "Error: VulkanCommandBuffer::BeginRenderPass: renderPass is nullptr" << std::endl;
+                throw std::runtime_error("BeginRenderPass: renderPass is nullptr");
+            }
+            if (!framebuffer) {
+                std::cerr << "Error: VulkanCommandBuffer::BeginRenderPass: framebuffer is nullptr" << std::endl;
+                throw std::runtime_error("BeginRenderPass: framebuffer is nullptr");
+            }
+
             auto* vkRenderPass = static_cast<VulkanRenderPass*>(renderPass);
             auto* vkFramebuffer = static_cast<VulkanFramebuffer*>(framebuffer);
+
+            VkRenderPass vkRenderPassHandle = vkRenderPass->GetVkRenderPass();
+            if (vkRenderPassHandle == VK_NULL_HANDLE) {
+                std::cerr << "Error: VulkanCommandBuffer::BeginRenderPass: VkRenderPass handle is VK_NULL_HANDLE" << std::endl;
+                throw std::runtime_error("BeginRenderPass: VkRenderPass handle is invalid");
+            }
+
+            VkFramebuffer vkFramebufferHandle = vkFramebuffer->GetVkFramebuffer();
+            if (vkFramebufferHandle == VK_NULL_HANDLE) {
+                std::cerr << "Error: VulkanCommandBuffer::BeginRenderPass: VkFramebuffer handle is VK_NULL_HANDLE" << std::endl;
+                throw std::runtime_error("BeginRenderPass: VkFramebuffer handle is invalid");
+            }
 
             std::vector<VkClearValue> clearValues;
             for (size_t i = 0; i < clearColors.size(); i += 4) {
@@ -229,8 +323,8 @@ namespace FirstEngine {
 
             VkRenderPassBeginInfo renderPassInfo{};
             renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            renderPassInfo.renderPass = vkRenderPass->GetVkRenderPass();
-            renderPassInfo.framebuffer = vkFramebuffer->GetVkFramebuffer();
+            renderPassInfo.renderPass = vkRenderPassHandle;
+            renderPassInfo.framebuffer = vkFramebufferHandle;
             renderPassInfo.renderArea.offset = {0, 0};
             renderPassInfo.renderArea.extent = {vkFramebuffer->GetWidth(), vkFramebuffer->GetHeight()};
             renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
@@ -251,6 +345,8 @@ namespace FirstEngine {
             vkCmdBindPipeline(m_VkCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkPipeline->GetVkPipeline());
             // Store pipeline layout for descriptor set binding
             m_CurrentPipelineLayout = vkPipeline->GetVkPipelineLayout();
+            // Track current pipeline for PushConstants
+            m_CurrentPipeline = pipeline;
         }
 
         void VulkanCommandBuffer::BindVertexBuffers(uint32_t firstBinding, const std::vector<RHI::IBuffer*>& buffers,
@@ -272,20 +368,37 @@ namespace FirstEngine {
 
         void VulkanCommandBuffer::BindDescriptorSets(uint32_t firstSet, const std::vector<void*>& descriptorSets,
                                                      const std::vector<uint32_t>& dynamicOffsets) {
-            if (descriptorSets.empty() || m_CurrentPipelineLayout == VK_NULL_HANDLE) {
+            if (descriptorSets.empty()) {
+                std::cerr << "Warning: VulkanCommandBuffer::BindDescriptorSets: Empty descriptor sets vector" << std::endl;
+                return;
+            }
+            
+            if (m_CurrentPipelineLayout == VK_NULL_HANDLE) {
+                std::cerr << "Error: VulkanCommandBuffer::BindDescriptorSets: Pipeline layout is VK_NULL_HANDLE" << std::endl;
                 return;
             }
 
             // Convert void* descriptor sets to VkDescriptorSet
             std::vector<VkDescriptorSet> vkSets;
             vkSets.reserve(descriptorSets.size());
-            for (void* set : descriptorSets) {
+            for (size_t i = 0; i < descriptorSets.size(); ++i) {
+                void* set = descriptorSets[i];
                 if (set) {
-                    vkSets.push_back(reinterpret_cast<VkDescriptorSet>(set));
+                    VkDescriptorSet vkSet = reinterpret_cast<VkDescriptorSet>(set);
+                    if (vkSet == VK_NULL_HANDLE) {
+                        std::cerr << "Error: VulkanCommandBuffer::BindDescriptorSets: Descriptor set at index " 
+                                  << i << " (set " << (firstSet + i) << ") is VK_NULL_HANDLE" << std::endl;
+                        continue;
+                    }
+                    vkSets.push_back(vkSet);
+                } else {
+                    std::cerr << "Warning: VulkanCommandBuffer::BindDescriptorSets: Descriptor set at index " 
+                              << i << " (set " << (firstSet + i) << ") is nullptr" << std::endl;
                 }
             }
 
             if (vkSets.empty()) {
+                std::cerr << "Error: VulkanCommandBuffer::BindDescriptorSets: No valid descriptor sets to bind" << std::endl;
                 return;
             }
 
@@ -351,10 +464,19 @@ namespace FirstEngine {
                 newVkLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
             } else if (newLayout == RHI::Format::B8G8R8A8_UNORM || newLayout == RHI::Format::R8G8B8A8_UNORM) {
                 // UNORM format: could be COLOR_ATTACHMENT or TRANSFER_DST
-                // If current layout is UNDEFINED, assume TRANSFER_DST (texture upload)
-                // Otherwise, assume COLOR_ATTACHMENT
+                // Check if this is a swapchain image (swapchain images don't have TRANSFER_DST usage)
+                // Swapchain images should go directly to COLOR_ATTACHMENT_OPTIMAL, not TRANSFER_DST
+                bool isSwapchainImage = vkImage->IsSwapchainImage();
+                
                 if (oldVkLayout == VK_IMAGE_LAYOUT_UNDEFINED) {
-                    newVkLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                    if (isSwapchainImage) {
+                        // Swapchain images: UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL
+                        // (swapchain images don't have TRANSFER_DST_BIT usage flag)
+                        newVkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                    } else {
+                        // Regular images: UNDEFINED -> TRANSFER_DST (texture upload)
+                        newVkLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                    }
                 } else if (oldVkLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
                     // Already in TRANSFER_DST, next step is SHADER_READ_ONLY
                     newVkLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -540,9 +662,39 @@ namespace FirstEngine {
                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
         }
 
+        void VulkanCommandBuffer::PushConstants(RHI::IPipeline* pipeline, RHI::ShaderStage stageFlags, uint32_t offset, uint32_t size, const void* data) {
+            if (!data || size == 0) {
+                std::cerr << "Warning: VulkanCommandBuffer::PushConstants: Invalid parameters" << std::endl;
+                return;
+            }
+
+            // Use provided pipeline, or fall back to currently bound pipeline
+            VkPipelineLayout layout = VK_NULL_HANDLE;
+            if (pipeline) {
+                auto* vkPipeline = static_cast<VulkanPipeline*>(pipeline);
+                layout = vkPipeline->GetVkPipelineLayout();
+            } else if (m_CurrentPipeline) {
+                // Use currently bound pipeline if no pipeline provided
+                auto* vkPipeline = static_cast<VulkanPipeline*>(m_CurrentPipeline);
+                layout = vkPipeline->GetVkPipelineLayout();
+            } else {
+                // Try using current pipeline layout directly
+                layout = m_CurrentPipelineLayout;
+            }
+            
+            if (layout == VK_NULL_HANDLE) {
+                std::cerr << "Error: VulkanCommandBuffer::PushConstants: Pipeline layout is VK_NULL_HANDLE. "
+                          << "Ensure a pipeline is bound before calling PushConstants." << std::endl;
+                return;
+            }
+
+            VkShaderStageFlags vkStageFlags = ConvertShaderStageFlags(stageFlags);
+            vkCmdPushConstants(m_VkCommandBuffer, layout, vkStageFlags, offset, size, data);
+        }
+
         // VulkanRenderPass implementation
-        VulkanRenderPass::VulkanRenderPass(DeviceContext* context, VkRenderPass renderPass)
-            : m_Context(context), m_RenderPass(renderPass) {
+        VulkanRenderPass::VulkanRenderPass(DeviceContext* context, VkRenderPass renderPass, uint32_t colorAttachmentCount)
+            : m_Context(context), m_RenderPass(renderPass), m_ColorAttachmentCount(colorAttachmentCount) {
         }
 
         VulkanRenderPass::~VulkanRenderPass() {
@@ -670,12 +822,33 @@ namespace FirstEngine {
 
         RHI::IImageView* VulkanImage::CreateImageView() {
             if (!m_Image) return nullptr;
+            
             VkImageView imageView = m_Image->GetImageView();
             if (imageView == VK_NULL_HANDLE) {
+                // Image view doesn't exist yet, create it
+                // Determine aspect mask based on format
+                VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+                VkFormat format = m_Image->GetFormat();
+                
+                // Check if it's a depth format
+                if (format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
+                    aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+                } else if (format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
+                    aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+                }
+                
                 // Create image view
-                // TODO: Implement image view creation
-                return nullptr;
+                if (!m_Image->CreateImageView(VK_IMAGE_VIEW_TYPE_2D, format, aspectFlags)) {
+                    return nullptr;
+                }
+                
+                imageView = m_Image->GetImageView();
+                if (imageView == VK_NULL_HANDLE) {
+                    return nullptr;
+                }
             }
+            
+            // Create wrapper and store it
             auto view = std::make_unique<VulkanImageView>(m_Context, imageView);
             auto* viewPtr = view.get();
             m_ImageViews.push_back(std::move(view));

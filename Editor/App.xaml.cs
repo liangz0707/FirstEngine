@@ -1,4 +1,5 @@
 using System.Windows;
+using System;
 
 namespace FirstEngineEditor
 {
@@ -8,6 +9,11 @@ namespace FirstEngineEditor
         {
             System.Diagnostics.Debug.WriteLine("OnStartup called!");
             Console.WriteLine("FirstEngine Editor starting...");
+            
+            // Enable RenderDoc support for frame capture
+            // This allows RenderDoc to work even in debug mode
+            Environment.SetEnvironmentVariable("FIRSTENGINE_ENABLE_RENDERDOC", "1");
+            Console.WriteLine("RenderDoc support enabled (set FIRSTENGINE_ENABLE_RENDERDOC=1)");
             
             base.OnStartup(e);
             

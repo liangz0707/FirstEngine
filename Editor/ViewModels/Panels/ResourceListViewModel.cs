@@ -65,7 +65,7 @@ namespace FirstEngineEditor.ViewModels.Panels
 
             try
             {
-                var manifest = JsonConvert.DeserializeObject<ResourceManifest>(File.ReadAllText(manifestPath));
+                var manifest = JsonConvert.DeserializeObject<Models.ResourceManifest>(File.ReadAllText(manifestPath));
                 if (manifest?.Resources != null)
                 {
                     foreach (var resource in manifest.Resources)
@@ -103,32 +103,5 @@ namespace FirstEngineEditor.ViewModels.Panels
         public string Path { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public string? VirtualPath { get; set; }
-    }
-
-    public class ResourceManifest
-    {
-        [JsonProperty("version")]
-        public int Version { get; set; }
-
-        [JsonProperty("nextID")]
-        public int NextID { get; set; }
-
-        [JsonProperty("resources")]
-        public List<ResourceEntry>? Resources { get; set; }
-    }
-
-    public class ResourceEntry
-    {
-        [JsonProperty("id")]
-        public int Id { get; set; }
-
-        [JsonProperty("path")]
-        public string Path { get; set; } = string.Empty;
-
-        [JsonProperty("virtualPath")]
-        public string? VirtualPath { get; set; }
-
-        [JsonProperty("type")]
-        public string Type { get; set; } = string.Empty;
     }
 }

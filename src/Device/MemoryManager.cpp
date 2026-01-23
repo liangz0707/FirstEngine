@@ -2,13 +2,14 @@
 #include "FirstEngine/Device/DeviceContext.h"
 #include <stdexcept>
 #include <cstring>
+#include <iostream>
 
 namespace FirstEngine {
     namespace Device {
 
-        // Buffer 实现
+        // Buffer implementation
         Buffer::Buffer(DeviceContext* context) 
-            : m_Context(context), m_Buffer(VK_NULL_HANDLE), m_Size(0), m_MappedData(nullptr) {
+            : m_Context(context), m_Buffer(VK_NULL_HANDLE), m_Size(0), m_MappedData(nullptr), m_MemoryProperties(0) {
             m_Allocation.memory = VK_NULL_HANDLE;
             m_Allocation.offset = 0;
             m_Allocation.size = 0;
@@ -42,6 +43,9 @@ namespace FirstEngine {
                 return false;
             }
 
+            // Store memory properties for later validation
+            m_MemoryProperties = properties;
+
             if (vkBindBufferMemory(m_Context->GetDevice(), m_Buffer, m_Allocation.memory, m_Allocation.offset) != VK_SUCCESS) {
                 memoryManager.FreeMemory(m_Allocation);
                 vkDestroyBuffer(m_Context->GetDevice(), m_Buffer, nullptr);
@@ -74,6 +78,13 @@ namespace FirstEngine {
                 return m_MappedData;
             }
 
+            // Check if memory has HOST_VISIBLE property before mapping
+            if (!(m_MemoryProperties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+                std::cerr << "Error: Buffer::Map(): Attempting to map memory without VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT. "
+                          << "Memory has properties: " << std::hex << m_MemoryProperties << std::dec << std::endl;
+                return nullptr;
+            }
+
             if (size == VK_WHOLE_SIZE) {
                 size = m_Size - offset;
             }
@@ -101,7 +112,7 @@ namespace FirstEngine {
             }
         }
 
-        // Image 实现
+        // Image implementation
         Image::Image(DeviceContext* context)
             : m_Context(context), m_Image(VK_NULL_HANDLE), m_ImageView(VK_NULL_HANDLE),
               m_Format(VK_FORMAT_UNDEFINED), m_Width(0), m_Height(0), m_MipLevels(0) {
@@ -201,7 +212,7 @@ namespace FirstEngine {
             }
         }
 
-        // MemoryManager 实现
+        // MemoryManager implementation
         MemoryManager::MemoryManager(DeviceContext* context) : m_Context(context) {
         }
 

@@ -1,7 +1,13 @@
-﻿#include "FirstEngine/Renderer/FrameGraphExecutionPlan.h"
-#include "FirstEngine/Renderer/FrameGraph.h"
+// Include standard library headers first, before any namespace definitions
 #include <algorithm>
 #include <memory>
+#include <vector>
+#include <string>
+#include <unordered_map>
+
+// Then include project headers
+#include "FirstEngine/Renderer/FrameGraphExecutionPlan.h"
+#include "FirstEngine/Renderer/FrameGraph.h"
 
 namespace FirstEngine {
     namespace Renderer {
