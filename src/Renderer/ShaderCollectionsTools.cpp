@@ -6,6 +6,7 @@
 #include <sstream>
 #include <iostream>
 #include <algorithm>
+#include <map>
 #if __has_include(<filesystem>)
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -139,7 +140,7 @@ namespace FirstEngine {
                         auto fragReflection = fragCompiler.GetReflection();
                         
                         // Copy texture-related resources from fragment shader
-                        mergedReflection.uniform_buffers = fragReflection.uniform_buffers;
+                        mergedReflection.uniform_buffers = fragReflection.uniform_buffers; // Will be merged with vertex shader
                         mergedReflection.samplers = fragReflection.samplers;
                         mergedReflection.images = fragReflection.images;
                         mergedReflection.storage_buffers = fragReflection.storage_buffers;
@@ -150,18 +151,16 @@ namespace FirstEngine {
                         mergedReflection.entry_point = fragReflection.entry_point;
                         mergedReflection.language = fragReflection.language;
                         
-                        std::cerr << "ShaderCollectionsTools: Fragment shader reflection - sampled_images: " 
-                                  << fragReflection.sampled_images.size() 
-                                  << ", separate_images: " << fragReflection.separate_images.size()
-                                  << ", separate_samplers: " << fragReflection.separate_samplers.size() << std::endl;
                         reflectionSuccess = true;
                     } catch (...) {
-                        std::cerr << "ShaderCollectionsTools: Failed to parse fragment shader reflection" << std::endl;
+                        // Failed to parse fragment shader reflection
                     }
                 }
             }
             
-            // Get vertex inputs from vertex shader (CRITICAL: vertex inputs must come from vertex shader, not fragment shader)
+            // Get vertex inputs and uniform buffers from vertex shader
+            // CRITICAL: vertex inputs must come from vertex shader, not fragment shader
+            // Also merge uniform buffers from vertex shader (e.g., PerObject, PerFrame in Set 1)
             if (!vertSPIRV.empty()) {
                 if (vertSPIRV.size() >= 5 && vertSPIRV[0] == 0x07230203) {
                     try {
@@ -174,12 +173,29 @@ namespace FirstEngine {
                         // Also copy vertex shader outputs (for reference, though typically not used for vertex input parsing)
                         mergedReflection.stage_outputs = vertReflection.stage_outputs;
                         
-                        std::cerr << "ShaderCollectionsTools: Vertex shader reflection - stage_inputs: " 
-                                  << vertReflection.stage_inputs.size() 
-                                  << ", stage_outputs: " << vertReflection.stage_outputs.size() << std::endl;
+                        // Merge uniform buffers from vertex shader (e.g., PerObject, PerFrame)
+                        // Use a map to avoid duplicates (same set and binding)
+                        std::map<std::pair<uint32_t, uint32_t>, Shader::UniformBuffer> uniformBufferMap;
+                        
+                        // Add fragment shader uniform buffers first
+                        for (const auto& ub : mergedReflection.uniform_buffers) {
+                            uniformBufferMap[{ub.set, ub.binding}] = ub;
+                        }
+                        
+                        // Add vertex shader uniform buffers (will overwrite if same set/binding, which is correct)
+                        for (const auto& ub : vertReflection.uniform_buffers) {
+                            uniformBufferMap[{ub.set, ub.binding}] = ub;
+                        }
+                        
+                        // Convert map back to vector
+                        mergedReflection.uniform_buffers.clear();
+                        for (const auto& [_, ub] : uniformBufferMap) {
+                            mergedReflection.uniform_buffers.push_back(ub);
+                        }
+                        
                         reflectionSuccess = true;
                     } catch (...) {
-                        std::cerr << "ShaderCollectionsTools: Failed to parse vertex shader reflection" << std::endl;
+                        // Failed to parse vertex shader reflection
                     }
                 }
             }
@@ -188,10 +204,9 @@ namespace FirstEngine {
             if (reflectionSuccess) {
                 auto reflectionPtr = std::make_unique<Shader::ShaderReflection>(std::move(mergedReflection));
                 collection->SetShaderReflection(std::move(reflectionPtr));
-                std::cerr << "ShaderCollectionsTools: Merged reflection stored for shader: " << shaderName << std::endl;
+                // Reflection successfully merged and stored
             } else {
-                std::cerr << "ShaderCollectionsTools: Failed to parse reflection for shader: " << shaderName << std::endl;
-                // Collection is still valid without reflection
+                // Failed to parse reflection, but collection is still valid without reflection
             }
 
             return AddCollection(std::move(collection));

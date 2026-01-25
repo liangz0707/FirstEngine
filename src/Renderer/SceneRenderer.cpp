@@ -1,4 +1,5 @@
 #include "FirstEngine/Renderer/SceneRenderer.h"
+#include <set>
 #include "FirstEngine/Renderer/RenderConfig.h"
 #include "FirstEngine/Renderer/RenderFlags.h"
 #include "FirstEngine/Renderer/RenderParameterCollector.h"
@@ -120,7 +121,40 @@ namespace FirstEngine {
         ) {
             renderQueue.Clear();
 
+            // Begin new frame for all ShadingMaterials - clears per-frame update tracking
+            // This must be done before any FlushParametersToGPU calls to prevent
+            // updating descriptor sets that are in use by command buffers
+            std::set<ShadingMaterial*> processedMaterials;
+            for (Resources::Entity* entity : visibleEntities) {
+                if (!entity || !entity->IsActive()) {
+                    continue;
+                }
+                const auto& components = entity->GetComponents();
+                for (const auto& component : components) {
+                    if (!component) {
+                        continue;
+                    }
+                    auto* shadingMaterial = component->GetShadingMaterial();
+                    if (shadingMaterial && processedMaterials.find(shadingMaterial) == processedMaterials.end()) {
+                        shadingMaterial->BeginFrame();
+                        processedMaterials.insert(shadingMaterial);
+                    }
+                }
+            }
+            
+
             std::vector<RenderItem> allItems;
+            
+            // Get camera matrices once for all entities (per-frame data)
+            // These will be used for PerFrame uniform buffer
+            glm::mat4 viewMatrix = m_CameraConfig.GetViewMatrix();
+            glm::mat4 projMatrix = m_CameraConfig.GetProjectionMatrix(1.0f); // Aspect ratio will be updated per frame if needed
+            glm::mat4 viewProjMatrix = projMatrix * viewMatrix;
+            
+            // Store camera matrices for use in EntityToRenderItems
+            m_CachedViewMatrix = viewMatrix;
+            m_CachedProjMatrix = projMatrix;
+            m_CachedViewProjMatrix = viewProjMatrix;
 
             // Convert entities to render items
             // Entity now manages its own world matrix, no need to compute or pass it
@@ -172,34 +206,34 @@ namespace FirstEngine {
                     // Create parameter collector and collect from various sources
                     RenderParameterCollector collector;
                     
-                    // Collect from component (per-object data)
-                    auto* modelComponent = dynamic_cast<Resources::ModelComponent*>(component.get());
-                    if (modelComponent) {
-                        collector.CollectFromComponent(modelComponent);
-                    }
-                    
-                    // Collect from render config (per-frame global data)
-                    // This would be passed from Render() method
-                    // collector.CollectFromRenderConfig(&renderConfig);
-                    
-                    // Collect from material resource
+                    // Collect from material resource (per-material data)
                     auto* materialResource = shadingMaterial->GetMaterialResource();
                     if (materialResource) {
                         collector.CollectFromMaterialResource(materialResource);
                     }
                     
-                    // Collect from camera (view/projection matrices)
-                    // These would be passed from Render() method
-                    // collector.CollectFromCamera(viewMatrix, projMatrix, viewProjMatrix);
+                    // Collect from component (per-object data: modelMatrix, normalMatrix)
+                    // Convert component to ModelComponent* for CollectFromComponent
+                    auto* modelComponent = dynamic_cast<Resources::ModelComponent*>(component.get());
+                    if (modelComponent) {
+                        collector.CollectFromComponent(modelComponent, entity);
+                    }
                     
-                    // Apply collected parameters to ShadingMaterial (CPU-side storage)
+                    // Collect from camera (per-frame data: viewMatrix, projectionMatrix, viewProjectionMatrix)
+                    // Use cached matrices from BuildRenderQueueFromEntities
+                    collector.CollectFromCamera(
+                        Core::Mat4(m_CachedViewMatrix),
+                        Core::Mat4(m_CachedProjMatrix),
+                        Core::Mat4(m_CachedViewProjMatrix)
+                    );
+                    
+                    // Apply all collected parameters to material
                     shadingMaterial->ApplyParameters(collector);
                     
                     // Update render parameters (applies to CPU-side uniform buffer data)
                     shadingMaterial->UpdateRenderParameters();
                     
                     // Flush parameters to GPU buffers (transfers CPU data to GPU)
-                    // This should be called before rendering
                     shadingMaterial->FlushParametersToGPU(m_Device);
                 }
 
@@ -229,12 +263,14 @@ namespace FirstEngine {
                 const auto& items = batch.GetItems();
 
                 RHI::IPipeline* currentPipeline = nullptr;
-                void* currentDescriptorSet = nullptr;
+                void* currentDescriptorSet0 = nullptr;
+                void* currentDescriptorSet1 = nullptr;
 
                 for (const auto& item : items) {
                     // Get pipeline from material data
                     RHI::IPipeline* itemPipeline = static_cast<RHI::IPipeline*>(item.materialData.pipeline);
-                    void* itemDescriptorSet = item.materialData.descriptorSet;
+                    void* itemDescriptorSet0 = item.materialData.descriptorSet; // Legacy: Set 0 from RenderItem
+                    void* itemDescriptorSet1 = nullptr; // Set 1 (PerObject/PerFrame) - will be set from ShadingMaterial
                     
                     // If ShadingMaterial is available, prefer it for pipeline and descriptor set
                     if (item.materialData.shadingMaterial) {
@@ -252,7 +288,9 @@ namespace FirstEngine {
                             }
                             
                             itemPipeline = shadingMaterial->GetShadingState().GetPipeline();
-                            itemDescriptorSet = shadingMaterial->GetDescriptorSet(0);
+                            // Get descriptor sets for Set 0 (MaterialParams/textures) and Set 1 (PerObject/PerFrame)
+                            itemDescriptorSet0 = shadingMaterial->GetDescriptorSet(0);
+                            itemDescriptorSet1 = shadingMaterial->GetDescriptorSet(1);
                             
                             // If pipeline is not created yet and we don't have renderPass, skip this item
                             if (!itemPipeline) {
@@ -287,19 +325,44 @@ namespace FirstEngine {
                         currentPipeline = itemPipeline;
                     }
 
-                    // Bind descriptor set if changed
-                    if (itemDescriptorSet != currentDescriptorSet) {
+                    // Bind descriptor sets if changed
+                    // We need to bind both Set 0 (MaterialParams/textures) and Set 1 (PerObject/PerFrame)
+                    // Check if either set has changed
+                    if (itemDescriptorSet0 != currentDescriptorSet0 || itemDescriptorSet1 != currentDescriptorSet1) {
                         RenderCommand cmd;
                         cmd.type = RenderCommandType::BindDescriptorSets;
-                        cmd.params.bindDescriptorSets.firstSet = 0;
-                        if (itemDescriptorSet) {
-                            cmd.params.bindDescriptorSets.descriptorSets = {itemDescriptorSet};
-                        } else {
-                            cmd.params.bindDescriptorSets.descriptorSets.clear();
+                        cmd.params.bindDescriptorSets.firstSet = 0; // Start from Set 0
+                        cmd.params.bindDescriptorSets.descriptorSets.clear();
+                        
+                        // Add Set 0 (MaterialParams/textures) if available
+                        if (itemDescriptorSet0) {
+                            cmd.params.bindDescriptorSets.descriptorSets.push_back(itemDescriptorSet0);
                         }
-                        cmd.params.bindDescriptorSets.dynamicOffsets.clear();
-                        commandList.AddCommand(std::move(cmd));
-                        currentDescriptorSet = itemDescriptorSet;
+                        
+                        // Add Set 1 (PerObject/PerFrame) if available
+                        // Note: Vulkan requires consecutive descriptor sets without gaps
+                        // If Set 0 exists, Set 1 can be added directly
+                        // If Set 0 doesn't exist but Set 1 does, we need to handle this case
+                        // For now, we'll only bind Set 1 if Set 0 also exists (to avoid gaps)
+                        if (itemDescriptorSet1) {
+                            // Only add Set 1 if Set 0 exists (to maintain consecutive sets)
+                            // If Set 0 doesn't exist, Set 1 cannot be bound alone (Vulkan requirement)
+                            if (itemDescriptorSet0) {
+                                cmd.params.bindDescriptorSets.descriptorSets.push_back(itemDescriptorSet1);
+                            } else {
+                                std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: Set 1 (PerObject/PerFrame) exists but Set 0 doesn't. "
+                                          << "Cannot bind Set 1 alone (Vulkan requires consecutive sets). "
+                                          << "This may indicate that PerObject/PerFrame uniform buffers are not being created correctly." << std::endl;
+                            }
+                        }
+                        
+                        // Only bind if we have at least one valid descriptor set
+                        if (!cmd.params.bindDescriptorSets.descriptorSets.empty()) {
+                            cmd.params.bindDescriptorSets.dynamicOffsets.clear();
+                            commandList.AddCommand(std::move(cmd));
+                            currentDescriptorSet0 = itemDescriptorSet0;
+                            currentDescriptorSet1 = itemDescriptorSet1;
+                        }
                     }
 
                     // Bind vertex buffers

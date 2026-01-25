@@ -2,7 +2,7 @@
 <Texture>
     <Name>ExampleTexture</Name>
     <ResourceID>1001</ResourceID>
-    <ImageFile>example_texture.png</ImageFile>
+    <ImageFile>lightmap.png</ImageFile>
     <Width>512</Width>
     <Height>512</Height>
     <Channels>4</Channels>

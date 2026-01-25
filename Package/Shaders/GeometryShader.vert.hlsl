@@ -17,13 +17,14 @@ struct VertexOutput {
     float3 bitangent : BINORMAL0;
 };
 
-// Uniform Buffers - Set 0, Binding 0 and 1
-[[vk::binding(0, 0)]] cbuffer PerObject {
+// Uniform Buffers - Set 1, Binding 0 and 1
+// Note: PerObject and PerFrame are in Set 1 to avoid conflicts with fragment shader resources in Set 0
+[[vk::binding(0, 1)]] cbuffer PerObject {
     float4x4 modelMatrix;
     float4x4 normalMatrix;
 };
 
-[[vk::binding(1, 0)]] cbuffer PerFrame {
+[[vk::binding(1, 1)]] cbuffer PerFrame {
     float4x4 viewMatrix;
     float4x4 projectionMatrix;
     float4x4 viewProjectionMatrix;

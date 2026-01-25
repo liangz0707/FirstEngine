@@ -126,6 +126,11 @@ namespace FirstEngine {
             size_t m_VisibleEntityCount = 0;
             size_t m_CulledEntityCount = 0;
             size_t m_DrawCallCount = 0;
+            
+            // Cached camera matrices (computed once per frame in BuildRenderQueueFromEntities)
+            glm::mat4 m_CachedViewMatrix = glm::mat4(1.0f);
+            glm::mat4 m_CachedProjMatrix = glm::mat4(1.0f);
+            glm::mat4 m_CachedViewProjMatrix = glm::mat4(1.0f);
         };
 
     } // namespace Renderer

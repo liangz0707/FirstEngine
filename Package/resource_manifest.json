@@ -1,29 +1,29 @@
 {
   "version": 1,
-  "nextID": 5000,
+  "nextID": 5006,
   "resources": [
     {
       "id": 1001,
       "path": "Textures/albedo_texture.xml",
-      "virtualPath": "textures/albedo",
+      "virtualPath": "textures/AAAA/albedo",
       "type": "Texture"
     },
     {
       "id": 1002,
       "path": "Textures/normal_texture.xml",
-      "virtualPath": "textures/normal",
+      "virtualPath": "CCCC/meshes/normal",
       "type": "Texture"
     },
     {
       "id": 1003,
       "path": "Textures/metallic_roughness_texture.xml",
-      "virtualPath": "textures/metallic_roughness",
+      "virtualPath": "materials/metallic_roughness",
       "type": "Texture"
     },
     {
       "id": 1004,
       "path": "Textures/ao_texture.xml",
-      "virtualPath": "textures/ao",
+      "virtualPath": "materials/ao",
       "type": "Texture"
     },
     {
@@ -47,31 +47,31 @@
     {
       "id": 1008,
       "path": "Textures/render_texture.xml",
-      "virtualPath": "textures/render",
+      "virtualPath": "render",
       "type": "Texture"
     },
     {
       "id": 2001,
       "path": "Materials/PBR_Material.xml",
-      "virtualPath": "materials/pbr",
+      "virtualPath": "CC/pbr",
       "type": "Material"
     },
     {
       "id": 2002,
       "path": "Materials/Geometry_Material.xml",
-      "virtualPath": "materials/geometry",
+      "virtualPath": "CCCC/meshes/geometry",
       "type": "Material"
     },
     {
       "id": 2003,
       "path": "Materials/IBL_Material.xml",
-      "virtualPath": "materials/ibl",
+      "virtualPath": "CC/ibl",
       "type": "Material"
     },
     {
       "id": 2004,
       "path": "Materials/SunLight_Material.xml",
-      "virtualPath": "materials/sunlight",
+      "virtualPath": "models/sunlight",
       "type": "Material"
     },
     {
@@ -95,37 +95,37 @@
     {
       "id": 3001,
       "path": "Meshes/cube_mesh.xml",
-      "virtualPath": "meshes/cube",
+      "virtualPath": "CCCC/meshes/cube",
       "type": "Mesh"
     },
     {
       "id": 3002,
       "path": "Meshes/sphere_mesh.xml",
-      "virtualPath": "meshes/sphere",
+      "virtualPath": "CCCC/meshes/sphere",
       "type": "Mesh"
     },
     {
       "id": 3003,
       "path": "Meshes/plane_mesh.xml",
-      "virtualPath": "meshes/plane",
+      "virtualPath": "CCCC/meshes/plane",
       "type": "Mesh"
     },
     {
       "id": 4001,
       "path": "Models/pbr_cube_model.xml",
-      "virtualPath": "models/pbr_cube",
+      "virtualPath": "CCCC/meshes/pbr_cube",
       "type": "Model"
     },
     {
       "id": 4002,
       "path": "Models/geometry_cube_model.xml",
-      "virtualPath": "models/geometry_cube",
+      "virtualPath": "CCCC/meshes/geometry_cube",
       "type": "Model"
     },
     {
       "id": 4003,
       "path": "Models/ibl_sphere_model.xml",
-      "virtualPath": "models/ibl_sphere",
+      "virtualPath": "CC/AA/ibl_sphere",
       "type": "Model"
     },
     {
@@ -133,6 +133,27 @@
       "path": "Models/sunlight_plane_model.xml",
       "virtualPath": "models/sunlight_plane",
       "type": "Model"
+    },
+    {
+      "id": 5000,
+      "path": "Meshes/source_mesh.xml",
+      "virtualPath": "meshs/",
+      "type": "Mesh"
+    },
+    {
+      "id": 5002,
+      "path": "Models/source_model.xml",
+      "virtualPath": "models/",
+      "type": "Model"
+    },
+    {
+      "id": 5005,
+      "path": "Textures/thumbnail_texture.xml",
+      "virtualPath": "textures/thumbnail",
+      "type": "Texture"
     }
+  ],
+  "emptyFolders": [
+    "CCCC"
   ]
 }

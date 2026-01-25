@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "FirstEngine/Renderer/Export.h"
 #include <glm/glm.hpp>
@@ -11,13 +11,17 @@ namespace FirstEngine {
         struct FE_RENDERER_API CameraConfig {
             CameraConfig() = default;
             
+            // Default camera position: looking at origin from a reasonable distance
+            // Position: (0, 2, 5) - slightly above and in front of origin
+            // Target: (0, 0, 0) - looking at origin
+            // This provides a good default view for objects placed at origin
             glm::vec3 position = glm::vec3(0.0f, 2.0f, 5.0f);
-            glm::vec3 target = glm::vec3(0.0f, 0.0f, -5.0f);
+            glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f);
             glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
             
-            float fov = 45.0f;              // Field of view in degrees
-            float nearPlane = 0.1f;
-            float farPlane = 100.0f;
+            float fov = 60.0f;              // Field of view in degrees (60 is a common default)
+            float nearPlane = 0.1f;          // Near clipping plane
+            float farPlane = 1000.0f;        // Far clipping plane (increased for better visibility)
             
             // Get view matrix
             glm::mat4 GetViewMatrix() const;

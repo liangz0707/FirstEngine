@@ -232,6 +232,8 @@ namespace FirstEngine {
                     return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
                 case RHI::DescriptorType::StorageBuffer:
                     return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                case RHI::DescriptorType::Sampler:
+                    return VK_DESCRIPTOR_TYPE_SAMPLER;
                 default:
                     return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             }

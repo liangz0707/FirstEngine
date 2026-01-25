@@ -90,6 +90,7 @@ namespace FirstEngine {
                     // Check if parameter name matches uniform buffer name
                     if (ubReflection.name == paramName) {
                         // Parameter name matches buffer name - copy entire buffer data
+                        // Note: paramValue is MaterialParameterValue, which has GetData() and GetDataSize()
                         const void* data = paramValue.GetData();
                         uint32_t size = paramValue.GetDataSize();
                         if (data && size > 0 && size <= ub->size) {
@@ -100,26 +101,47 @@ namespace FirstEngine {
                     }
                     
                     // Try to match parameter to uniform buffer members
-                    uint32_t currentOffset = 0;
+                    // Use actual member offsets from shader reflection if available
                     for (const auto& member : ubReflection.members) {
                         // Check if parameter name matches member name
                         if (member.name == paramName) {
-                            // Calculate member offset (simplified - assumes sequential packing)
-                            // Note: In a full implementation, we should use actual member offsets from reflection
+                            // Get actual member offset from reflection
+                            uint32_t memberOffset = member.offset;
+                            
+                            // If offset is 0 (not set by compiler), calculate it from previous members
+                            // This handles std140 layout alignment
+                            if (memberOffset == 0 && !ubReflection.members.empty()) {
+                                uint32_t calculatedOffset = 0;
+                                for (const auto& prevMember : ubReflection.members) {
+                                    if (prevMember.name == member.name) {
+                                        break; // Found the target member
+                                    }
+                                    // Add size of previous member (with std140 alignment)
+                                    // std140: scalars/vectors aligned to 16 bytes, matrices aligned to 16 bytes
+                                    uint32_t prevSize = prevMember.size > 0 ? prevMember.size : 64; // Default to 64 for mat4
+                                    // Align to 16-byte boundary (std140 layout)
+                                    calculatedOffset = (calculatedOffset + 15) & ~15;
+                                    calculatedOffset += prevSize;
+                                }
+                                // Align final offset to 16-byte boundary
+                                memberOffset = (calculatedOffset + 15) & ~15;
+                            }
+                            
+                            // Note: paramValue is MaterialParameterValue, which has GetData() and GetDataSize()
                             const void* data = paramValue.GetData();
                             uint32_t size = paramValue.GetDataSize();
                             
                             // Ensure we don't overflow the buffer
-                            if (currentOffset + size <= ub->size) {
-                                std::memcpy(ub->data.data() + currentOffset, data, size);
+                            if (memberOffset + size <= ub->size) {
+                                std::memcpy(ub->data.data() + memberOffset, data, size);
                                 parameterSet = true;
                                 break;
+                            } else {
+                                std::cerr << "Warning: ShadingMaterial::ApplyRenderParameter: Parameter '" << paramName 
+                                          << "' size " << size << " exceeds buffer size at offset " << memberOffset 
+                                          << " (buffer size: " << ub->size << ")" << std::endl;
                             }
                         }
-                        
-                        // Update offset for next member (simplified - should use actual member size from reflection)
-                        // For now, we'll use a conservative estimate
-                        currentOffset += member.size > 0 ? member.size : 16; // Default to 16 bytes if size unknown
                     }
                     
                     if (parameterSet) {
@@ -133,6 +155,7 @@ namespace FirstEngine {
                         // Check if parameter name matches uniform buffer name (fuzzy match)
                         if (ub.name == paramName || ub.name.find(paramName) != std::string::npos) {
                             // Update buffer data with parameter value
+                            // Note: paramValue is MaterialParameterValue, which has GetData() and GetDataSize()
                             const void* data = paramValue.GetData();
                             uint32_t size = paramValue.GetDataSize();
                             if (data && size > 0 && size <= ub.size) {
@@ -677,9 +700,6 @@ namespace FirstEngine {
                 m_UniformBuffers.push_back(std::move(binding));
                 
                 // Debug: Print uniform buffer information
-                std::cerr << "ShadingMaterial: Parsed uniform buffer '" << binding.name 
-                          << "' at Set " << binding.set << ", Binding " << binding.binding 
-                          << ", Size: " << binding.size << " bytes" << std::endl;
             }
 
             // ----------------------------------------------------------------------------
@@ -711,13 +731,6 @@ namespace FirstEngine {
             m_TextureBindings.clear();
             
             // Debug: Print reflection information
-            std::cerr << "ShadingMaterial::ParseShaderReflection: Parsing texture bindings..." << std::endl;
-            std::cerr << "  - sampled_images count: " << reflection.sampled_images.size() << std::endl;
-            std::cerr << "  - separate_images count: " << reflection.separate_images.size() << std::endl;
-            std::cerr << "  - separate_samplers count: " << reflection.separate_samplers.size() << std::endl;
-            std::cerr << "  - samplers count (legacy): " << reflection.samplers.size() << std::endl;
-            std::cerr << "  - images count (legacy): " << reflection.images.size() << std::endl;
-            
             // IMPORTANT: If new fields are empty but legacy fields have data, use legacy fields
             // This handles the case where ShaderCollection was cached before we added the new fields
             bool useLegacyFields = reflection.sampled_images.empty() && 
@@ -726,7 +739,6 @@ namespace FirstEngine {
                                    (!reflection.samplers.empty() || !reflection.images.empty());
             
             if (useLegacyFields) {
-                std::cerr << "ShadingMaterial::ParseShaderReflection: Using legacy fields (samplers/images) - ShaderCollection may need to be regenerated" << std::endl;
                 
                 // Use legacy samplers list (contains both sampled_images and separate_samplers)
                 // We'll treat them all as COMBINED_IMAGE_SAMPLER for now
@@ -738,10 +750,6 @@ namespace FirstEngine {
                     binding.texture = nullptr;
                     binding.descriptorType = RHI::DescriptorType::CombinedImageSampler;
                     m_TextureBindings.push_back(binding);
-                    
-                    std::cerr << "ShadingMaterial: Parsed sampler (legacy) '" << binding.name 
-                              << "' at Set " << binding.set << ", Binding " << binding.binding 
-                              << ", Type: COMBINED_IMAGE_SAMPLER" << std::endl;
                 }
                 
                 // Use legacy images list (contains both separate_images and storage_images)
@@ -754,10 +762,6 @@ namespace FirstEngine {
                     binding.texture = nullptr;
                     binding.descriptorType = RHI::DescriptorType::SampledImage;
                     m_TextureBindings.push_back(binding);
-                    
-                    std::cerr << "ShadingMaterial: Parsed image (legacy) '" << binding.name 
-                              << "' at Set " << binding.set << ", Binding " << binding.binding 
-                              << ", Type: SAMPLED_IMAGE" << std::endl;
                 }
             } else {
                 // Use new fields (preferred)
@@ -771,11 +775,6 @@ namespace FirstEngine {
                 binding.texture = nullptr;       // Texture pointer, set at runtime via SetTexture
                 binding.descriptorType = RHI::DescriptorType::CombinedImageSampler;
                 m_TextureBindings.push_back(binding);
-                
-                // Debug: Print texture binding information
-                std::cerr << "ShadingMaterial: Parsed combined image sampler '" << binding.name 
-                          << "' at Set " << binding.set << ", Binding " << binding.binding 
-                          << ", Type: COMBINED_IMAGE_SAMPLER" << std::endl;
             }
             
             // Parse Separate Images (texture2D in HLSL/Vulkan, used with separate samplers)
@@ -788,11 +787,6 @@ namespace FirstEngine {
                 binding.texture = nullptr;       // Texture pointer, set at runtime via SetTexture
                 binding.descriptorType = RHI::DescriptorType::SampledImage;
                 m_TextureBindings.push_back(binding);
-                
-                // Debug: Print texture binding information
-                std::cerr << "ShadingMaterial: Parsed separate image '" << binding.name 
-                          << "' at Set " << binding.set << ", Binding " << binding.binding 
-                          << ", Type: SAMPLED_IMAGE" << std::endl;
             }
             
             // Parse Separate Samplers (sampler in HLSL/Vulkan, used with separate images)
@@ -806,16 +800,10 @@ namespace FirstEngine {
                 binding.binding = sampler.binding; // layout(binding = N) in shader
                 binding.name = sampler.name;     // Sampler variable name in shader
                 binding.texture = nullptr;       // Separate samplers don't have textures
-                // Note: RHI layer might not support SAMPLER type yet, so we'll use CombinedImageSampler
-                // This might need to be fixed when RHI layer adds SAMPLER support
-                binding.descriptorType = RHI::DescriptorType::CombinedImageSampler; // TODO: Should be SAMPLER when RHI supports it
+                // Use DescriptorType::Sampler for separate samplers (RHI now supports it)
+                binding.descriptorType = RHI::DescriptorType::Sampler;
                 m_TextureBindings.push_back(binding);
-                
-                // Debug: Print texture binding information
-                std::cerr << "ShadingMaterial: Parsed separate sampler '" << binding.name 
-                          << "' at Set " << binding.set << ", Binding " << binding.binding 
-                          << ", Type: COMBINED_IMAGE_SAMPLER (fallback, should be SAMPLER)" << std::endl;
-                }
+            }
             }
         }
 
@@ -949,9 +937,6 @@ namespace FirstEngine {
 
         bool ShadingMaterial::EnsurePipelineCreated(RHI::IDevice* device, RHI::IRenderPass* renderPass) {
             if (!device || !renderPass) {
-                std::cerr << "Error: ShadingMaterial::EnsurePipelineCreated: Invalid parameters. "
-                          << "Device: " << (device ? "valid" : "null") 
-                          << ", RenderPass: " << (renderPass ? "valid" : "null") << std::endl;
                 return false;
             }
 
@@ -962,10 +947,6 @@ namespace FirstEngine {
 
             // Ensure shader modules are created
             if (m_ShadingState.shaderModules.empty()) {
-                // Shader modules should have been created in DoCreate
-                // If not, something went wrong
-                std::cerr << "Error: ShadingMaterial::EnsurePipelineCreated: Shader modules are empty. "
-                          << "ShadingMaterial may not have been properly initialized." << std::endl;
                 return false;
             }
 
@@ -1009,10 +990,6 @@ namespace FirstEngine {
 
             // Create pipeline from shading state (with descriptor set layouts)
             if (!m_ShadingState.CreatePipeline(device, renderPass, vertexBindings, vertexAttributes, descriptorSetLayouts)) {
-                std::cerr << "Error: ShadingMaterial::EnsurePipelineCreated: Failed to create pipeline via ShadingState::CreatePipeline. "
-                          << "Vertex bindings: " << vertexBindings.size() 
-                          << ", Vertex attributes: " << vertexAttributes.size()
-                          << ", Descriptor set layouts: " << descriptorSetLayouts.size() << std::endl;
                 return false;
             }
 
@@ -1150,7 +1127,6 @@ namespace FirstEngine {
                         std::memcpy(mapped, ub.data.data(), ub.data.size());
                         ub.buffer->Unmap();
                     } else {
-                        std::cerr << "Warning: ShadingMaterial::CreateUniformBuffers: Failed to map buffer for initial data upload" << std::endl;
                     }
                 }
             }
@@ -1373,13 +1349,85 @@ namespace FirstEngine {
                 case RenderParameterValue::Type::Mat3:
                 case RenderParameterValue::Type::Mat4:
                 case RenderParameterValue::Type::RawData: {
-                    // Update uniform buffer by name (updates CPU-side data)
+                    // Update uniform buffer by member name (not buffer name)
+                    // This matches the logic in InitializeFromMaterialResource
                     const void* data = value.GetRawData();
                     uint32_t size = value.GetRawDataSize();
-                    if (data && size > 0) {
+                    if (!data || size == 0) {
+                        return false;
+                    }
+                    
+                    bool parameterSet = false;
+                    const auto& reflection = m_ShaderReflection;
+                    
+                    // Try to match parameter to uniform buffer members using shader reflection
+                    for (const auto& ubReflection : reflection.uniform_buffers) {
+                        // Find the corresponding UniformBufferBinding
+                        UniformBufferBinding* ub = GetUniformBuffer(ubReflection.set, ubReflection.binding);
+                        if (!ub) {
+                            continue;
+                        }
+                        
+                        // Check if parameter name matches uniform buffer name
+                        if (ubReflection.name == key) {
+                            // Parameter name matches buffer name - copy entire buffer data
+                            if (size <= ub->size) {
+                                std::memcpy(ub->data.data(), data, std::min(size, ub->size));
+                                parameterSet = true;
+                                
+                                break;
+                            }
+                        }
+                        
+                        // Try to match parameter to uniform buffer members
+                        for (const auto& member : ubReflection.members) {
+                            // Check if parameter name matches member name
+                            if (member.name == key) {
+                                // Get actual member offset from reflection
+                                uint32_t memberOffset = member.offset;
+                                
+                                // If offset is 0 (not set by compiler), calculate it from previous members
+                                if (memberOffset == 0 && !ubReflection.members.empty()) {
+                                    uint32_t calculatedOffset = 0;
+                                    for (const auto& prevMember : ubReflection.members) {
+                                        if (prevMember.name == member.name) {
+                                            break; // Found the target member
+                                        }
+                                        // Add size of previous member (with std140 alignment)
+                                        uint32_t prevSize = prevMember.size > 0 ? prevMember.size : 64; // Default to 64 for mat4
+                                        // Align to 16-byte boundary (std140 layout)
+                                        calculatedOffset = (calculatedOffset + 15) & ~15;
+                                        calculatedOffset += prevSize;
+                                    }
+                                    // Align final offset to 16-byte boundary
+                                    memberOffset = (calculatedOffset + 15) & ~15;
+                                }
+                                
+                                // Ensure we don't overflow the buffer
+                                if (memberOffset + size <= ub->size) {
+                                    std::memcpy(ub->data.data() + memberOffset, data, size);
+                                    parameterSet = true;
+                                    break;
+                                } else {
+                                    std::cerr << "Warning: ShadingMaterial::ApplyRenderParameter: Parameter '" << key 
+                                              << "' size " << size << " exceeds buffer size at offset " << memberOffset 
+                                              << " (buffer size: " << ub->size << ")" << std::endl;
+                                }
+                            }
+                        }
+                        
+                        if (parameterSet) {
+                            break;
+                        }
+                    }
+                    
+                    // Fallback: If not matched to any uniform buffer member, try UpdateUniformBufferByName
+                    // This handles cases where the parameter name matches the buffer name
+                    if (!parameterSet) {
                         return UpdateUniformBufferByName(key, data, size, 0);
                     }
-                    return false;
+                    
+                    return parameterSet;
                 }
                 case RenderParameterValue::Type::PushConstant: {
                     // Update push constant (CPU-side data)
@@ -1404,6 +1452,18 @@ namespace FirstEngine {
             if (!device) {
                 return false;
             }
+            
+            // DEBUG: Track how many times FlushParametersToGPU is called per frame
+            // This helps identify if the same material is being flushed multiple times
+            static std::map<ShadingMaterial*, uint32_t> flushCounts;
+            static uint64_t frameCounter = 0;
+            flushCounts[this]++;
+            
+            // Log if called more than once (might indicate optimization opportunity)
+            if (flushCounts[this] > 1) {
+                // Note: This is expected if multiple entities share the same material
+                // Each entity needs to update its per-object uniform buffer data
+            }
 
             // Apply parameters to CPU-side data (excluding textures, as they don't need flushing)
             // Textures are already bound and don't need to be flushed to GPU buffers
@@ -1419,11 +1479,31 @@ namespace FirstEngine {
 
             // Update descriptor set bindings through MaterialDescriptorManager
             // This ensures descriptor sets reflect the latest uniform buffer and texture bindings
+            // 
+            // NOTE: UpdateBindings may cause validation warnings if descriptor sets are in use by pending command buffers.
+            // Even with UPDATE_UNUSED_WHILE_PENDING_BIT, descriptors that are actually used by shaders cannot be updated.
+            // 
+            // IMPORTANT: Since we only update buffer content (via UpdateData) and not buffer pointers,
+            // we technically don't need to update descriptor set bindings every frame. However, we do it
+            // for texture bindings that may change. For uniform buffers, the descriptor set binding
+            // (buffer pointer) typically doesn't change, only the buffer content changes.
+            //
+            // This is called in EntityToRenderItems (before SubmitRenderQueue), so it should be safe.
+            // However, if validation errors persist, consider:
+            // 1. Only updating descriptor sets when buffer pointers actually change
+            // 2. Using multiple descriptor set instances (one per frame)
+            // 3. Or waiting for previous command buffers to complete before updating
             if (m_DescriptorManager) {
                 m_DescriptorManager->UpdateBindings(this, device);
             }
 
             return true;
+        }
+        
+        void ShadingMaterial::BeginFrame() {
+            if (m_DescriptorManager) {
+                m_DescriptorManager->BeginFrame();
+            }
         }
 
         // ============================================================================

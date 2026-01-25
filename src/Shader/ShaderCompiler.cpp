@@ -195,14 +195,6 @@ namespace FirstEngine {
                 auto& compiler = *m_Impl->reflect_compiler;
                 auto resources = compiler.get_shader_resources();
                 
-                // Debug: Print raw resource counts from SPIR-V
-                std::cerr << "ShaderCompiler::GetReflection: Raw SPIR-V resources:" << std::endl;
-                std::cerr << "  - uniform_buffers: " << resources.uniform_buffers.size() << std::endl;
-                std::cerr << "  - sampled_images: " << resources.sampled_images.size() << std::endl;
-                std::cerr << "  - separate_images: " << resources.separate_images.size() << std::endl;
-                std::cerr << "  - separate_samplers: " << resources.separate_samplers.size() << std::endl;
-                std::cerr << "  - storage_images: " << resources.storage_images.size() << std::endl;
-                
                 // IMPORTANT: If no texture resources found, check if we need to combine resources from multiple shader stages
                 // For now, we'll process what we have from this shader stage
                 
@@ -249,6 +241,14 @@ namespace FirstEngine {
                                     member.size = (uint32_t)compiler.get_declared_struct_member_size(type, i);
                                     member.base_type_id = member_type.self;
                                     
+                                    // Get member offset from AST (for std140 layout)
+                                    try {
+                                        member.offset = compiler.get_member_decoration(resource.base_type_id, i, spv::DecorationOffset);
+                                    } catch (...) {
+                                        // Offset decoration not available, will calculate sequentially
+                                        member.offset = 0; // Will be calculated based on previous members
+                                    }
+                                    
                                     // Get array size from AST (convert SmallVector to std::vector)
                                     member.array_size.assign(member_type.array.begin(), member_type.array.end());
                                     
@@ -290,16 +290,12 @@ namespace FirstEngine {
                     // Store in both samplers (for backward compatibility) and sampled_images (for type distinction)
                     reflection.samplers.push_back(sr);
                     reflection.sampled_images.push_back(sr);
-                    std::cerr << "ShaderCompiler::GetReflection: Added sampled_image '" << sr.name 
-                              << "' at Set " << sr.set << ", Binding " << sr.binding << std::endl;
                 } catch (...) {
-                    std::cerr << "ShaderCompiler::GetReflection: Failed to process sampled_image resource" << std::endl;
                     continue; // Skip invalid sampler
                 }
                 }
                 
                 // Get separate images (texture2D in HLSL/Vulkan, used with separate samplers)
-                std::cerr << "ShaderCompiler::GetReflection: Processing " << resources.separate_images.size() << " separate_images..." << std::endl;
                 for (auto& resource : resources.separate_images) {
                 try {
                     ShaderResource sr;
@@ -318,16 +314,12 @@ namespace FirstEngine {
                     // Store in both images (for backward compatibility) and separate_images (for type distinction)
                     reflection.images.push_back(sr);
                     reflection.separate_images.push_back(sr);
-                    std::cerr << "ShaderCompiler::GetReflection: Added separate_image '" << sr.name 
-                              << "' at Set " << sr.set << ", Binding " << sr.binding << std::endl;
                 } catch (...) {
-                    std::cerr << "ShaderCompiler::GetReflection: Failed to process separate_image resource" << std::endl;
                     continue; // Skip invalid image
                 }
                 }
                 
                 // Get separate samplers (sampler in HLSL/Vulkan, used with separate images)
-                std::cerr << "ShaderCompiler::GetReflection: Processing " << resources.separate_samplers.size() << " separate_samplers..." << std::endl;
                 for (auto& resource : resources.separate_samplers) {
                 try {
                     ShaderResource sr;
@@ -346,10 +338,7 @@ namespace FirstEngine {
                     // Store in both samplers (for backward compatibility) and separate_samplers (for type distinction)
                     reflection.samplers.push_back(sr);
                     reflection.separate_samplers.push_back(sr);
-                    std::cerr << "ShaderCompiler::GetReflection: Added separate_sampler '" << sr.name 
-                              << "' at Set " << sr.set << ", Binding " << sr.binding << std::endl;
                 } catch (...) {
-                    std::cerr << "ShaderCompiler::GetReflection: Failed to process separate_sampler resource" << std::endl;
                     continue; // Skip invalid sampler
                 }
                 }
@@ -505,7 +494,6 @@ namespace FirstEngine {
                 // If reflection parsing fails completely, return empty reflection
                 // This prevents crashes and allows shader to still be used
                 // Don't access exception object to avoid access violation
-                std::cerr << "ShaderCompiler: Critical error during reflection parsing, returning empty reflection" << std::endl;
             }
             
             return reflection;

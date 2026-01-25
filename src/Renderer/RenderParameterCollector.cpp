@@ -157,17 +157,25 @@ namespace FirstEngine {
         RenderParameterCollector::RenderParameterCollector() = default;
         RenderParameterCollector::~RenderParameterCollector() = default;
 
-        void RenderParameterCollector::CollectFromComponent(Resources::ModelComponent* component) {
-            if (!component) {
+        void RenderParameterCollector::CollectFromComponent(Resources::ModelComponent* component, Resources::Entity* entity) {
+            if (!component || !entity) {
                 return;
             }
 
-            // Collect per-object parameters from component
-            // For now, this is a placeholder - actual implementation would collect
-            // component-specific parameters (e.g., object transform, custom uniforms)
+            // Collect per-object parameters (PerObject uniform buffer)
+            // Get world matrix from Entity
+            const glm::mat4& worldMatrix = entity->GetWorldMatrix();
             
-            // Example: Collect world matrix if available
-            // This would need to be implemented based on actual component interface
+            // Calculate normal matrix (inverse transpose of upper-left 3x3 of world matrix)
+            glm::mat3 normalMatrix3x3 = glm::transpose(glm::inverse(glm::mat3(worldMatrix)));
+            // Convert to mat4 (normalMatrix is mat4 in shader, but we only use upper-left 3x3)
+            glm::mat4 normalMatrix = glm::mat4(normalMatrix3x3);
+            
+            // Set PerObject uniform buffer parameters
+            // Note: Parameter names must match uniform buffer member names in shader
+            // Shader has: modelMatrix, normalMatrix in PerObject cbuffer
+            SetParameter("modelMatrix", RenderParameterValue(Core::Mat4(worldMatrix)));
+            SetParameter("normalMatrix", RenderParameterValue(Core::Mat4(normalMatrix)));
         }
 
         void RenderParameterCollector::CollectFromRenderConfig(const RenderConfig* config) {
@@ -237,10 +245,11 @@ namespace FirstEngine {
             const Core::Mat4& proj,
             const Core::Mat4& viewProj
         ) {
-            // Set standard camera matrices
-            SetParameter("ViewMatrix", RenderParameterValue(view));
-            SetParameter("ProjectionMatrix", RenderParameterValue(proj));
-            SetParameter("ViewProjectionMatrix", RenderParameterValue(viewProj));
+            // Set standard camera matrices (PerFrame uniform buffer)
+            // Parameter names must match shader member names exactly (case-sensitive)
+            SetParameter("viewMatrix", RenderParameterValue(view));
+            SetParameter("projectionMatrix", RenderParameterValue(proj));
+            SetParameter("viewProjectionMatrix", RenderParameterValue(viewProj));
         }
 
         void RenderParameterCollector::CollectLightData(Resources::Scene* scene) {

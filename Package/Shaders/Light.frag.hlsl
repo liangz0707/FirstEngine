@@ -11,7 +11,8 @@ struct FragmentOutput {
     float4 color : SV_Target0;
 };
 
-// Uniform Buffers - Set 0, Binding 0 and 1
+// Uniform Buffers - Set 0, Binding 0 (LightParams)
+// PerFrame is in Set 1 to match vertex shaders and avoid conflicts
 [[vk::binding(0, 0)]] cbuffer LightParams {
     float3 lightPosition;
     float3 lightColor;
@@ -23,21 +24,23 @@ struct FragmentOutput {
     float spotFalloff;
 };
 
-[[vk::binding(1, 0)]] cbuffer PerFrame {
+// PerFrame - Set 1, Binding 1 (matches vertex shaders)
+[[vk::binding(1, 1)]] cbuffer PerFrame {
     float4x4 viewMatrix;
     float4x4 projectionMatrix;
     float4x4 invViewProjectionMatrix;
     float3 cameraPos;
 };
 
-// Separate Images - Set 0, Binding 2, 3, 4, 5 (G-Buffer)
-[[vk::binding(2, 0)]] Texture2D gAlbedo;
-[[vk::binding(3, 0)]] Texture2D gNormal;
-[[vk::binding(4, 0)]] Texture2D gMaterial;
-[[vk::binding(5, 0)]] Texture2D gDepth;
+// Separate Images - Set 0, Binding 1, 2, 3, 4 (G-Buffer)
+// Note: Binding 0 is used by LightParams, so G-Buffer textures start at Binding 1
+[[vk::binding(1, 0)]] Texture2D gAlbedo;
+[[vk::binding(2, 0)]] Texture2D gNormal;
+[[vk::binding(3, 0)]] Texture2D gMaterial;
+[[vk::binding(4, 0)]] Texture2D gDepth;
 
-// Separate Sampler - Set 0, Binding 6
-[[vk::binding(6, 0)]] SamplerState gBufferSampler;
+// Separate Sampler - Set 0, Binding 5
+[[vk::binding(5, 0)]] SamplerState gBufferSampler;
 
 // Reconstruct world position from depth
 float3 ReconstructWorldPos(float2 screenUV, float depth) {

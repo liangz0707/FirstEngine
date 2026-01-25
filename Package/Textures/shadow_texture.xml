@@ -2,9 +2,9 @@
 <Texture>
     <Name>Shadow Texture</Name>
     <ResourceID>1006</ResourceID>
-    <ImageFile>example_texture.png</ImageFile>
-    <Width>2048</Width>
-    <Height>2048</Height>
+    <ImageFile>shadow_texture.png</ImageFile>
+    <Width>512</Width>
+    <Height>512</Height>
     <Channels>1</Channels>
     <HasAlpha>false</HasAlpha>
 </Texture>

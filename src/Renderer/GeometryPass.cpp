@@ -65,6 +65,13 @@ namespace FirstEngine {
                 RHI::Format::R8G8B8A8_UNORM,
                 false
             );
+            AttachmentResource materialRes(
+                FrameGraphResourceNameToString(GBUFFER_MATERIAL),
+                resolution.width,
+                resolution.height,
+                RHI::Format::R8G8B8A8_UNORM,
+                false
+            );
             AttachmentResource depthRes(
                 FrameGraphResourceNameToString(GBUFFER_DEPTH),
                 resolution.width,
@@ -75,6 +82,7 @@ namespace FirstEngine {
 
             AddWriteResource(FrameGraphResourceNameToString(GBUFFER_ALBEDO), &albedoRes);
             AddWriteResource(FrameGraphResourceNameToString(GBUFFER_NORMAL), &normalRes);
+            AddWriteResource(FrameGraphResourceNameToString(GBUFFER_MATERIAL), &materialRes);
             AddWriteResource(FrameGraphResourceNameToString(GBUFFER_DEPTH), &depthRes);
         }
 
@@ -93,9 +101,10 @@ namespace FirstEngine {
                 beginCmd.params.beginRenderPass.framebuffer = framebuffer;
                 beginCmd.params.beginRenderPass.width = framebuffer->GetWidth();
                 beginCmd.params.beginRenderPass.height = framebuffer->GetHeight();
-                // Clear colors for G-Buffer attachments (albedo, normal)
+                // Clear colors for G-Buffer attachments (albedo, normal, material)
                 beginCmd.params.beginRenderPass.clearColors = {0.0f, 0.0f, 0.0f, 0.0f,  // Albedo: black
-                                                                0.0f, 0.0f, 0.0f, 0.0f}; // Normal: black
+                                                                0.0f, 0.0f, 0.0f, 0.0f,  // Normal: black
+                                                                0.0f, 0.0f, 0.0f, 0.0f}; // Material: black
                 beginCmd.params.beginRenderPass.clearDepth = 1.0f;  // Clear depth to 1.0 (far plane)
                 beginCmd.params.beginRenderPass.clearStencil = 0;
                 cmdList.AddCommand(beginCmd);

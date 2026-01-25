@@ -28,6 +28,7 @@ namespace FirstEngine {
             
             // Buffer information
             uint32_t size;
+            uint32_t offset = 0; // Member offset in uniform buffer (for std140 layout)
             std::vector<uint32_t> array_size;
             
             // Type information (for vertex inputs)

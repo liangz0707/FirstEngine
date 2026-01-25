@@ -6,6 +6,9 @@
 #include "FirstEngine/RHI/IBuffer.h"
 #include "FirstEngine/RHI/IImage.h"
 #include <unordered_map>
+#include <map>
+#include <set>
+#include <utility> // for std::pair
 #include <vector>
 #include <memory>
 #include <cstdint>
@@ -71,6 +74,10 @@ namespace FirstEngine {
 
             // Check if initialized
             bool IsInitialized() const { return m_Initialized; }
+            
+            // Begin a new frame - clears per-frame update tracking
+            // This should be called at the start of each frame before any rendering
+            void BeginFrame();
 
         private:
             // Create descriptor set layouts from ShadingMaterial
@@ -83,7 +90,9 @@ namespace FirstEngine {
             bool AllocateDescriptorSets(RHI::IDevice* device);
 
             // Update descriptor set bindings (write uniform buffers and textures)
-            void WriteDescriptorSets(ShadingMaterial* material, RHI::IDevice* device);
+            // updateUniformBuffers: If true, update uniform buffer bindings (for Initialize).
+            //                      If false, skip uniform buffer bindings (for UpdateBindings, to avoid validation warnings).
+            void WriteDescriptorSets(ShadingMaterial* material, RHI::IDevice* device, bool updateUniformBuffers = true);
 
             // Internal state
             bool m_Initialized = false;
@@ -97,6 +106,18 @@ namespace FirstEngine {
 
             // Descriptor sets (one per set index)
             std::unordered_map<uint32_t, RHI::DescriptorSetHandle> m_DescriptorSets;
+            
+            // Cache last texture pointers to avoid unnecessary updates
+            // Key: {set, binding}, Value: texture pointer
+            std::map<std::pair<uint32_t, uint32_t>, RHI::IImage*> m_LastTexturePointers;
+            
+            // Track which descriptor sets have been updated this frame
+            // This prevents updating descriptor sets that are already in use by command buffers
+            // Key: descriptor set handle, Value: frame number (or just a flag)
+            std::set<RHI::DescriptorSetHandle> m_UpdatedThisFrame;
+            
+            // Frame counter to track when to clear the update tracking
+            uint64_t m_CurrentFrame = 0;
         };
 
     } // namespace Renderer

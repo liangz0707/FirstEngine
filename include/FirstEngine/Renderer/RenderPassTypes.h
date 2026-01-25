@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "FirstEngine/Renderer/Export.h"
 #include <string>
@@ -32,6 +32,7 @@ namespace FirstEngine {
             // G-Buffer resources
             GBufferAlbedo,
             GBufferNormal,
+            GBufferMaterial,
             GBufferDepth,
             GBufferRoughness,
             GBufferMetallic,

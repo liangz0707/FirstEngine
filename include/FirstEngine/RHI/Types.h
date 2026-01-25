@@ -66,10 +66,11 @@ namespace FirstEngine {
         // Descriptor types
         enum class DescriptorType : uint32_t {
             UniformBuffer = 0,
-            CombinedImageSampler = 1,
-            SampledImage = 2,
+            CombinedImageSampler = 1,  // Image + Sampler combined (GLSL sampler2D style)
+            SampledImage = 2,          // Image only (used with separate sampler)
             StorageImage = 3,
             StorageBuffer = 4,
+            Sampler = 5,                // Sampler only (used with separate image)
         };
 
         enum class Format : uint32_t {

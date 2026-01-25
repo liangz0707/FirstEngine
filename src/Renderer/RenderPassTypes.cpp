@@ -46,11 +46,12 @@ namespace FirstEngine {
 
         std::string FrameGraphResourceNameToString(FrameGraphResourceName name) {
             static const std::unordered_map<FrameGraphResourceName, std::string> nameMap = {
-                {FrameGraphResourceName::GBufferAlbedo, "GBufferAlbedo"},
-                {FrameGraphResourceName::GBufferNormal, "GBufferNormal"},
-                {FrameGraphResourceName::GBufferDepth, "GBufferDepth"},
-                {FrameGraphResourceName::GBufferRoughness, "GBufferRoughness"},
-                {FrameGraphResourceName::GBufferMetallic, "GBufferMetallic"},
+            {FrameGraphResourceName::GBufferAlbedo, "GBufferAlbedo"},
+            {FrameGraphResourceName::GBufferNormal, "GBufferNormal"},
+            {FrameGraphResourceName::GBufferMaterial, "GBufferMaterial"},
+            {FrameGraphResourceName::GBufferDepth, "GBufferDepth"},
+            {FrameGraphResourceName::GBufferRoughness, "GBufferRoughness"},
+            {FrameGraphResourceName::GBufferMetallic, "GBufferMetallic"},
                 {FrameGraphResourceName::FinalOutput, "FinalOutput"},
                 {FrameGraphResourceName::HDRBuffer, "HDRBuffer"},
                 {FrameGraphResourceName::ShadowMap, "ShadowMap"},
@@ -67,11 +68,12 @@ namespace FirstEngine {
 
         FrameGraphResourceName StringToFrameGraphResourceName(const std::string& str) {
             static const std::unordered_map<std::string, FrameGraphResourceName> nameMap = {
-                {"GBufferAlbedo", FrameGraphResourceName::GBufferAlbedo},
-                {"GBufferNormal", FrameGraphResourceName::GBufferNormal},
-                {"GBufferDepth", FrameGraphResourceName::GBufferDepth},
-                {"GBufferRoughness", FrameGraphResourceName::GBufferRoughness},
-                {"GBufferMetallic", FrameGraphResourceName::GBufferMetallic},
+            {"GBufferAlbedo", FrameGraphResourceName::GBufferAlbedo},
+            {"GBufferNormal", FrameGraphResourceName::GBufferNormal},
+            {"GBufferMaterial", FrameGraphResourceName::GBufferMaterial},
+            {"GBufferDepth", FrameGraphResourceName::GBufferDepth},
+            {"GBufferRoughness", FrameGraphResourceName::GBufferRoughness},
+            {"GBufferMetallic", FrameGraphResourceName::GBufferMetallic},
                 {"FinalOutput", FrameGraphResourceName::FinalOutput},
                 {"HDRBuffer", FrameGraphResourceName::HDRBuffer},
                 {"ShadowMap", FrameGraphResourceName::ShadowMap},

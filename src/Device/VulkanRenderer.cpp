@@ -92,7 +92,8 @@ namespace FirstEngine {
             appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
             appInfo.pEngineName = "FirstEngine";
             appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-            appInfo.apiVersion = VK_API_VERSION_1_0;
+            // Use Vulkan 1.2+ to get descriptor indexing features as core (no extension needed)
+            appInfo.apiVersion = VK_API_VERSION_1_2;
 
             VkInstanceCreateInfo createInfo{};
             createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -362,14 +363,30 @@ namespace FirstEngine {
                 std::vector<VkExtensionProperties> availableExtensions(extensionCount);
                 vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
 
-                std::set<std::string> requiredExtensions(m_DeviceExtensions.begin(), m_DeviceExtensions.end());
+                // Separate required extensions from optional ones
+                std::set<std::string> requiredExtensions;
+                std::set<std::string> optionalExtensions;
+                for (const auto& ext : m_DeviceExtensions) {
+                    if (strcmp(ext, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME) == 0) {
+                        optionalExtensions.insert(ext); // VK_EXT_descriptor_indexing is optional
+                    } else {
+                        requiredExtensions.insert(ext); // VK_KHR_swapchain is required
+                    }
+                }
+                
+                // Check if required extensions are available
                 for (const auto& extension : availableExtensions) {
                     requiredExtensions.erase(extension.extensionName);
+                    optionalExtensions.erase(extension.extensionName);
                 }
-
+                
                 if (requiredExtensions.empty()) {
                     m_PhysicalDevice = device;
                     std::cout << "Selected GPU: " << deviceProperties.deviceName << std::endl;
+                    if (!optionalExtensions.empty()) {
+                        std::cerr << "Warning: Optional extension VK_EXT_descriptor_indexing not available. "
+                                  << "UPDATE_UNUSED_WHILE_PENDING_BIT will not work." << std::endl;
+                    }
                     break;
                 }
             }
@@ -423,14 +440,78 @@ namespace FirstEngine {
             }
 
             VkPhysicalDeviceFeatures deviceFeatures{};
+            
+            // Query descriptor indexing features to check if they're supported
+            VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures{};
+            indexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+            
+            VkPhysicalDeviceFeatures2 features2{};
+            features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            features2.pNext = &indexingFeatures;
+            
+            // Query supported features
+            vkGetPhysicalDeviceFeatures2(m_PhysicalDevice, &features2);
+            
+            // Check if VK_EXT_descriptor_indexing extension is available
+            bool hasDescriptorIndexingExtension = false;
+            uint32_t extensionCount;
+            vkEnumerateDeviceExtensionProperties(m_PhysicalDevice, nullptr, &extensionCount, nullptr);
+            std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+            vkEnumerateDeviceExtensionProperties(m_PhysicalDevice, nullptr, &extensionCount, availableExtensions.data());
+            for (const auto& extension : availableExtensions) {
+                if (strcmp(extension.extensionName, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME) == 0) {
+                    hasDescriptorIndexingExtension = true;
+                    break;
+                }
+            }
+            
+            // Enable descriptor indexing features if supported
+            // Note: In Vulkan 1.2+, descriptor indexing features are core, but the extension name
+            // may still be used for compatibility. We check both the extension and the feature support.
+            if (indexingFeatures.descriptorBindingUpdateUnusedWhilePending) {
+                // Feature is supported - enable it
+                indexingFeatures.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+                indexingFeatures.descriptorBindingPartiallyBound = VK_TRUE; // Also useful for optional textures
+                m_DescriptorIndexingSupported = true;
+                if (hasDescriptorIndexingExtension) {
+                    std::cout << "VK_EXT_descriptor_indexing extension enabled with UPDATE_UNUSED_WHILE_PENDING_BIT support" << std::endl;
+                } else {
+                    std::cout << "Descriptor indexing features supported (core in Vulkan 1.2+) with UPDATE_UNUSED_WHILE_PENDING_BIT" << std::endl;
+                }
+            } else {
+                // Feature not supported - disable the flag
+                indexingFeatures.descriptorBindingUpdateUnusedWhilePending = VK_FALSE;
+                indexingFeatures.descriptorBindingPartiallyBound = VK_FALSE;
+                m_DescriptorIndexingSupported = false;
+                std::cerr << "Warning: descriptorBindingUpdateUnusedWhilePending feature not supported. "
+                          << "UPDATE_UNUSED_WHILE_PENDING_BIT will not work. "
+                          << "Descriptor sets must be updated before command buffer recording." << std::endl;
+            }
+            
+            // Set features
+            features2.features = deviceFeatures;
 
             VkDeviceCreateInfo createInfo{};
             createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
             createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
             createInfo.pQueueCreateInfos = queueCreateInfos.data();
-            createInfo.pEnabledFeatures = &deviceFeatures;
-            createInfo.enabledExtensionCount = static_cast<uint32_t>(m_DeviceExtensions.size());
-            createInfo.ppEnabledExtensionNames = m_DeviceExtensions.data();
+            createInfo.pEnabledFeatures = nullptr; // Use pNext chain instead
+            createInfo.pNext = &features2; // Link features2 structure
+            // Enable device extensions
+            // Note: VK_EXT_descriptor_indexing is optional - descriptor indexing features
+            // are core in Vulkan 1.2+, so we don't require the extension
+            // We only enable it if available and if we need it
+            std::vector<const char*> enabledExtensions;
+            enabledExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); // Always required
+            
+            // Optionally enable VK_EXT_descriptor_indexing if available (for older Vulkan versions)
+            // But descriptor indexing features work without the extension in Vulkan 1.2+
+            if (hasDescriptorIndexingExtension) {
+                enabledExtensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+            }
+            
+            createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
+            createInfo.ppEnabledExtensionNames = enabledExtensions.data();
 
             if (m_EnableValidationLayers) {
                 createInfo.enabledLayerCount = static_cast<uint32_t>(m_ValidationLayers.size());

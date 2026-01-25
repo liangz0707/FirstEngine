@@ -277,6 +277,10 @@ namespace FirstEngine {
             // This transfers CPU-side parameter data to actual GPU buffers
             // Should be called after UpdateRenderParameters and before rendering
             bool FlushParametersToGPU(RHI::IDevice* device);
+            
+            // Begin a new frame - forwards to MaterialDescriptorManager
+            // This clears per-frame update tracking, allowing descriptor sets to be updated again
+            void BeginFrame();
 
         private:
             // Device reference (for cleanup)

@@ -270,6 +270,10 @@ namespace FirstEngine {
                 item->materialData.materialName = "Default";
             }
 
+            // Note: entity reference is already set at line 216 (item->entity = m_Entity)
+            // This allows per-object data updates in SubmitRenderQueue to prevent parameter overwrite
+            // when multiple entities share the same material
+            
             // Compute sort key
             uint64_t pipelineID = reinterpret_cast<uint64_t>(item->materialData.pipeline) & 0xFFFF;
             uint64_t materialID = std::hash<std::string>{}(item->materialData.materialName) & 0xFFFF;

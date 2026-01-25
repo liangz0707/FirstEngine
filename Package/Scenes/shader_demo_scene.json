@@ -13,7 +13,7 @@
           "name": "PBR Cube",
           "active": true,
           "transform": {
-            "position": [-3.0, 0.0, -5.0],
+            "position": [0.0, 0.0, 0.0],
             "rotation": [1.0, 0.0, 0.0, 0.0],
             "scale": [1.0, 1.0, 1.0]
           },
@@ -21,54 +21,6 @@
             {
               "type": 1,
               "modelID": 4001
-            }
-          ]
-        },
-        {
-          "id": 2,
-          "name": "Geometry Cube",
-          "active": true,
-          "transform": {
-            "position": [-1.0, 0.0, -5.0],
-            "rotation": [1.0, 0.0, 0.0, 0.0],
-            "scale": [1.0, 1.0, 1.0]
-          },
-          "components": [
-            {
-              "type": 1,
-              "modelID": 4002
-            }
-          ]
-        },
-        {
-          "id": 3,
-          "name": "IBL Sphere",
-          "active": true,
-          "transform": {
-            "position": [1.0, 0.0, -5.0],
-            "rotation": [1.0, 0.0, 0.0, 0.0],
-            "scale": [1.0, 1.0, 1.0]
-          },
-          "components": [
-            {
-              "type": 1,
-              "modelID": 4003
-            }
-          ]
-        },
-        {
-          "id": 4,
-          "name": "SunLight Plane",
-          "active": true,
-          "transform": {
-            "position": [0.0, -2.0, -5.0],
-            "rotation": [1.0, 0.0, 0.0, 0.0],
-            "scale": [10.0, 1.0, 10.0]
-          },
-          "components": [
-            {
-              "type": 1,
-              "modelID": 4004
             }
           ]
         }

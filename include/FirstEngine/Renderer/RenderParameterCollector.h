@@ -15,6 +15,7 @@ namespace FirstEngine {
         class ModelComponent;
         class MaterialResource;
         class Scene;
+        class Entity;
     }
     namespace Renderer {
         class RenderConfig;
@@ -107,7 +108,8 @@ namespace FirstEngine {
 
             // Collect from ModelComponent (per-object data)
             // component: ModelComponent to collect from
-            void CollectFromComponent(Resources::ModelComponent* component);
+            // entity: Entity that owns the component (for world matrix)
+            void CollectFromComponent(Resources::ModelComponent* component, Resources::Entity* entity);
 
             // Collect from RenderConfig (per-frame global data)
             // config: RenderConfig to collect from

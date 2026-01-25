@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "FirstEngine/Renderer/Export.h"
 #include "FirstEngine/Renderer/IRenderPass.h"
@@ -23,6 +23,7 @@ namespace FirstEngine {
             static constexpr FrameGraphResourceName GBUFFER_ALBEDO = FrameGraphResourceName::GBufferAlbedo;
             static constexpr FrameGraphResourceName GBUFFER_NORMAL = FrameGraphResourceName::GBufferNormal;
             static constexpr FrameGraphResourceName GBUFFER_DEPTH = FrameGraphResourceName::GBufferDepth;
+            static constexpr FrameGraphResourceName GBUFFER_MATERIAL = FrameGraphResourceName::GBufferMaterial;
         };
 
     } // namespace Renderer

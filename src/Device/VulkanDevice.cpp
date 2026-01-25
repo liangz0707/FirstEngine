@@ -927,8 +927,22 @@ namespace FirstEngine {
         // Descriptor set operations implementation
         // ============================================================================
 
+        bool VulkanDevice::IsDescriptorIndexingSupported() const {
+            if (m_Renderer) {
+                return m_Renderer->IsDescriptorIndexingSupported();
+            }
+            return false;
+        }
+
         RHI::DescriptorSetLayoutHandle VulkanDevice::CreateDescriptorSetLayout(
             const RHI::DescriptorSetLayoutDescription& desc) {
+            // Validate input
+            if (desc.bindings.empty()) {
+                std::cerr << "Warning: VulkanDevice::CreateDescriptorSetLayout: Empty descriptor set layout description" << std::endl;
+                // Return nullptr for empty layouts - caller should handle this
+                return nullptr;
+            }
+
             auto* context = m_Renderer->GetDeviceContext();
             if (!context) {
                 std::cerr << "Error: VulkanDevice::CreateDescriptorSetLayout: Device context is nullptr" << std::endl;
@@ -941,19 +955,26 @@ namespace FirstEngine {
                 return nullptr;
             }
 
+            // Validate input
+            if (!desc.bindings.empty() && desc.bindings[0].count == 0) {
+                std::cerr << "Error: VulkanDevice::CreateDescriptorSetLayout: Descriptor set layout description is invalid (binding count is 0)" << std::endl;
+                return nullptr;
+            }
+
             std::vector<VkDescriptorSetLayoutBinding> bindings;
             bindings.reserve(desc.bindings.size());
 
             for (const auto& binding : desc.bindings) {
-                // Validate binding
+                // Validate binding - count must be > 0
                 if (binding.count == 0) {
-                    std::cerr << "Warning: VulkanDevice::CreateDescriptorSetLayout: Binding " 
-                              << binding.binding << " has count 0, skipping" << std::endl;
-                    continue;
+                    std::cerr << "Error: VulkanDevice::CreateDescriptorSetLayout: Binding " 
+                              << binding.binding << " has count 0, this is invalid. Minimum count is 1." << std::endl;
+                    return nullptr; // Fail instead of skipping - this indicates a bug
                 }
 
                 VkDescriptorSetLayoutBinding vkBinding{};
                 vkBinding.binding = binding.binding;
+                // Convert descriptor type from RHI to Vulkan
                 vkBinding.descriptorType = Device::ConvertDescriptorType(binding.type);
                 vkBinding.descriptorCount = binding.count;
                 vkBinding.stageFlags = Device::ConvertShaderStageFlags(binding.stageFlags);
@@ -967,8 +988,33 @@ namespace FirstEngine {
 
             VkDescriptorSetLayoutCreateInfo layoutInfo{};
             layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layoutInfo.flags = 0; // No special flags
             layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
             layoutInfo.pBindings = bindings.empty() ? nullptr : bindings.data();
+            
+            // Disable UPDATE_UNUSED_WHILE_PENDING_BIT for now due to validation errors
+            // The flag may not be properly supported or may require additional setup
+            // Instead, we'll ensure descriptor sets are updated before command buffer recording
+            layoutInfo.pNext = nullptr;
+            
+            // TODO: Re-enable UPDATE_UNUSED_WHILE_PENDING_BIT once validation errors are resolved
+            // This requires:
+            // 1. Proper Vulkan version/extension support verification
+            // 2. Correct flag values for the Vulkan version being used
+            // 3. Proper descriptor pool flags if UPDATE_AFTER_BIND_BIT is used
+            /*
+            if (IsDescriptorIndexingSupported() && !bindings.empty()) {
+                std::vector<VkDescriptorBindingFlags> bindingFlags(bindings.size(), 
+                    VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT);
+                
+                VkDescriptorSetLayoutBindingFlagsCreateInfo flagsInfo{};
+                flagsInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+                flagsInfo.bindingCount = static_cast<uint32_t>(bindingFlags.size());
+                flagsInfo.pBindingFlags = bindingFlags.data();
+                
+                layoutInfo.pNext = &flagsInfo;
+            }
+            */
 
             VkDescriptorSetLayout layout;
             VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &layout);
@@ -1157,73 +1203,125 @@ namespace FirstEngine {
                     imageInfos.emplace_back();
                     for (const auto& imgInfo : write.imageInfo) {
                         VkDescriptorImageInfo vkImgInfo{};
-                        if (imgInfo.image) {
-                            // Get VkImageView from IImageView
-                            if (imgInfo.imageView) {
-                                auto* vkImageView = static_cast<VulkanImageView*>(imgInfo.imageView);
-                                VkImageView vkImageViewHandle = vkImageView->GetVkImageView();
-                                if (vkImageViewHandle == VK_NULL_HANDLE) {
-                                    std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: ImageView handle is VK_NULL_HANDLE for binding " 
-                                              << write.dstBinding << std::endl;
-                                    vkImgInfo.imageView = VK_NULL_HANDLE;
-                                } else {
-                                    vkImgInfo.imageView = vkImageViewHandle;
-                                }
+                        
+                        // Handle different descriptor types
+                        if (vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER) {
+                            // Separate sampler: only needs sampler, no image or imageView
+                            vkImgInfo.imageView = VK_NULL_HANDLE;
+                            vkImgInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                            if (imgInfo.sampler) {
+                                vkImgInfo.sampler = reinterpret_cast<VkSampler>(imgInfo.sampler);
                             } else {
-                                // If no imageView provided, try to create one from image
-                                auto* vkImage = static_cast<VulkanImage*>(imgInfo.image);
-                                RHI::IImageView* defaultView = vkImage->CreateImageView();
-                                if (defaultView) {
-                                    auto* vkImageView = static_cast<VulkanImageView*>(defaultView);
-                                    vkImgInfo.imageView = vkImageView->GetVkImageView();
-                                } else {
-                                    std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Failed to create image view for binding " 
-                                              << write.dstBinding << std::endl;
-                                    vkImgInfo.imageView = VK_NULL_HANDLE;
-                                }
+                                std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Sampler is nullptr for SAMPLER binding " 
+                                          << write.dstBinding << std::endl;
+                                vkImgInfo.sampler = VK_NULL_HANDLE;
                             }
-                            vkImgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                         } else {
-                            std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Image is nullptr for binding " 
-                                      << write.dstBinding << std::endl;
+                            // CombinedImageSampler or SampledImage: needs image and imageView
+                            if (imgInfo.image) {
+                                // Get VkImageView from IImageView
+                                if (imgInfo.imageView) {
+                                    auto* vkImageView = static_cast<VulkanImageView*>(imgInfo.imageView);
+                                    VkImageView vkImageViewHandle = vkImageView->GetVkImageView();
+                                    if (vkImageViewHandle == VK_NULL_HANDLE) {
+                                        std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: ImageView handle is VK_NULL_HANDLE for binding " 
+                                                  << write.dstBinding << std::endl;
+                                        vkImgInfo.imageView = VK_NULL_HANDLE;
+                                    } else {
+                                        vkImgInfo.imageView = vkImageViewHandle;
+                                    }
+                                } else {
+                                    // If no imageView provided, try to create one from image
+                                    auto* vkImage = static_cast<VulkanImage*>(imgInfo.image);
+                                    RHI::IImageView* defaultView = vkImage->CreateImageView();
+                                    if (defaultView) {
+                                        auto* vkImageView = static_cast<VulkanImageView*>(defaultView);
+                                        vkImgInfo.imageView = vkImageView->GetVkImageView();
+                                    } else {
+                                        std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Failed to create image view for binding " 
+                                                  << write.dstBinding << std::endl;
+                                        vkImgInfo.imageView = VK_NULL_HANDLE;
+                                    }
+                                }
+                                vkImgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        } else {
+                            // For non-SAMPLER types, image should not be nullptr
+                            if (vkWrite.descriptorType != VK_DESCRIPTOR_TYPE_SAMPLER) {
+                                std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Image is nullptr for binding " 
+                                          << write.dstBinding << " (type: " << static_cast<int>(vkWrite.descriptorType) << ")" << std::endl;
+                            }
                             vkImgInfo.imageView = VK_NULL_HANDLE;
                             vkImgInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
                         }
-                        vkImgInfo.sampler = reinterpret_cast<VkSampler>(imgInfo.sampler);
+                            // Handle sampler: can be VkSampler pointer or nullptr
+                            if (imgInfo.sampler) {
+                                vkImgInfo.sampler = reinterpret_cast<VkSampler>(imgInfo.sampler);
+                            } else {
+                                vkImgInfo.sampler = VK_NULL_HANDLE;
+                            }
+                        }
                         imageInfos.back().push_back(vkImgInfo);
                     }
                     vkWrite.descriptorCount = static_cast<uint32_t>(imageInfos.back().size());
                     vkWrite.pImageInfo = imageInfos.back().data();
                     
-                    // Validate that all image views are valid
-                    bool hasInvalidImageView = false;
-                    for (const auto& imgInfo : imageInfos.back()) {
-                        if (imgInfo.imageView == VK_NULL_HANDLE) {
-                            hasInvalidImageView = true;
-                            break;
+                    // Validate that all image views are valid (only for types that require imageView)
+                    if (vkWrite.descriptorType != VK_DESCRIPTOR_TYPE_SAMPLER) {
+                        bool hasInvalidImageView = false;
+                        for (const auto& imgInfo : imageInfos.back()) {
+                            if (imgInfo.imageView == VK_NULL_HANDLE) {
+                                hasInvalidImageView = true;
+                                break;
+                            }
                         }
-                    }
-                    if (hasInvalidImageView) {
-                        std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Some image views are VK_NULL_HANDLE for binding " 
-                                  << write.dstBinding << ". This will cause descriptor set binding errors." << std::endl;
+                        if (hasInvalidImageView) {
+                            std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Some image views are VK_NULL_HANDLE for binding " 
+                                      << write.dstBinding << ". This will cause descriptor set binding errors." << std::endl;
+                        }
                     }
                 }
 
                 // Validate descriptor count before adding
                 if (vkWrite.descriptorCount == 0) {
                     std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Descriptor count is 0 for binding " 
-                              << vkWrite.dstBinding << " in set " << vkWrite.dstSet << std::endl;
-                    continue; // Skip this write
+                              << vkWrite.dstBinding << " in set " << vkWrite.dstSet 
+                              << " (type: " << static_cast<int>(vkWrite.descriptorType) << ")" << std::endl;
+                    std::cerr << "  This usually means the write has no bufferInfo or imageInfo. Skipping this write." << std::endl;
+                    continue; // Skip this write - it's invalid
                 }
                 
+                // Ensure descriptorCount matches the layout's expected count (should be 1 for most cases)
+                // Note: The layout's descriptorCount is set during CreateDescriptorSetLayout
+                // We should match it here, but for now we use the actual count from bufferInfo/imageInfo
+                
                 // Validate that we have valid data for the descriptor type
-                if (vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || 
-                    vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+                if (vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
+                    // Combined image sampler requires both sampler and imageView
+                    if (!vkWrite.pImageInfo || vkWrite.pImageInfo[0].sampler == VK_NULL_HANDLE) {
+                        std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Invalid sampler for binding " 
+                                  << vkWrite.dstBinding << " in set " << vkWrite.dstSet << std::endl;
+                        continue; // Skip this write
+                    }
+                    if (vkWrite.pImageInfo[0].imageView == VK_NULL_HANDLE) {
+                        std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Invalid image view for CombinedImageSampler binding " 
+                                  << vkWrite.dstBinding << " in set " << vkWrite.dstSet << std::endl;
+                        continue; // Skip this write
+                    }
+                } else if (vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+                    // Sampled image requires valid imageView (sampler is separate)
                     if (!vkWrite.pImageInfo || vkWrite.pImageInfo[0].imageView == VK_NULL_HANDLE) {
                         std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Invalid image view for binding " 
                                   << vkWrite.dstBinding << " in set " << vkWrite.dstSet << std::endl;
                         continue; // Skip this write
                     }
+                } else if (vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER) {
+                    // Separate sampler requires valid sampler (no imageView needed)
+                    if (!vkWrite.pImageInfo || vkWrite.pImageInfo[0].sampler == VK_NULL_HANDLE) {
+                        std::cerr << "Error: VulkanDevice::UpdateDescriptorSets: Invalid sampler for SAMPLER binding " 
+                                  << vkWrite.dstBinding << " in set " << vkWrite.dstSet << std::endl;
+                        continue; // Skip this write
+                    }
+                    // For SAMPLER type, imageView should be VK_NULL_HANDLE (it's not used)
                 } else if (vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
                            vkWrite.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
                     if (!vkWrite.pBufferInfo || vkWrite.pBufferInfo[0].buffer == VK_NULL_HANDLE) {

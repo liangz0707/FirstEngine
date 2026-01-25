@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Texture>
+  <Name>thumbnail</Name>
+  <ResourceID>5005</ResourceID>
+  <ImageFile>thumbnail.jpeg</ImageFile>
+  <Width>512</Width>
+  <Height>512</Height>
+  <Channels>4</Channels>
+  <HasAlpha>true</HasAlpha>
+</Texture>

@@ -58,6 +58,9 @@ namespace FirstEngine {
 
             // Get underlying VulkanRenderer (for advanced operations)
             VulkanRenderer* GetVulkanRenderer() const { return m_Renderer.get(); }
+            
+            // Check if descriptor indexing is supported
+            bool IsDescriptorIndexingSupported() const;
 
             // Descriptor set operations
             RHI::DescriptorSetLayoutHandle CreateDescriptorSetLayout(

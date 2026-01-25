@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "FirstEngine/Device/Export.h"
 
@@ -36,6 +36,7 @@ namespace FirstEngine {
             uint32_t GetGraphicsQueueFamily() const { return m_GraphicsQueueFamily; }
             uint32_t GetPresentQueueFamily() const { return m_PresentQueueFamily; }
             DeviceContext* GetDeviceContext() const { return m_DeviceContext.get(); }
+            bool IsDescriptorIndexingSupported() const { return m_DescriptorIndexingSupported; }
 
         private:
             void CreateInstance();
@@ -71,11 +72,18 @@ namespace FirstEngine {
                 "VK_LAYER_KHRONOS_validation"
             };
 
+            // Device extensions
+            // Note: VK_EXT_descriptor_indexing is optional - we check for it at runtime
+            // In Vulkan 1.2+, descriptor indexing features are core, so the extension may not be needed
             const std::vector<const char*> m_DeviceExtensions = {
                 VK_KHR_SWAPCHAIN_EXTENSION_NAME
+                // VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME is optional - we check and enable it at runtime if available
             };
 
             bool m_EnableValidationLayers = true;
+            
+            // Track if descriptor indexing extension and features are supported
+            bool m_DescriptorIndexingSupported = false;
 
             static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
                 VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
