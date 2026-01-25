@@ -112,7 +112,8 @@ namespace FirstEngine {
             }
             m_Textures.clear();
             
-            // Delete shading material if exists
+            // DEPRECATED: ShadingMaterial is now owned by Component
+            // This cleanup is kept for backward compatibility
             if (m_ShadingMaterial) {
                 delete static_cast<Renderer::ShadingMaterial*>(m_ShadingMaterial);
                 m_ShadingMaterial = nullptr;
@@ -340,35 +341,24 @@ namespace FirstEngine {
             return true;
         }
         
-        void MaterialResource::SetTexturesToShadingMaterial() {
-            if (!m_ShadingMaterial) {
-                return;
-            }
-            
-            auto* shadingMaterial = static_cast<Renderer::ShadingMaterial*>(m_ShadingMaterial);
+        void MaterialResource::SetTexturesToShadingMaterial(Renderer::ShadingMaterial* shadingMaterial) const {
             if (!shadingMaterial) {
                 return;
             }
 
-            // Get device from ShadingMaterial (if it's created)
-            // Note: We need device to create texture GPU resources
-            // For now, texture creation will be deferred until ShadingMaterial is created
-            // and we have device available
-            // This method will be called again after ShadingMaterial is created
-            
-            if (!shadingMaterial->IsCreated()) {
-                // ShadingMaterial not created yet, textures will be set after creation
-                return;
-            }
-
+            // Get device from ShadingMaterial
+            // Note: We can get device even if ShadingMaterial is not fully created yet (e.g., during DoCreate)
+            // The device is set in DoCreate before we call this method
             RHI::IDevice* device = shadingMaterial->GetDevice();
             if (!device) {
                 return;
             }
-
+            
             // For each texture in m_Textures, bind it to ShadingMaterial
             // We need to map texture slot names to shader bindings
-            for (const auto& [slotName, textureHandle] : m_Textures) {
+            for (const auto& pair : m_Textures) {
+                const std::string& slotName = pair.first;
+                TextureHandle textureHandle = pair.second;
                 if (!textureHandle) {
                     continue;
                 }
@@ -397,21 +387,67 @@ namespace FirstEngine {
                 const auto& reflection = shadingMaterial->GetShaderReflection();
                 RHI::IImage* gpuTexture = static_cast<RHI::IImage*>(textureData.image);
                 
-                // Search samplers first
-                for (const auto& sampler : reflection.samplers) {
-                    if (sampler.name == slotName || sampler.name.find(slotName) != std::string::npos) {
-                        shadingMaterial->SetTexture(sampler.set, sampler.binding, gpuTexture);
+                bool textureSet = false;
+                
+                // Helper function to match texture slot name to shader binding name
+                auto matchTextureName = [](const std::string& slotName, const std::string& bindingName) -> bool {
+                    std::string slotNameLower = slotName;
+                    std::string bindingNameLower = bindingName;
+                    std::transform(slotNameLower.begin(), slotNameLower.end(), slotNameLower.begin(), ::tolower);
+                    std::transform(bindingNameLower.begin(), bindingNameLower.end(), bindingNameLower.begin(), ::tolower);
+                    
+                    return (bindingName == slotName || 
+                            bindingNameLower == slotNameLower ||
+                            bindingName.find(slotName) != std::string::npos ||
+                            slotName.find(bindingName) != std::string::npos ||
+                            bindingNameLower.find(slotNameLower) != std::string::npos ||
+                            slotNameLower.find(bindingNameLower) != std::string::npos);
+                };
+                
+                // Search separate_images first (HLSL/Vulkan style, most common for PBR shaders)
+                // These use SAMPLED_IMAGE descriptor type
+                for (const auto& image : reflection.separate_images) {
+                    if (matchTextureName(slotName, image.name)) {
+                        shadingMaterial->SetTexture(image.set, image.binding, gpuTexture);
+                        textureSet = true;
                         break;
                     }
                 }
                 
-                // Search images
-                for (const auto& image : reflection.images) {
-                    if (image.name == slotName || image.name.find(slotName) != std::string::npos) {
-                        shadingMaterial->SetTexture(image.set, image.binding, gpuTexture);
-                        break;
+                // Search sampled_images (GLSL combined image sampler style)
+                // These use COMBINED_IMAGE_SAMPLER descriptor type
+                if (!textureSet) {
+                    for (const auto& sampler : reflection.sampled_images) {
+                        if (matchTextureName(slotName, sampler.name)) {
+                            shadingMaterial->SetTexture(sampler.set, sampler.binding, gpuTexture);
+                            textureSet = true;
+                            break;
+                        }
                     }
                 }
+                
+                // Fallback: Search legacy images field (for backward compatibility)
+                if (!textureSet) {
+                    for (const auto& image : reflection.images) {
+                        if (matchTextureName(slotName, image.name)) {
+                            shadingMaterial->SetTexture(image.set, image.binding, gpuTexture);
+                            textureSet = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // Fallback: Search legacy samplers field (for backward compatibility)
+                if (!textureSet) {
+                    for (const auto& sampler : reflection.samplers) {
+                        if (matchTextureName(slotName, sampler.name)) {
+                            shadingMaterial->SetTexture(sampler.set, sampler.binding, gpuTexture);
+                            textureSet = true;
+                            break;
+                        }
+                    }
+                }
+                
             }
         }
 
@@ -436,7 +472,8 @@ namespace FirstEngine {
             // This is a const method, but we need to set textures
             // We'll use const_cast to call SetTexturesToShadingMaterial
             // In practice, this should be called from a non-const method or after creation
-            const_cast<MaterialResource*>(this)->SetTexturesToShadingMaterial();
+            // Note: This deprecated method is kept for backward compatibility
+            const_cast<MaterialResource*>(this)->SetTexturesToShadingMaterial(shadingMaterial);
 
             outData.shadingMaterial = shadingMaterial;
             auto& shadingState = shadingMaterial->GetShadingState();

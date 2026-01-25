@@ -78,6 +78,15 @@ namespace FirstEngine {
             // Begin a new frame - clears per-frame update tracking
             // This should be called at the start of each frame before any rendering
             void BeginFrame();
+            
+            // Mark descriptor set as in use (bound to command buffer)
+            // This prevents updating the descriptor set while it's in use
+            void MarkDescriptorSetInUse(RHI::DescriptorSetHandle set);
+            
+            // Force update all bindings (use with caution - only when descriptor sets are guaranteed not to be in use)
+            // This is useful when textures are set after initialization and descriptor sets need to be updated
+            // even if they were already updated this frame
+            void ForceUpdateAllBindings(ShadingMaterial* material, RHI::IDevice* device);
 
         private:
             // Create descriptor set layouts from ShadingMaterial
@@ -92,7 +101,9 @@ namespace FirstEngine {
             // Update descriptor set bindings (write uniform buffers and textures)
             // updateUniformBuffers: If true, update uniform buffer bindings (for Initialize).
             //                      If false, skip uniform buffer bindings (for UpdateBindings, to avoid validation warnings).
-            void WriteDescriptorSets(ShadingMaterial* material, RHI::IDevice* device, bool updateUniformBuffers = true);
+            // forceUpdateAllBindings: If true, force update all bindings even if descriptor set was already updated.
+            //                        Use with caution - only when descriptor sets are guaranteed not to be in use.
+            void WriteDescriptorSets(ShadingMaterial* material, RHI::IDevice* device, bool updateUniformBuffers = true, bool forceUpdateAllBindings = false);
 
             // Internal state
             bool m_Initialized = false;
@@ -118,6 +129,14 @@ namespace FirstEngine {
             
             // Frame counter to track when to clear the update tracking
             uint64_t m_CurrentFrame = 0;
+            
+            // Placeholder texture for missing textures (1x1 white texture)
+            // This is used when a shader binding requires a texture but none is provided
+            std::unique_ptr<RHI::IImage> m_PlaceholderTexture;
+            
+            // Get or create placeholder texture (1x1 white RGBA)
+            // Returns nullptr if creation fails
+            RHI::IImage* GetOrCreatePlaceholderTexture(RHI::IDevice* device);
         };
 
     } // namespace Renderer

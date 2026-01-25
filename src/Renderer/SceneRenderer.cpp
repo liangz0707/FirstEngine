@@ -337,6 +337,9 @@ namespace FirstEngine {
                         // Add Set 0 (MaterialParams/textures) if available
                         if (itemDescriptorSet0) {
                             cmd.params.bindDescriptorSets.descriptorSets.push_back(itemDescriptorSet0);
+                            // Mark descriptor set as in use to prevent updates while bound to command buffer
+                            // Note: We need to get the MaterialDescriptorManager from the ShadingMaterial
+                            // For now, we'll rely on the per-frame tracking in MaterialDescriptorManager
                         }
                         
                         // Add Set 1 (PerObject/PerFrame) if available

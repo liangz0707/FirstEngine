@@ -10,6 +10,10 @@
 #include <memory>
 
 namespace FirstEngine {
+    namespace Renderer {
+        class ShadingMaterial;
+    }
+    
     namespace Resources {
 
         // Forward declaration
@@ -75,14 +79,16 @@ namespace FirstEngine {
             void Release() override { m_Metadata.refCount--; }
             uint32_t GetRefCount() const override { return m_Metadata.refCount; }
 
-            // Render resource management (internal - creates ShadingMaterial from material data)
-            // Returns true if ShadingMaterial was created or already exists
+            // DEPRECATED: ShadingMaterial is now owned by Component, not MaterialResource
+            // These methods are kept for backward compatibility but should not be used
+            // TODO: Remove these methods in future versions
+            [[deprecated("ShadingMaterial is now owned by Component. Use Component::GetShadingMaterial() instead.")]]
             bool CreateShadingMaterial();
             
-            // Check if ShadingMaterial is ready for rendering
+            [[deprecated("ShadingMaterial is now owned by Component. Use Component::GetShadingMaterial() instead.")]]
             bool IsShadingMaterialReady() const;
             
-            // Get render data for creating RenderItem (does not expose ShadingMaterial)
+            [[deprecated("ShadingMaterial is now owned by Component. Use Component::GetShadingMaterial() instead.")]]
             struct RenderData {
                 void* shadingMaterial = nullptr; // ShadingMaterial* cast to void*
                 void* pipeline = nullptr; // IPipeline* cast to void*
@@ -90,7 +96,16 @@ namespace FirstEngine {
                 std::string materialName;
                 void* image = nullptr; // RHI::IImage* cast to void* (for texture resources)
             };
+            [[deprecated("ShadingMaterial is now owned by Component. Use Component::GetShadingMaterial() instead.")]]
             bool GetRenderData(RenderData& outData) const;
+            
+            // Helper: Set textures from MaterialResource to ShadingMaterial
+            // This is used by Component to set textures after ShadingMaterial is created
+            // shadingMaterial: The ShadingMaterial to set textures to
+            void SetTexturesToShadingMaterial(Renderer::ShadingMaterial* shadingMaterial) const;
+            
+            // Get all textures (for Component to access)
+            const std::unordered_map<std::string, TextureHandle>& GetTextures() const { return m_Textures; }
 
             // Get ShaderCollection (for accessing shader modules)
             // Returns nullptr if not set
@@ -118,12 +133,9 @@ namespace FirstEngine {
             std::vector<uint8_t> m_ParameterData;
             bool m_ParameterDataDirty = true; // Flag to indicate if parameter data needs rebuilding
             
-            // GPU render resource (stored in Handle, not Component)
-            // Using void* to avoid including Renderer headers (breaks circular dependency)
+            // DEPRECATED: ShadingMaterial is now owned by Component, not MaterialResource
+            // This is kept for backward compatibility
             void* m_ShadingMaterial = nullptr;
-            
-            // Helper: Set textures from m_Textures to ShadingMaterial
-            void SetTexturesToShadingMaterial();
         };
 
     } // namespace Resources

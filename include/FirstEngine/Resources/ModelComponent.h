@@ -7,6 +7,13 @@
 #include <memory>
 #include <vector>
 
+// Forward declaration for ShadingMaterial
+namespace FirstEngine {
+    namespace Renderer {
+        class ShadingMaterial;
+    }
+}
+
 // Forward declarations
 namespace FirstEngine {
     namespace RHI {
@@ -15,6 +22,7 @@ namespace FirstEngine {
     namespace Renderer {
         struct RenderItem;
         enum class RenderObjectFlag : uint32_t;
+        class ShadingMaterial;
     }
 }
 
@@ -55,6 +63,13 @@ namespace FirstEngine {
 
         private:
             ModelHandle m_Model = nullptr;
+            
+            // ShadingMaterial owned by this component (each component has its own instance)
+            // This allows multiple components to share the same MaterialResource but have separate ShadingMaterial instances
+            std::unique_ptr<Renderer::ShadingMaterial> m_ShadingMaterial;
+            
+            // Helper: Create ShadingMaterial from MaterialResource
+            bool CreateShadingMaterialFromResource(MaterialHandle material);
         };
 
     } // namespace Resources

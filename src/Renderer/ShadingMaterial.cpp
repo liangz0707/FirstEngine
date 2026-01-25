@@ -169,7 +169,7 @@ namespace FirstEngine {
             
             // Note: Textures will be initialized after ShadingMaterial is created
             // via MaterialResource::SetTexturesToShadingMaterial() which is called
-            // from MaterialResource::GetRenderData() after DoCreate()
+            // from ShadingMaterial::DoCreate() after GPU resources are created
             // This is because textures need GPU resources to be created first
         }
 
@@ -932,6 +932,19 @@ namespace FirstEngine {
             // This is because pipeline creation requires a renderPass, which may not be available yet
             // Pipeline will be created lazily when first needed
 
+            // Set textures from MaterialResource if available
+            // This is done after ShadingMaterial is created so GPU resources are available
+            if (m_MaterialResource) {
+                m_MaterialResource->SetTexturesToShadingMaterial(this);
+                
+                // IMPORTANT: After setting textures, we need to update descriptor sets
+                // Since we just created the ShadingMaterial, the descriptor sets are not in use yet
+                // So we can safely force update them with the new texture pointers
+                if (m_DescriptorManager) {
+                    m_DescriptorManager->ForceUpdateAllBindings(this, device);
+                }
+            }
+
             return true;
         }
 
@@ -1152,10 +1165,11 @@ namespace FirstEngine {
             for (auto& tb : m_TextureBindings) {
                 if (tb.name == name) {
                     tb.texture = texture;
-                    // Update descriptor set bindings through MaterialDescriptorManager
-                    if (m_DescriptorManager && m_Device) {
-                        m_DescriptorManager->UpdateBindings(this, m_Device);
-                    }
+                    // NOTE: We don't immediately call UpdateBindings here because:
+                    // 1. The descriptor set might be in use by a command buffer
+                    // 2. UpdateBindings will be called in FlushParametersToGPU() or DoUpdate()
+                    // 3. The cache in MaterialDescriptorManager will detect the texture pointer change
+                    //    and update the descriptor set when it's safe to do so
                     return true;
                 }
             }

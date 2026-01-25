@@ -8,6 +8,7 @@
 #include "FirstEngine/Renderer/RenderFlags.h"
 #include "FirstEngine/Renderer/RenderGeometry.h"
 #include "FirstEngine/Renderer/ShadingMaterial.h"
+#include "FirstEngine/Renderer/ShaderCollectionsTools.h"
 #include "FirstEngine/RHI/Types.h"
 #include "FirstEngine/RHI/IImage.h"
 #include <glm/glm.hpp>
@@ -27,6 +28,9 @@ namespace FirstEngine {
         ModelComponent::ModelComponent() : Component(ComponentType::Mesh) {}
 
         ModelComponent::~ModelComponent() {
+            // ShadingMaterial will be automatically destroyed by unique_ptr
+            m_ShadingMaterial.reset();
+            
             // Release model reference
             if (m_Model) {
                 m_Model->Release();
@@ -143,7 +147,7 @@ namespace FirstEngine {
 
         void ModelComponent::OnLoad() {
             // Called when Entity is fully loaded (all components attached, resources ready)
-            // Create RenderGeometry and ShadingMaterial in Resource handles (not in Component)
+            // Create RenderGeometry in MeshResource handles and ShadingMaterial in Component
             if (!m_Model || m_Model->GetMeshCount() == 0) {
                 return;
             }
@@ -164,22 +168,12 @@ namespace FirstEngine {
                 }
             }
 
-            // Create ShadingMaterial for each material in MaterialResource handles
-            // All creation logic is now encapsulated in MaterialResource::CreateShadingMaterial()
-            for (uint32_t i = 0; i < m_Model->GetMeshCount(); ++i) {
-                auto* material = m_Model->GetMaterial(i);
-                if (!material) {
-                    continue;
-                }
-
-                // Cast to MaterialResource* to access CreateShadingMaterial()
-                auto* materialResource = dynamic_cast<MaterialResource*>(material);
-                if (!materialResource) {
-                    continue; // Not a MaterialResource, skip
-                }
-
-                // Create ShadingMaterial (all setup logic is inside CreateShadingMaterial())
-                materialResource->CreateShadingMaterial();
+            // Create ShadingMaterial in Component (each component has its own instance)
+            // This allows multiple components to share the same MaterialResource but have separate ShadingMaterial instances
+            // Use first material for now (can be extended to support multiple materials)
+            auto* material = m_Model->GetMaterial(0);
+            if (material) {
+                CreateShadingMaterialFromResource(material);
             }
         }
 
@@ -227,47 +221,28 @@ namespace FirstEngine {
             item->geometryData.vertexBufferOffset = 0;
             item->geometryData.indexBufferOffset = 0;
 
-            // Get render data from MaterialResource (encapsulated, doesn't expose ShadingMaterial)
-            if (material) {
-                auto* materialResource = dynamic_cast<MaterialResource*>(material);
-                if (materialResource && materialResource->IsShadingMaterialReady()) {
-                    MaterialResource::RenderData materialRenderData;
-                    if (materialResource->GetRenderData(materialRenderData)) {
-                        // Validate vertex inputs match geometry
-                        auto* shadingMaterial = static_cast<Renderer::ShadingMaterial*>(materialRenderData.shadingMaterial);
-                        if (shadingMaterial) {
-                            // Create a temporary RenderGeometry object for validation
-                            // We can validate using the vertex stride from geometry data
-                            Renderer::RenderGeometry tempGeometry;
-                            if (tempGeometry.InitializeFromMesh(mesh)) {
-                                // Note: ValidateVertexInputs only needs GetVertexStride(), 
-                                // which doesn't require GPU resources to be created.
-                                // However, if GPU resources are needed later, ensure they are created.
-                                // For now, ValidateVertexInputs doesn't require GPU buffers.
-                                
-                                // Validate vertex inputs match geometry
-                                if (!shadingMaterial->ValidateVertexInputs(&tempGeometry)) {
-                                    // Vertex inputs don't match geometry - skip this item
-                                    return nullptr;
-                                }
-                            }
-                            
-                            // Store material data directly
-                            item->materialData.shadingMaterial = materialRenderData.shadingMaterial;
-                            item->materialData.pipeline = materialRenderData.pipeline;
-                            item->materialData.descriptorSet = materialRenderData.descriptorSet;
-                            item->materialData.materialName = materialRenderData.materialName;
-                        } else {
-                            item->materialData.materialName = material->GetMetadata().name;
-                        }
-                    } else {
-                        item->materialData.materialName = material->GetMetadata().name;
+            // Get ShadingMaterial from Component (owned by Component, not MaterialResource)
+            if (m_ShadingMaterial && m_ShadingMaterial->IsCreated()) {
+                // Validate vertex inputs match geometry
+                Renderer::RenderGeometry tempGeometry;
+                if (tempGeometry.InitializeFromMesh(mesh)) {
+                    // Validate vertex inputs match geometry
+                    if (!m_ShadingMaterial->ValidateVertexInputs(&tempGeometry)) {
+                        // Vertex inputs don't match geometry - skip this item
+                        return nullptr;
                     }
-                } else {
-                    item->materialData.materialName = material->GetMetadata().name;
                 }
+                
+                // Get pipeline and descriptor set from ShadingMaterial
+                // Note: We need to get these from ShadingMaterial, not MaterialResource
+                // Pipeline is created lazily when needed (via EnsurePipelineCreated)
+                // For now, we'll set the ShadingMaterial pointer and let the renderer handle pipeline creation
+                item->materialData.shadingMaterial = m_ShadingMaterial.get();
+                item->materialData.pipeline = nullptr; // Will be set by renderer when pipeline is created
+                item->materialData.descriptorSet = m_ShadingMaterial->GetDescriptorSet(0); // Get descriptor set from ShadingMaterial
+                item->materialData.materialName = material ? material->GetMetadata().name : "Default";
             } else {
-                item->materialData.materialName = "Default";
+                item->materialData.materialName = material ? material->GetMetadata().name : "Default";
             }
 
             // Note: entity reference is already set at line 216 (item->entity = m_Entity)
@@ -285,28 +260,58 @@ namespace FirstEngine {
         }
 
         Renderer::ShadingMaterial* ModelComponent::GetShadingMaterial() const {
-            if (!m_Model || m_Model->GetMeshCount() == 0) {
-                return nullptr;
-            }
-
-            // Get material from model
-            auto* material = m_Model->GetMaterial(0);
+            // Return the ShadingMaterial owned by this component
+            return m_ShadingMaterial.get();
+        }
+        
+        bool ModelComponent::CreateShadingMaterialFromResource(MaterialHandle material) {
             if (!material) {
-                return nullptr;
+                return false;
             }
-
+            
             auto* materialResource = dynamic_cast<MaterialResource*>(material);
-            if (!materialResource || !materialResource->IsShadingMaterialReady()) {
-                return nullptr;
+            if (!materialResource) {
+                return false;
             }
-
-            // Get ShadingMaterial from MaterialResource
-            MaterialResource::RenderData materialRenderData;
-            if (!materialResource->GetRenderData(materialRenderData)) {
-                return nullptr;
+            
+            // Create new ShadingMaterial instance for this component
+            m_ShadingMaterial = std::make_unique<Renderer::ShadingMaterial>();
+            
+            // Initialize from MaterialResource (this will set shader collection, reflection, and parameters)
+            if (!m_ShadingMaterial->InitializeFromMaterial(materialResource)) {
+                // Fallback: If InitializeFromMaterial fails, try InitializeFromShaderCollection
+                // Get ShaderCollection from MaterialResource
+                void* shaderCollection = materialResource->GetShaderCollection();
+                if (shaderCollection) {
+                    // Get collection ID from MaterialResource (we need to add this method or use shader name)
+                    // For now, try to get it from ShaderCollectionsTools
+                    auto& collectionsTools = Renderer::ShaderCollectionsTools::GetInstance();
+                    const std::string& shaderName = materialResource->GetShaderName();
+                    auto* collection = collectionsTools.GetCollectionByName(shaderName);
+                    if (collection) {
+                        uint64_t collectionID = collection->GetID();
+                        if (!m_ShadingMaterial->InitializeFromShaderCollection(collectionID)) {
+                            m_ShadingMaterial.reset();
+                            return false;
+                        }
+                    } else {
+                        m_ShadingMaterial.reset();
+                        return false;
+                    }
+                } else {
+                    m_ShadingMaterial.reset();
+                    return false;
+                }
             }
-
-            return static_cast<Renderer::ShadingMaterial*>(materialRenderData.shadingMaterial);
+            
+            // Schedule creation (will be processed in OnCreateResources)
+            m_ShadingMaterial->ScheduleCreate();
+            
+            // Note: Textures will be set after ShadingMaterial is created (in DoCreate)
+            // This is handled by MaterialResource::SetTexturesToShadingMaterial()
+            // which will be called when ShadingMaterial is ready
+            
+            return true;
         }
 
     } // namespace Resources
