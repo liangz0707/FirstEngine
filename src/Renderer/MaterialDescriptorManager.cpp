@@ -70,8 +70,8 @@ namespace FirstEngine {
             // Free descriptor sets
             if (m_DescriptorPool && !m_DescriptorSets.empty()) {
                 std::vector<RHI::DescriptorSetHandle> sets;
-                for (const auto& [_, set] : m_DescriptorSets) {
-                    sets.push_back(set);
+                for (const auto& pair : m_DescriptorSets) {
+                    sets.push_back(pair.second);
                 }
                 device->FreeDescriptorSets(m_DescriptorPool, sets);
             }
@@ -83,8 +83,8 @@ namespace FirstEngine {
             }
 
             // Destroy descriptor set layouts
-            for (const auto& [_, layout] : m_DescriptorSetLayouts) {
-                device->DestroyDescriptorSetLayout(layout);
+            for (const auto& pair : m_DescriptorSetLayouts) {
+                device->DestroyDescriptorSetLayout(pair.second);
             }
             m_DescriptorSetLayouts.clear();
 
@@ -173,8 +173,8 @@ namespace FirstEngine {
 
             // Sort by set index to ensure consistent ordering
             std::vector<uint32_t> setIndices;
-            for (const auto& [setIndex, _] : m_DescriptorSetLayouts) {
-                setIndices.push_back(setIndex);
+            for (const auto& pair : m_DescriptorSetLayouts) {
+                setIndices.push_back(pair.first);
             }
             std::sort(setIndices.begin(), setIndices.end());
 
@@ -307,8 +307,43 @@ namespace FirstEngine {
                 
             }
 
+            // IMPORTANT: Vulkan requires consecutive descriptor sets without gaps
+            // If Set 1 exists but Set 0 doesn't, we need to create an empty Set 0 layout
+            // This ensures that when we bind descriptor sets, we can bind Set 0 and Set 1 consecutively
+            uint32_t maxSetIndex = 0;
+            if (!setLayouts.empty()) {
+                for (const auto& pair : setLayouts) {
+                    // Use (std::max) to avoid Windows max macro conflict
+                    maxSetIndex = (std::max)(maxSetIndex, pair.first);
+                }
+            }
+            
+            // Ensure Set 0 exists if any higher set exists (to maintain consecutive sets)
+            // This is required by Vulkan: descriptor sets must be bound consecutively without gaps
+            if (maxSetIndex > 0 && setLayouts.find(0) == setLayouts.end()) {
+                // Create an empty Set 0 layout as a placeholder
+                RHI::DescriptorSetLayoutDescription emptyLayoutDesc;
+                emptyLayoutDesc.bindings.clear(); // Empty bindings - this is allowed in Vulkan
+                RHI::DescriptorSetLayoutHandle emptyLayout = device->CreateDescriptorSetLayout(emptyLayoutDesc);
+                if (emptyLayout) {
+                    setLayouts[0] = emptyLayoutDesc;
+                    m_DescriptorSetLayouts[0] = emptyLayout;
+                } else {
+                    std::cerr << "Warning: MaterialDescriptorManager::CreateDescriptorSetLayouts: "
+                              << "Failed to create empty Set 0 layout. This may cause descriptor set binding issues." << std::endl;
+                }
+            }
+
             // Create descriptor set layouts for each set
-            for (const auto& [setIndex, layoutDesc] : setLayouts) {
+            for (const auto& pair : setLayouts) {
+                uint32_t setIndex = pair.first;
+                const RHI::DescriptorSetLayoutDescription& layoutDesc = pair.second;
+                
+                // Skip if already created (e.g., empty Set 0)
+                if (m_DescriptorSetLayouts.find(setIndex) != m_DescriptorSetLayouts.end()) {
+                    continue;
+                }
+                
                 // Sort bindings by binding index to ensure correct order
                 std::vector<RHI::DescriptorBinding> sortedBindings = layoutDesc.bindings;
                 std::sort(sortedBindings.begin(), sortedBindings.end(), 
@@ -325,8 +360,8 @@ namespace FirstEngine {
                 if (!layout) {
                     std::cerr << "Failed to create descriptor set layout for set " << setIndex << std::endl;
                     // Cleanup already created layouts
-                    for (const auto& [idx, handle] : m_DescriptorSetLayouts) {
-                        device->DestroyDescriptorSetLayout(handle);
+                    for (const auto& pair : m_DescriptorSetLayouts) {
+                        device->DestroyDescriptorSetLayout(pair.second);
                     }
                     m_DescriptorSetLayouts.clear();
                     return false;
@@ -359,19 +394,31 @@ namespace FirstEngine {
                 textureTypeCounts[tb.descriptorType]++;
             }
             // Add pool sizes for each descriptor type
-            for (const auto& [type, count] : textureTypeCounts) {
-                if (count > 0) {
-                    poolSizes.push_back({type, count});
+            for (const auto& pair : textureTypeCounts) {
+                if (pair.second > 0) {
+                    poolSizes.push_back({pair.first, pair.second});
                 }
             }
 
-            if (poolSizes.empty()) {
-                return true; // No resources, no pool needed
-            }
-
             // Allocate enough sets for all sets we need
+            // Note: Even if poolSizes is empty (e.g., Set 0 has no resources), we still need a pool
+            // if we have descriptor set layouts (e.g., Set 1 exists)
             uint32_t maxSets = static_cast<uint32_t>(m_DescriptorSetLayouts.size());
-            m_DescriptorPool = device->CreateDescriptorPool(maxSets, poolSizes);
+            
+            // If poolSizes is empty but we have layouts, create a pool with empty sizes
+            // This is valid in Vulkan - empty pools can still allocate empty descriptor sets
+            if (poolSizes.empty() && maxSets > 0) {
+                // Create a pool with at least one dummy size to satisfy Vulkan requirements
+                // The actual descriptor sets may be empty, but the pool must exist
+                poolSizes.push_back({RHI::DescriptorType::UniformBuffer, 1});
+            }
+            
+            if (maxSets > 0) {
+                m_DescriptorPool = device->CreateDescriptorPool(maxSets, poolSizes);
+            } else {
+                // No descriptor sets needed
+                return true;
+            }
             if (!m_DescriptorPool) {
                 std::cerr << "Failed to create descriptor pool!" << std::endl;
                 return false;
@@ -388,8 +435,8 @@ namespace FirstEngine {
             // Collect layouts in order
             std::vector<RHI::DescriptorSetLayoutHandle> layoutsToAllocate;
             std::vector<uint32_t> setIndices;
-            for (const auto& [setIndex, layout] : m_DescriptorSetLayouts) {
-                setIndices.push_back(setIndex);
+            for (const auto& pair : m_DescriptorSetLayouts) {
+                setIndices.push_back(pair.first);
             }
             std::sort(setIndices.begin(), setIndices.end());
 

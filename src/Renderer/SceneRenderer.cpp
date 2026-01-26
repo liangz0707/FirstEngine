@@ -334,28 +334,35 @@ namespace FirstEngine {
                         cmd.params.bindDescriptorSets.firstSet = 0; // Start from Set 0
                         cmd.params.bindDescriptorSets.descriptorSets.clear();
                         
-                        // Add Set 0 (MaterialParams/textures) if available
+                        // IMPORTANT: Vulkan requires consecutive descriptor sets without gaps
+                        // If Set 1 exists, Set 0 must also exist (even if empty)
+                        // MaterialDescriptorManager now ensures Set 0 is created if Set 1 exists
+                        
+                        // Add Set 0 (MaterialParams/textures) - should always exist if Set 1 exists
+                        // Set 0 may be empty (no bindings) but still has a valid descriptor set handle
                         if (itemDescriptorSet0) {
                             cmd.params.bindDescriptorSets.descriptorSets.push_back(itemDescriptorSet0);
-                            // Mark descriptor set as in use to prevent updates while bound to command buffer
-                            // Note: We need to get the MaterialDescriptorManager from the ShadingMaterial
-                            // For now, we'll rely on the per-frame tracking in MaterialDescriptorManager
+                        } else if (itemDescriptorSet1) {
+                            // Set 1 exists but Set 0 doesn't - this should not happen after our fix
+                            // But handle it gracefully by skipping Set 1 binding
+                            std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: Set 1 (PerObject/PerFrame) exists but Set 0 doesn't. "
+                                      << "Cannot bind Set 1 alone (Vulkan requires consecutive sets). "
+                                      << "This may indicate that MaterialDescriptorManager did not create Set 0 correctly." << std::endl;
+                            // Skip binding for this item
+                            continue;
                         }
                         
                         // Add Set 1 (PerObject/PerFrame) if available
-                        // Note: Vulkan requires consecutive descriptor sets without gaps
-                        // If Set 0 exists, Set 1 can be added directly
-                        // If Set 0 doesn't exist but Set 1 does, we need to handle this case
-                        // For now, we'll only bind Set 1 if Set 0 also exists (to avoid gaps)
+                        // Now that Set 0 is guaranteed to exist if Set 1 exists, we can safely add Set 1
                         if (itemDescriptorSet1) {
-                            // Only add Set 1 if Set 0 exists (to maintain consecutive sets)
-                            // If Set 0 doesn't exist, Set 1 cannot be bound alone (Vulkan requirement)
+                            // Ensure Set 0 is also in the list (should be added above)
                             if (itemDescriptorSet0) {
                                 cmd.params.bindDescriptorSets.descriptorSets.push_back(itemDescriptorSet1);
                             } else {
-                                std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: Set 1 (PerObject/PerFrame) exists but Set 0 doesn't. "
-                                          << "Cannot bind Set 1 alone (Vulkan requires consecutive sets). "
-                                          << "This may indicate that PerObject/PerFrame uniform buffers are not being created correctly." << std::endl;
+                                // This should not happen, but handle it gracefully
+                                std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: Set 1 exists but Set 0 is null. "
+                                          << "Skipping descriptor set binding for this item." << std::endl;
+                                continue;
                             }
                         }
                         

@@ -43,6 +43,11 @@ struct FragmentOutput {
 FragmentOutput main(FragmentInput input) {
     FragmentOutput output;
     
+    // Initialize all outputs to ensure they are written
+    output.albedo = float4(0, 0, 0, 0);
+    output.normal = float4(0, 0, 0, 0);
+    output.material = float4(0, 0, 0, 0);
+    
     // Sample textures
     float4 albedo = useAlbedoMap ? albedoMap.Sample(textureSampler, input.texCoord) : float4(1, 1, 1, 1);
     float4 metallicRoughness = useMetallicRoughnessMap ? metallicRoughnessMap.Sample(textureSampler, input.texCoord) : float4(metallic, roughness, 0, 1);
@@ -50,16 +55,21 @@ FragmentOutput main(FragmentInput input) {
     float3 emissionValue = useEmissionMap ? emissionMap.Sample(textureSampler, input.texCoord).rgb : emission;
     
     // Calculate normal from normal map
-    float3 N = input.normal;
+    float3 N = normalize(input.normal);
     if (useNormalMap) {
         float3 normalSample = normalMap.Sample(textureSampler, input.texCoord).rgb * 2.0 - 1.0;
         float3x3 TBN = float3x3(normalize(input.tangent), normalize(input.bitangent), normalize(input.normal));
         N = normalize(mul(normalSample, TBN));
     }
     
-    // Output G-Buffer
-    output.albedo = float4(albedo.rgb * baseColor.rgb, metallicRoughness.r); // Metallic in alpha
-    output.normal = float4(N * 0.5 + 0.5, metallicRoughness.g); // Normal in RGB, Roughness in alpha
+    // Output G-Buffer - ensure all outputs are written
+    // SV_Target0: Albedo (RGB) + Metallic (A)
+    output.albedo = float4(albedo.rgb * baseColor.rgb, metallicRoughness.r);
+    
+    // SV_Target1: Normal (RGB) + Roughness (A)
+    output.normal = float4(N * 0.5 + 0.5, metallicRoughness.g);
+    
+    // SV_Target2: AO (R) + Emission (G) + unused (BA)
     output.material = float4(aoValue, length(emissionValue), 0, 0);
     
     return output;

@@ -937,10 +937,11 @@ namespace FirstEngine {
         RHI::DescriptorSetLayoutHandle VulkanDevice::CreateDescriptorSetLayout(
             const RHI::DescriptorSetLayoutDescription& desc) {
             // Validate input
+            // Note: Empty layouts are allowed in Vulkan (bindingCount = 0)
+            // This is useful for placeholder sets (e.g., Set 0 when only Set 1 is used)
             if (desc.bindings.empty()) {
-                std::cerr << "Warning: VulkanDevice::CreateDescriptorSetLayout: Empty descriptor set layout description" << std::endl;
-                // Return nullptr for empty layouts - caller should handle this
-                return nullptr;
+                // Create an empty layout - this is valid in Vulkan
+                // This allows consecutive descriptor set binding without gaps
             }
 
             auto* context = m_Renderer->GetDeviceContext();

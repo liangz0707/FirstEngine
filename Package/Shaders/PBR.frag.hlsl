@@ -12,7 +12,9 @@ struct FragmentInput {
 };
 
 struct FragmentOutput {
-    float4 color : SV_Target0;
+    float4 albedo : SV_Target0;        // RGB: Albedo, A: Metallic
+    float4 normal : SV_Target1;        // RGB: Normal, A: Roughness
+    float4 material : SV_Target2;       // R: AO, G: Emission, B: unused, A: unused
 };
 
 // Uniform Buffers - Set 0, Binding 0 and 1
@@ -94,39 +96,17 @@ FragmentOutput main(FragmentInput input) {
         float3x3 TBN = float3x3(normalize(input.tangent), normalize(input.bitangent), normalize(input.normal));
         N = normalize(mul(normalSample, TBN));
     }
+
+    // Output G-Buffer - ensure all outputs are written
+    // SV_Target0: Albedo (RGB) + 1
+    output.albedo = albedo;
     
-    float3 V = normalize(input.viewDir);
-    float3 L = normalize(-lightDirection);
-    float3 H = normalize(V + L);
+    // SV_Target1: Normal (RGB) + 1
+    output.normal = float4(N * 0.5 + 0.5, 1);
     
-    // Material properties
-    float3 albedoColor = albedo.rgb * baseColor.rgb;
-    float metallicValue = metallicRoughness.r;
-    float roughnessValue = metallicRoughness.g;
-    
-    // Calculate F0 for Fresnel
-    float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedoColor, metallicValue);
-    
-    // Cook-Torrance BRDF
-    float NDF = DistributionGGX(N, H, roughnessValue);
-    float G = GeometrySmith(N, V, L, roughnessValue);
-    float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
-    
-    float3 kS = F;
-    float3 kD = (1.0 - kS) * (1.0 - metallicValue);
-    
-    float3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-    float3 specular = numerator / denominator;
-    
-    // Add to outgoing radiance Lo
-    float NdotL = max(dot(N, L), 0.0);
-    float3 Lo = (kD * albedoColor / 3.14159265 + specular) * lightColor * NdotL;
-    
-    // Add ambient
-    float3 ambient = ambientColor * albedoColor * aoValue;
-    float3 color = ambient + Lo;
-    
-    output.color = float4(color, albedo.a * baseColor.a);
+    // SV_Target2: Material (RGB)+ ao
+    // Note: PBR shader doesn't have emission support yet, use 0 for now
+    float3 emissionValue = float3(0, 0, 0);
+    output.material = float4(metallicRoughness.xyz, aoValue);
     return output;
 }
