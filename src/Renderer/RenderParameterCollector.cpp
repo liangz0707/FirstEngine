@@ -5,6 +5,7 @@
 #include "FirstEngine/Renderer/RenderConfig.h"
 #include "FirstEngine/Renderer/IRenderPass.h"
 #include "FirstEngine/RHI/IImage.h"
+#include <glm/gtc/matrix_transform.hpp>
 #include <cstring>
 
 namespace FirstEngine {
@@ -174,8 +175,10 @@ namespace FirstEngine {
             // Set PerObject uniform buffer parameters
             // Note: Parameter names must match uniform buffer member names in shader
             // Shader has: modelMatrix, normalMatrix in PerObject cbuffer
-            SetParameter("modelMatrix", RenderParameterValue(Core::Mat4(worldMatrix)));
-            SetParameter("normalMatrix", RenderParameterValue(Core::Mat4(normalMatrix)));
+            // IMPORTANT: HLSL uses row-major matrices, but GLM uses column-major
+            // We need to transpose the matrices before passing to shader
+            SetParameter("modelMatrix", RenderParameterValue(Core::Mat4(glm::transpose(worldMatrix))));
+            SetParameter("normalMatrix", RenderParameterValue(Core::Mat4(glm::transpose(normalMatrix))));
         }
 
         void RenderParameterCollector::CollectFromRenderConfig(const RenderConfig* config) {
@@ -247,9 +250,11 @@ namespace FirstEngine {
         ) {
             // Set standard camera matrices (PerFrame uniform buffer)
             // Parameter names must match shader member names exactly (case-sensitive)
-            SetParameter("viewMatrix", RenderParameterValue(view));
-            SetParameter("projectionMatrix", RenderParameterValue(proj));
-            SetParameter("viewProjectionMatrix", RenderParameterValue(viewProj));
+            // IMPORTANT: HLSL uses row-major matrices, but GLM uses column-major
+            // We need to transpose the matrices before passing to shader
+            SetParameter("viewMatrix", RenderParameterValue(Core::Mat4(glm::transpose(view))));
+            SetParameter("projectionMatrix", RenderParameterValue(Core::Mat4(glm::transpose(proj))));
+            SetParameter("viewProjectionMatrix", RenderParameterValue(Core::Mat4(glm::transpose(viewProj))));
         }
 
         void RenderParameterCollector::CollectLightData(Resources::Scene* scene) {
