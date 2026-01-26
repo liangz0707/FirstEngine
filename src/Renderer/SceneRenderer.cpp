@@ -18,7 +18,7 @@ namespace FirstEngine {
     namespace Renderer {
 
         SceneRenderer::SceneRenderer(RHI::IDevice* device)
-            : m_Device(device) {}
+            : IRenderer(device) {}
 
         SceneRenderer::~SceneRenderer() = default;
 
@@ -57,7 +57,7 @@ namespace FirstEngine {
 
             // Convert render queue to render command list
             // Pass renderPass to ensure pipelines are created
-            m_SceneRenderCommands = SubmitRenderQueue(renderQueue, renderPass);
+            m_SceneRenderCommands = IRenderer::SubmitRenderQueue(renderQueue, renderPass);
         }
 
         void SceneRenderer::BuildRenderQueue(
@@ -230,10 +230,9 @@ namespace FirstEngine {
                     // Apply all collected parameters to material
                     shadingMaterial->ApplyParameters(collector);
                     
-                    // Update render parameters (applies to CPU-side uniform buffer data)
-                    shadingMaterial->UpdateRenderParameters();
-                    
-                    // Flush parameters to GPU buffers (transfers CPU data to GPU)
+                    // FlushParametersToGPU now handles all parameters (including textures) in a single pass
+                    // This applies parameters to CPU-side data and flushes to GPU buffers
+                    // This avoids duplicate processing that occurred when UpdateRenderParameters() was called separately
                     shadingMaterial->FlushParametersToGPU(m_Device);
                 }
 
@@ -254,171 +253,6 @@ namespace FirstEngine {
         // MatchesRenderFlags is now handled by Components themselves
         // No need for this method in SceneRenderer anymore
 
-        RenderCommandList SceneRenderer::SubmitRenderQueue(const RenderQueue& renderQueue, RHI::IRenderPass* renderPass) {
-            RenderCommandList commandList;
-
-            // Convert render batches to render commands (data structures)
-            const auto& batches = renderQueue.GetBatches();
-            for (const auto& batch : batches) {
-                const auto& items = batch.GetItems();
-
-                RHI::IPipeline* currentPipeline = nullptr;
-                void* currentDescriptorSet0 = nullptr;
-                void* currentDescriptorSet1 = nullptr;
-
-                for (const auto& item : items) {
-                    // Get pipeline from material data
-                    RHI::IPipeline* itemPipeline = static_cast<RHI::IPipeline*>(item.materialData.pipeline);
-                    void* itemDescriptorSet0 = item.materialData.descriptorSet; // Legacy: Set 0 from RenderItem
-                    void* itemDescriptorSet1 = nullptr; // Set 1 (PerObject/PerFrame) - will be set from ShadingMaterial
-                    
-                    // If ShadingMaterial is available, prefer it for pipeline and descriptor set
-                    if (item.materialData.shadingMaterial) {
-                        auto* shadingMaterial = static_cast<ShadingMaterial*>(item.materialData.shadingMaterial);
-                        if (shadingMaterial && shadingMaterial->IsCreated()) {
-                            // Ensure pipeline is created (lazy creation)
-                            // If renderPass is available, create pipeline now
-                            if (renderPass && !shadingMaterial->GetShadingState().GetPipeline()) {
-                                bool pipelineCreated = shadingMaterial->EnsurePipelineCreated(m_Device, renderPass);
-                                if (!pipelineCreated) {
-                                    std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: Failed to create pipeline for ShadingMaterial. "
-                                              << "Device: " << (m_Device ? "valid" : "null") 
-                                              << ", RenderPass: " << (renderPass ? "valid" : "null") << std::endl;
-                                }
-                            }
-                            
-                            itemPipeline = shadingMaterial->GetShadingState().GetPipeline();
-                            // Get descriptor sets for Set 0 (MaterialParams/textures) and Set 1 (PerObject/PerFrame)
-                            itemDescriptorSet0 = shadingMaterial->GetDescriptorSet(0);
-                            itemDescriptorSet1 = shadingMaterial->GetDescriptorSet(1);
-                            
-                            // If pipeline is not created yet and we don't have renderPass, skip this item
-                            if (!itemPipeline) {
-                                if (!renderPass) {
-                                    std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: itemPipeline is null and renderPass is null, skipping draw command" << std::endl;
-                                } else {
-                                    std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: itemPipeline is null after EnsurePipelineCreated, skipping draw command" << std::endl;
-                                }
-                                continue; // Skip this item if pipeline is not ready
-                            }
-                        } else if (shadingMaterial && !shadingMaterial->IsCreated()) {
-                            std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: ShadingMaterial is not created yet, skipping draw command" << std::endl;
-                            continue;
-                        }
-                    }
-                    
-                    // Bind pipeline if changed
-                    // IMPORTANT: Always bind pipeline if itemPipeline is valid, even if it's the same as currentPipeline
-                    // This ensures pipeline is bound before DrawIndexed, especially after render pass changes
-                    if (!itemPipeline) {
-                        // Pipeline is null - this should not happen if we skipped the item above
-                        // But if it does, log a warning and skip this item
-                        std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: itemPipeline is null, skipping draw command" << std::endl;
-                        continue;
-                    }
-                    
-                    if (itemPipeline != currentPipeline) {
-                        RenderCommand cmd;
-                        cmd.type = RenderCommandType::BindPipeline;
-                        cmd.params.bindPipeline.pipeline = itemPipeline;
-                        commandList.AddCommand(std::move(cmd));
-                        currentPipeline = itemPipeline;
-                    }
-
-                    // Bind descriptor sets if changed
-                    // We need to bind both Set 0 (MaterialParams/textures) and Set 1 (PerObject/PerFrame)
-                    // Check if either set has changed
-                    if (itemDescriptorSet0 != currentDescriptorSet0 || itemDescriptorSet1 != currentDescriptorSet1) {
-                        RenderCommand cmd;
-                        cmd.type = RenderCommandType::BindDescriptorSets;
-                        cmd.params.bindDescriptorSets.firstSet = 0; // Start from Set 0
-                        cmd.params.bindDescriptorSets.descriptorSets.clear();
-                        
-                        // IMPORTANT: Vulkan requires consecutive descriptor sets without gaps
-                        // If Set 1 exists, Set 0 must also exist (even if empty)
-                        // MaterialDescriptorManager now ensures Set 0 is created if Set 1 exists
-                        
-                        // Add Set 0 (MaterialParams/textures) - should always exist if Set 1 exists
-                        // Set 0 may be empty (no bindings) but still has a valid descriptor set handle
-                        if (itemDescriptorSet0) {
-                            cmd.params.bindDescriptorSets.descriptorSets.push_back(itemDescriptorSet0);
-                        } else if (itemDescriptorSet1) {
-                            // Set 1 exists but Set 0 doesn't - this should not happen after our fix
-                            // But handle it gracefully by skipping Set 1 binding
-                            std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: Set 1 (PerObject/PerFrame) exists but Set 0 doesn't. "
-                                      << "Cannot bind Set 1 alone (Vulkan requires consecutive sets). "
-                                      << "This may indicate that MaterialDescriptorManager did not create Set 0 correctly." << std::endl;
-                            // Skip binding for this item
-                            continue;
-                        }
-                        
-                        // Add Set 1 (PerObject/PerFrame) if available
-                        // Now that Set 0 is guaranteed to exist if Set 1 exists, we can safely add Set 1
-                        if (itemDescriptorSet1) {
-                            // Ensure Set 0 is also in the list (should be added above)
-                            if (itemDescriptorSet0) {
-                                cmd.params.bindDescriptorSets.descriptorSets.push_back(itemDescriptorSet1);
-                            } else {
-                                // This should not happen, but handle it gracefully
-                                std::cerr << "Warning: SceneRenderer::SubmitRenderQueue: Set 1 exists but Set 0 is null. "
-                                          << "Skipping descriptor set binding for this item." << std::endl;
-                                continue;
-                            }
-                        }
-                        
-                        // Only bind if we have at least one valid descriptor set
-                        if (!cmd.params.bindDescriptorSets.descriptorSets.empty()) {
-                            cmd.params.bindDescriptorSets.dynamicOffsets.clear();
-                            commandList.AddCommand(std::move(cmd));
-                            currentDescriptorSet0 = itemDescriptorSet0;
-                            currentDescriptorSet1 = itemDescriptorSet1;
-                        }
-                    }
-
-                    // Bind vertex buffers
-                    if (item.geometryData.vertexBuffer) {
-                        RenderCommand cmd;
-                        cmd.type = RenderCommandType::BindVertexBuffers;
-                        cmd.params.bindVertexBuffers.firstBinding = 0;
-                        cmd.params.bindVertexBuffers.buffers = {static_cast<RHI::IBuffer*>(item.geometryData.vertexBuffer)};
-                        cmd.params.bindVertexBuffers.offsets = {item.geometryData.vertexBufferOffset};
-                        commandList.AddCommand(std::move(cmd));
-                    }
-
-                    // Bind index buffer
-                    if (item.geometryData.indexBuffer) {
-                        RenderCommand cmd;
-                        cmd.type = RenderCommandType::BindIndexBuffer;
-                        cmd.params.bindIndexBuffer.buffer = static_cast<RHI::IBuffer*>(item.geometryData.indexBuffer);
-                        cmd.params.bindIndexBuffer.offset = item.geometryData.indexBufferOffset;
-                        cmd.params.bindIndexBuffer.is32Bit = true;
-                        commandList.AddCommand(std::move(cmd));
-                    }
-
-                    // Draw command
-                    if (item.geometryData.indexCount > 0) {
-                        RenderCommand cmd;
-                        cmd.type = RenderCommandType::DrawIndexed;
-                        cmd.params.drawIndexed.indexCount = item.geometryData.indexCount;
-                        cmd.params.drawIndexed.instanceCount = 1;
-                        cmd.params.drawIndexed.firstIndex = item.geometryData.firstIndex;
-                        cmd.params.drawIndexed.vertexOffset = 0;
-                        cmd.params.drawIndexed.firstInstance = 0;
-                        commandList.AddCommand(std::move(cmd));
-                    } else if (item.geometryData.vertexCount > 0) {
-                        RenderCommand cmd;
-                        cmd.type = RenderCommandType::Draw;
-                        cmd.params.draw.vertexCount = item.geometryData.vertexCount;
-                        cmd.params.draw.instanceCount = 1;
-                        cmd.params.draw.firstVertex = item.geometryData.firstVertex;
-                        cmd.params.draw.firstInstance = 0;
-                        commandList.AddCommand(std::move(cmd));
-                    }
-                }
-            }
-
-            return commandList;
-        }
 
         // CreateRenderItem is now handled by Components themselves
         // No need for this method in SceneRenderer anymore

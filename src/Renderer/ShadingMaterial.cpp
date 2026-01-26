@@ -1291,6 +1291,10 @@ namespace FirstEngine {
 
         bool ShadingMaterial::UpdateRenderParameters() {
             // Apply all pending render parameters to CPU-side data (including textures)
+            // NOTE: If you plan to call FlushParametersToGPU() afterwards, you don't need to call this function
+            // FlushParametersToGPU() now handles all parameters (including textures) in a single pass
+            // This function is kept for backward compatibility and cases where you only want to update parameters
+            // without flushing to GPU (e.g., for testing or when parameters are updated but GPU flush happens later)
             for (const auto& [key, value] : m_RenderParameters) {
                 ApplyRenderParameter(key, value, true); // Include textures
             }
@@ -1479,10 +1483,13 @@ namespace FirstEngine {
                 // Each entity needs to update its per-object uniform buffer data
             }
 
-            // Apply parameters to CPU-side data (excluding textures, as they don't need flushing)
-            // Textures are already bound and don't need to be flushed to GPU buffers
+            // Apply parameters to CPU-side data in a single pass
+            // Process textures first (if any), then process uniform buffer data
+            // This consolidates the logic from UpdateRenderParameters() to avoid duplicate processing
+            // when both functions are called sequentially
             for (const auto& [key, value] : m_RenderParameters) {
-                ApplyRenderParameter(key, value, false); // Exclude textures
+                // Process all parameters: textures are updated, uniform buffers are prepared for GPU flush
+                ApplyRenderParameter(key, value, true); // Include textures (they need descriptor set updates)
             }
 
             // Flush CPU-side data to GPU buffers
