@@ -94,6 +94,7 @@ namespace FirstEngine {
                 RHI::Format formatOld;
                 RHI::Format formatNew;
                 uint32_t mipLevels;
+                RHI::ImageAccessMode accessMode; // Read or Write - determines target layout
             };
 
             struct BeginRenderPassParams {

@@ -63,6 +63,13 @@ namespace FirstEngine {
             TransferDst = 0x00000080,
         };
 
+        // Image access mode for layout transitions
+        // Used by FrameGraph to automatically determine layout transitions based on resource access
+        enum class ImageAccessMode : uint32_t {
+            Read,   // Image is read by shaders -> SHADER_READ_ONLY_OPTIMAL
+            Write,  // Image is written as attachment -> COLOR_ATTACHMENT_OPTIMAL or DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        };
+
         // Descriptor types
         enum class DescriptorType : uint32_t {
             UniformBuffer = 0,

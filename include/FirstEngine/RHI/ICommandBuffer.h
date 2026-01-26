@@ -61,11 +61,13 @@ namespace FirstEngine {
             virtual void SetScissor(int32_t x, int32_t y, uint32_t width, uint32_t height) = 0;
 
             // Image layout transition
+            // accessMode: Read -> SHADER_READ_ONLY_OPTIMAL, Write -> COLOR_ATTACHMENT_OPTIMAL or DEPTH_STENCIL_ATTACHMENT_OPTIMAL
             virtual void TransitionImageLayout(
                 IImage* image,
                 Format oldLayout,
                 Format newLayout,
-                uint32_t mipLevels = 1) = 0;
+                uint32_t mipLevels = 1,
+                ImageAccessMode accessMode = ImageAccessMode::Read) = 0;
 
             // Buffer copy
             virtual void CopyBuffer(IBuffer* src, IBuffer* dst, uint64_t size) = 0;

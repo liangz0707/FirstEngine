@@ -20,18 +20,39 @@ namespace FirstEngine {
 
             // Track render pass state to ensure BeginRenderPass and EndRenderPass are properly matched
             int renderPassDepth = 0;
+            bool skipUntilEndRenderPass = false; // Skip commands if BeginRenderPass failed
 
             const auto& commands = commandList.GetCommands();
-            for (const auto& command : commands) {
+            for (size_t i = 0; i < commands.size(); ++i) {
+                const auto& command = commands[i];
+                
+                // If we're skipping commands due to a failed BeginRenderPass, only process EndRenderPass
+                if (skipUntilEndRenderPass && command.type != RenderCommandType::EndRenderPass) {
+                    continue;
+                }
+                
                 // Pass current depth to RecordCommand (before updating depth)
                 bool commandSucceeded = RecordCommand(commandBuffer, command, renderPassDepth);
 
                 // Update render pass depth after recording the command
                 // Only increase depth if BeginRenderPass actually succeeded
-                if (command.type == RenderCommandType::BeginRenderPass && commandSucceeded) {
-                    renderPassDepth++;
-                } else if (command.type == RenderCommandType::EndRenderPass && renderPassDepth > 0) {
-                    renderPassDepth--;
+                if (command.type == RenderCommandType::BeginRenderPass) {
+                    if (commandSucceeded) {
+                        renderPassDepth++;
+                        skipUntilEndRenderPass = false; // Reset skip flag on success
+                    } else {
+                        std::cerr << "CommandRecorder: BeginRenderPass FAILED at command index " << i 
+                                  << ", depth remains: " << renderPassDepth << std::endl;
+                        std::cerr << "CommandRecorder: Skipping all commands until EndRenderPass" << std::endl;
+                        skipUntilEndRenderPass = true; // Skip all commands until EndRenderPass
+                    }
+                } else if (command.type == RenderCommandType::EndRenderPass) {
+                    if (renderPassDepth > 0) {
+                        renderPassDepth--;
+                        skipUntilEndRenderPass = false; // Reset skip flag
+                    } else {
+                        std::cerr << "CommandRecorder: EndRenderPass called but renderPassDepth is 0 (no active render pass)" << std::endl;
+                    }
                 }
             }
 
@@ -82,6 +103,8 @@ namespace FirstEngine {
                     } else {
                         std::cerr << "Error: CommandRecorder: Attempted to call DrawIndexed without an active render pass. "
                                   << "Current depth: " << renderPassDepth << std::endl;
+                        std::cerr << "  This usually means BeginRenderPass failed or was not called. "
+                                  << "Check previous error messages for BeginRenderPass failures." << std::endl;
                         return false;
                     }
                 case RenderCommandType::TransitionImageLayout:
@@ -154,12 +177,35 @@ namespace FirstEngine {
 
         void CommandRecorder::RecordTransitionImageLayout(RHI::ICommandBuffer* cmd, const RenderCommand::TransitionImageLayoutParams& params) {
             if (params.image) {
-                cmd->TransitionImageLayout(params.image, params.formatOld, params.formatNew, params.mipLevels);
+                // Use accessMode to determine target layout instead of guessing from format
+                // This is set by FrameGraph based on AddReadResource/AddWriteResource
+                cmd->TransitionImageLayout(params.image, params.formatOld, params.formatNew, params.mipLevels, params.accessMode);
             }
         }
 
         bool CommandRecorder::RecordBeginRenderPass(RHI::ICommandBuffer* cmd, const RenderCommand::BeginRenderPassParams& params) {
-            if (params.renderPass && params.framebuffer) {
+            if (!cmd) {
+                std::cerr << "Error: CommandRecorder::RecordBeginRenderPass: commandBuffer is nullptr" << std::endl;
+                return false;
+            }
+            
+            if (!params.renderPass || !params.framebuffer) {
+                std::cerr << "Error: CommandRecorder::RecordBeginRenderPass: Invalid renderPass or framebuffer (nullptr)" << std::endl;
+                std::cerr << "  renderPass: " << (params.renderPass ? "valid" : "nullptr") << std::endl;
+                std::cerr << "  framebuffer: " << (params.framebuffer ? "valid" : "nullptr") << std::endl;
+                return false;
+            }
+            
+            // Check if framebuffer dimensions are valid
+            uint32_t width = params.framebuffer->GetWidth();
+            uint32_t height = params.framebuffer->GetHeight();
+            if (width == 0 || height == 0) {
+                std::cerr << "Error: CommandRecorder::RecordBeginRenderPass: Invalid framebuffer dimensions: " 
+                          << width << "x" << height << std::endl;
+                return false;
+            }
+            
+            try {
                 cmd->BeginRenderPass(
                     params.renderPass,
                     params.framebuffer,
@@ -170,14 +216,20 @@ namespace FirstEngine {
                 
                 // Set viewport and scissor after beginning render pass
                 // This is required for pipelines with dynamic viewport/scissor state
-                uint32_t width = params.framebuffer->GetWidth();
-                uint32_t height = params.framebuffer->GetHeight();
                 cmd->SetViewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f);
                 cmd->SetScissor(0, 0, width, height);
                 
                 return true;
-            } else {
-                std::cerr << "Error: CommandRecorder::RecordBeginRenderPass: Invalid renderPass or framebuffer (nullptr)" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "Error: CommandRecorder::RecordBeginRenderPass: Exception thrown: " << e.what() << std::endl;
+                std::cerr << "  renderPass: " << (params.renderPass ? "valid" : "nullptr") << std::endl;
+                std::cerr << "  framebuffer: " << (params.framebuffer ? "valid" : "nullptr") << std::endl;
+                if (params.framebuffer) {
+                    std::cerr << "  framebuffer dimensions: " << width << "x" << height << std::endl;
+                }
+                return false;
+            } catch (...) {
+                std::cerr << "Error: CommandRecorder::RecordBeginRenderPass: Unknown exception thrown" << std::endl;
                 return false;
             }
         }

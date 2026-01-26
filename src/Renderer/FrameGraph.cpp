@@ -3,6 +3,7 @@
 #include "FirstEngine/Renderer/FrameGraphResourceWrappers.h"
 #include "FirstEngine/Renderer/IRenderPass.h"
 #include "FirstEngine/Renderer/SceneRenderer.h"
+#include "FirstEngine/Renderer/ElementRenderer.h"
 #include "FirstEngine/Resources/Scene.h"
 #include "FirstEngine/RHI/IDevice.h"
 #include "FirstEngine/RHI/IRenderPass.h"
@@ -14,6 +15,7 @@
 #include <stdexcept>
 #include <memory>
 #include <iostream>
+#include <unordered_set>
 
 namespace FirstEngine {
     namespace Renderer {
@@ -465,8 +467,6 @@ namespace FirstEngine {
                 return commandList;
             }
 
-            FrameGraphBuilder builder(this);
-
             // Execute nodes in the order specified by the plan
             // For each node that is an IRenderPass:
             //   1. If it has a SceneRenderer, call Render() to generate SceneRenderCommands
@@ -830,12 +830,85 @@ namespace FirstEngine {
                     }
                 }
 
+                // Validate render pass and framebuffer before creating builder
+                // For passes that need rendering (with attachments), both must be valid
+                if ((!attachments.empty() || hasDepth) && (!nodeRenderPass || !nodeFramebuffer)) {
+                    std::cerr << "Error: FrameGraph::Execute: Node '" << node->GetName() 
+                              << "' requires render pass and framebuffer but they are invalid:" << std::endl;
+                    std::cerr << "  renderPass: " << (nodeRenderPass ? "valid" : "nullptr") << std::endl;
+                    std::cerr << "  framebuffer: " << (nodeFramebuffer ? "valid" : "nullptr") << std::endl;
+                    std::cerr << "  attachments count: " << attachments.size() << std::endl;
+                    std::cerr << "  hasDepth: " << (hasDepth ? "true" : "false") << std::endl;
+                    // Continue execution but the pass will generate empty command list
+                }
+                
+                // Automatically insert layout transitions based on resource access patterns
+                // This eliminates the need for manual layout transitions in passes
+                // Read resources: transition to SHADER_READ_ONLY_OPTIMAL
+                // Write resources: transition to COLOR_ATTACHMENT_OPTIMAL or DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                // Note: writeResources is already defined above (line 499), reuse it
+                const auto& readResources = node->GetReadResources();
+                
+                // Create a set of write resource names for quick lookup
+                std::unordered_set<std::string> writeResourceSet(writeResources.begin(), writeResources.end());
+                
+                // Transition read resources to SHADER_READ_ONLY_OPTIMAL
+                // Skip resources that are also write resources (they will be handled in write section)
+                for (const auto& readResName : readResources) {
+                    // If this resource is also a write resource, skip it here
+                    // It will be handled in the write section, and render pass will handle the layout transition
+                    if (writeResourceSet.find(readResName) != writeResourceSet.end()) {
+                        continue;
+                    }
+                    
+                    auto* resource = GetResource(readResName);
+                    if (!resource) continue;
+                    
+                    if (resource->GetDescription().GetType() == ResourceType::Attachment ||
+                        resource->GetDescription().GetType() == ResourceType::Texture) {
+                        RHI::IImage* image = resource->GetRHIImage();
+                        if (image) {
+                            RenderCommand transitionCmd;
+                            transitionCmd.type = RenderCommandType::TransitionImageLayout;
+                            transitionCmd.params.transitionImageLayout.image = image;
+                            transitionCmd.params.transitionImageLayout.formatOld = resource->GetDescription().GetFormat();
+                            transitionCmd.params.transitionImageLayout.formatNew = resource->GetDescription().GetFormat();
+                            transitionCmd.params.transitionImageLayout.mipLevels = 1;
+                            transitionCmd.params.transitionImageLayout.accessMode = RHI::ImageAccessMode::Read;
+                            commandList.AddCommand(transitionCmd);
+                        }
+                    }
+                }
+                
+                // Transition write resources to appropriate attachment layout
+                // For resources that are both read and write, we only transition to write layout
+                // The render pass will handle the transition from the current layout to attachment layout
+                for (const auto& writeResName : writeResources) {
+                    auto* resource = GetResource(writeResName);
+                    if (!resource) continue;
+                    
+                    if (resource->GetDescription().GetType() == ResourceType::Attachment) {
+                        RHI::IImage* image = resource->GetRHIImage();
+                        if (image) {
+                            RenderCommand transitionCmd;
+                            transitionCmd.type = RenderCommandType::TransitionImageLayout;
+                            transitionCmd.params.transitionImageLayout.image = image;
+                            transitionCmd.params.transitionImageLayout.formatOld = resource->GetDescription().GetFormat();
+                            transitionCmd.params.transitionImageLayout.formatNew = resource->GetDescription().GetFormat();
+                            transitionCmd.params.transitionImageLayout.mipLevels = 1;
+                            transitionCmd.params.transitionImageLayout.accessMode = RHI::ImageAccessMode::Write;
+                            commandList.AddCommand(transitionCmd);
+                        }
+                    }
+                }
+
                 // Create FrameGraphBuilder with render pass and framebuffer
                 FrameGraphBuilder builder(this, nodeRenderPass, nodeFramebuffer);
 
-                // Check if node is an IRenderPass with SceneRenderer
+                // Check if node is an IRenderPass with SceneRenderer or ElementRenderer
                 IRenderPass* pass = dynamic_cast<IRenderPass*>(node);
                 const RenderCommandList* sceneCommands = nullptr;
+                const RenderCommandList* elementCommands = nullptr;
 
                 if (pass && pass->HasSceneRenderer() && scene) {
                     // Get SceneRenderer from pass
@@ -851,11 +924,49 @@ namespace FirstEngine {
                         sceneCommands = &sceneRenderer->GetRenderCommands();
                     }
                 }
+                
+                // Check if pass has ElementRenderer
+                if (pass && pass->HasElementRenderer()) {
+                    // Get ElementRenderer from pass
+                    ElementRenderer* elementRenderer = pass->GetElementRenderer();
+                    
+                    // Render elements using ElementRenderer
+                    // Use pass's camera config if it has one, otherwise use renderConfig's camera
+                    CameraConfig cameraConfig = pass->UsesCustomCamera() 
+                        ? pass->GetCameraConfig() 
+                        : renderConfig.GetCamera();
+                    
+                    elementRenderer->Render(
+                        cameraConfig,
+                        renderConfig,
+                        nodeRenderPass
+                    );
+                    
+                    // Get generated commands from ElementRenderer
+                    if (elementRenderer->HasRenderCommands()) {
+                        elementCommands = &elementRenderer->GetRenderCommands();
+                    }
+                }
 
-                // Get command list from node callback, passing scene commands
-                // Geometry and forward passes can merge scene commands into their pass
-                RenderCommandList nodeCommands = node->GetExecuteCallback()(builder, sceneCommands);
-
+                // Merge scene and element commands if both exist
+                // For now, we'll combine them into a single command list
+                // In the future, we might want separate handling
+                const RenderCommandList* combinedCommands = sceneCommands;
+                if (elementCommands && !elementCommands->IsEmpty()) {
+                    // If we have both scene and element commands, we need to merge them
+                    // For now, prioritize scene commands (elements will be added separately in future)
+                    // TODO: Implement proper merging of scene and element commands
+                    combinedCommands = sceneCommands ? sceneCommands : elementCommands;
+                } else if (elementCommands) {
+                    combinedCommands = elementCommands;
+                }
+                
+                // Get command list from node callback, passing combined commands
+                // Geometry and forward passes can merge scene/element commands into their pass
+                // Note: For now, we pass sceneCommands as before, element commands will be handled separately
+                // TODO: Implement proper merging of scene and element commands
+                RenderCommandList nodeCommands = node->GetExecuteCallback()(builder, combinedCommands);
+                
                 // Debug: Check if commands were generated
                 if (nodeCommands.IsEmpty()) {
                     std::cerr << "Warning: FrameGraph::Execute: Node '" << node->GetName()
@@ -929,7 +1040,7 @@ namespace FirstEngine {
                 }
             }
 
-            return commandList;
+            return commandList; 
         }
 
         FrameGraphResource* FrameGraph::GetResource(const std::string& name) {

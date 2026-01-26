@@ -89,6 +89,9 @@ namespace FirstEngine {
         RenderCommandList GeometryPass::OnDraw(FrameGraphBuilder& builder, const RenderCommandList* sceneCommands) {
             RenderCommandList cmdList;
 
+            // Layout transitions are now automatically handled by FrameGraph based on AddReadResource/AddWriteResource
+            // No need to manually add transition commands here
+
             // Get render pass and framebuffer from builder
             RHI::IRenderPass* renderPass = builder.GetRenderPass();
             RHI::IFramebuffer* framebuffer = builder.GetFramebuffer();

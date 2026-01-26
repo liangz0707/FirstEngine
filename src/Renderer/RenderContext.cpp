@@ -2,6 +2,7 @@
 #include "FirstEngine/Renderer/RenderResourceManager.h"
 #include "FirstEngine/Renderer/ShaderCollectionsTools.h"
 #include "FirstEngine/Renderer/ShaderModuleTools.h"
+#include "FirstEngine/Resources/DefaultTextures.h"
 #include "FirstEngine/Device/VulkanDevice.h"
 #include "FirstEngine/Device/VulkanRenderer.h"
 #include <iostream>
@@ -298,13 +299,15 @@ namespace FirstEngine {
             m_CommandBuffer->Begin();
 
             // Transition swapchain image layout: Undefined → Color Attachment
+            // Use Write access mode to transition to COLOR_ATTACHMENT_OPTIMAL
             auto* swapchainImage = params.swapchain->GetImage(m_CurrentImageIndex);
             if (swapchainImage) {
                 m_CommandBuffer->TransitionImageLayout(
                     swapchainImage,
                     RHI::Format::Undefined,
                     RHI::Format::B8G8R8A8_UNORM,
-                    1
+                    1,
+                    RHI::ImageAccessMode::Write  // Write mode for color attachment
                 );
             }
 
@@ -320,12 +323,14 @@ namespace FirstEngine {
             }
 
             // Transition swapchain image layout: Color Attachment → Present
+            // Use Read access mode - TransitionImageLayout will detect swapchain image and convert to PRESENT_SRC_KHR
             if (swapchainImage) {
                 m_CommandBuffer->TransitionImageLayout(
                     swapchainImage,
                     RHI::Format::B8G8R8A8_UNORM,
                     RHI::Format::B8G8R8A8_SRGB,
-                    1
+                    1,
+                    RHI::ImageAccessMode::Read  // Read mode will trigger PRESENT_SRC_KHR for swapchain images
                 );
             }
 
@@ -405,6 +410,12 @@ namespace FirstEngine {
                 // Initialize ShaderModuleTools with device
                 auto& moduleTools = ShaderModuleTools::GetInstance();
                 moduleTools.Initialize(m_Device);
+                
+                // Initialize DefaultTextureManager with device
+                auto& defaultTextureManager = Resources::DefaultTextureManager::GetInstance();
+                if (!defaultTextureManager.Initialize(m_Device)) {
+                    std::cerr << "Warning: Failed to initialize DefaultTextureManager" << std::endl;
+                }
                 
                 // Create FrameGraph
                 m_FrameGraph = new FrameGraph(m_Device);
@@ -528,6 +539,10 @@ namespace FirstEngine {
             if (m_Device) {
                 m_Device->WaitIdle();
             }
+            
+            // Cleanup DefaultTextureManager
+            auto& defaultTextureManager = Resources::DefaultTextureManager::GetInstance();
+            defaultTextureManager.Cleanup();
 
             // Release command buffer
             m_CommandBuffer.reset();
